@@ -1,0 +1,17 @@
+# Where: examples/content_security_policy.yaml
+# What: sample rule file for the content security guard.
+# Why: demonstrate a minimal policy for skills/docs scanning.
+
+file_globs:
+  - "**/*.md"
+exclude_globs:
+  - "archive/**"
+forbidden_patterns:
+  - id: pipe_to_shell
+    severity: high
+    pattern: "(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b"
+    message: "pipe-to-shell pattern is forbidden"
+  - id: secret_prompt
+    severity: high
+    pattern: "(?i)(入力|貼り付け|provide|paste|enter).*(api[_ -]?key|token|password|secret)"
+    message: "plaintext secret prompt is forbidden"
