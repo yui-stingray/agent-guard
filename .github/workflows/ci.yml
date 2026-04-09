@@ -1,0 +1,41 @@
+# Where: .github/workflows/ci.yml
+# What: run workflow linting, tests, and packaging checks on every push to master and every PR.
+# Why: keep the extracted guard package safe while the API surface is still moving.
+
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/actionlint@v1
+
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package + dev deps
+        run: pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest -q
+      - name: Build sdist + wheel
+        if: matrix.python-version == '3.12'
+        run: python -m build
+      - name: Verify metadata (twine check)
+        if: matrix.python-version == '3.12'
+        run: python -m twine check dist/*
