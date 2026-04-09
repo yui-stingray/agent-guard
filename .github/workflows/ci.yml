@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rhysd/actionlint@v1
+      - uses: devops-actions/actionlint@v0.1.10
 
   test:
     name: pytest (py${{ matrix.python-version }})
