@@ -155,3 +155,54 @@ def test_content_cli_json_error(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["status"] == "error"
     assert payload["scanner"] == "content"
+
+
+def test_path_cli_json_violation(tmp_path: Path) -> None:
+    policy = tmp_path / "path_policy.yaml"
+    policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        "    - .\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_path_patterns:\n"
+        "    - '(^|/)\\.env\\.example$'\n"
+        "  forbidden_path_patterns:\n"
+        "    - id: env_file\n"
+        "      severity: high\n"
+        "      pattern: '(^|/)\\.env(\\..+)?$'\n"
+        "      message: 'env files are forbidden except .env.example'\n",
+        encoding="utf-8",
+    )
+    write(tmp_path / ".env.evil", "TOKEN=x\n")
+    write(tmp_path / ".env.example", "TOKEN=\n")
+
+    result = run_cli("path", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "violation"
+    assert payload["scanner"] == "path"
+    assert payload["finding_count"] == 1
+    assert payload["findings"][0]["path"] == ".env.evil"
+
+
+def test_digest_cli_json_violation(tmp_path: Path) -> None:
+    policy = tmp_path / "digest_policy.yaml"
+    policy.write_text(
+        "checks:\n"
+        "  - id: readme_pin\n"
+        "    path: README.md\n"
+        "    sha256: '0000000000000000000000000000000000000000000000000000000000000000'\n",
+        encoding="utf-8",
+    )
+    write(tmp_path / "README.md", "changed\n")
+
+    result = run_cli("digest", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "violation"
+    assert payload["scanner"] == "digest"
+    assert payload["checked_files"] == 1
+    assert payload["findings"][0]["check_id"] == "readme_pin"
