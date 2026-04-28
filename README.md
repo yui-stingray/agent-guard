@@ -221,7 +221,15 @@ agent-guard digest check --root <repo> --policy <yaml> [--json]
 Planned next steps:
 - shared result envelope helpers across scanners
 - optional pre-commit examples
-- public release workflow once the private dogfooding surface is stable
+
+## Releases
+
+Tag-driven. Pushing a `vX.Y.Z` annotated tag triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which first
+verifies that the tag matches `[project].version` in `pyproject.toml`, then
+builds the sdist + wheel and publishes to PyPI via Trusted Publishing (OIDC).
+No maintainer-side PyPI token is required once the PyPI project environment is
+configured.
 
 ## License
 
