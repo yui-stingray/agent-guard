@@ -138,5 +138,5 @@ def test_digest_guard_rejects_malformed_policy(tmp_path: Path) -> None:
     bad = tmp_path / "bad.yaml"
     bad.write_text("- not-a-mapping\n", encoding="utf-8")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="policy file must be YAML object"):
         load_digest_policy(bad)

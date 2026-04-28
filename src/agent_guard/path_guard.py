@@ -6,9 +6,10 @@ Why: catch private artifacts and env-file leaks even when file contents are unre
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import yaml
 
@@ -104,7 +105,13 @@ def iter_repo_paths(root: Path, include: list[str], exclude: list[str]) -> Itera
 
 
 def normalize_allow_patterns(values: Any) -> list[re.Pattern[str]]:
-    return [re.compile(text) for text in normalize_string_list(values)]
+    patterns: list[re.Pattern[str]] = []
+    for text in normalize_string_list(values):
+        try:
+            patterns.append(re.compile(text))
+        except re.error as exc:
+            raise ValueError(f"invalid allowed_path_patterns regex {text!r}: {exc}") from exc
+    return patterns
 
 
 def build_rules(values: Any) -> list[PathGuardRule]:
@@ -127,12 +134,16 @@ def build_rules(values: Any) -> list[PathGuardRule]:
             continue
 
         if pattern_text:
+            try:
+                regex = re.compile(pattern_text)
+            except re.error as exc:
+                raise ValueError(f"invalid forbidden_path_patterns regex for {rule_id!r}: {pattern_text!r}: {exc}") from exc
             rules.append(
                 PathGuardRule(
                     rule_id=rule_id,
                     severity=severity,
                     message=message,
-                    regex=re.compile(pattern_text),
+                    regex=regex,
                 )
             )
     return rules
@@ -140,11 +151,13 @@ def build_rules(values: Any) -> list[PathGuardRule]:
 
 def scan_paths(*, root: Path, policy: dict[str, Any]) -> tuple[list[PathGuardFinding], int]:
     root = root.resolve()
-    scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
+    raw_scan_cfg = policy.get("scan", {})
+    scan_cfg = raw_scan_cfg if isinstance(raw_scan_cfg, dict) else {}
     include_paths = normalize_string_list(scan_cfg.get("include", []))
     exclude_paths = normalize_string_list(scan_cfg.get("exclude", []))
 
-    policy_cfg = policy.get("policy", {}) if isinstance(policy.get("policy", {}), dict) else {}
+    raw_policy_cfg = policy.get("policy", {})
+    policy_cfg = raw_policy_cfg if isinstance(raw_policy_cfg, dict) else {}
     allowed_patterns = normalize_allow_patterns(policy_cfg.get("allowed_path_patterns", []))
     rules = build_rules(policy_cfg.get("forbidden_path_patterns", []))
 
