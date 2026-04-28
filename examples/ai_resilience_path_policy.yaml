@@ -1,0 +1,32 @@
+# Where: examples/ai_resilience_path_policy.yaml
+# What: path-name guard policy for ai-resilience style private artifacts.
+# Why: keep bypass corpora, red-team logs, and env files out of git/publication paths.
+
+scan:
+  include:
+    - "."
+  exclude:
+    - ".git"
+    - ".venv"
+    - "node_modules"
+
+policy:
+  allowed_path_patterns:
+    - "(^|/)\\.env\\.example$"
+  forbidden_path_patterns:
+    - id: private_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/private(/|$)"
+      message: "private artifact directory must stay outside published/tracked paths"
+    - id: bypass_corpus
+      severity: high
+      pattern: "(^|/)bypass[^/]*\\.(jsonl|json|txt)$"
+      message: "bypass corpus material must not be placed in repository paths"
+    - id: red_session_log
+      severity: high
+      pattern: "(^|/)red_session_[^/]+"
+      message: "red-team session logs must not be placed in repository paths"
+    - id: env_file
+      severity: high
+      pattern: "(^|/)\\.env(\\..+)?$"
+      message: "env files are forbidden except .env.example"

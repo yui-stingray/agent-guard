@@ -19,6 +19,8 @@ from .content_guard import (
     normalize_patterns,
     scan_paths,
 )
+from .digest_guard import load_digest_policy, scan_digests
+from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +45,20 @@ def build_parser() -> argparse.ArgumentParser:
     content_check.add_argument("--since-ref", default="", help="base ref for new mode diff (e.g. origin/main)")
     content_check.add_argument("--no-untracked", action="store_true", help="exclude untracked files in new mode")
     content_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    path = top.add_parser("path", help="path-name guard for private artifacts and env-file leaks")
+    path_sub = path.add_subparsers(dest="command", required=True)
+    path_check = path_sub.add_parser("check", help="scan repository path names and fail on forbidden paths")
+    path_check.add_argument("--root", default=".", help="repository root path")
+    path_check.add_argument("--policy", required=True, help="YAML policy path")
+    path_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    digest = top.add_parser("digest", help="SHA-256 pin guard for safety-critical files")
+    digest_sub = digest.add_subparsers(dest="command", required=True)
+    digest_check = digest_sub.add_parser("check", help="verify pinned SHA-256 digests")
+    digest_check.add_argument("--root", default=".", help="repository root path")
+    digest_check.add_argument("--policy", required=True, help="YAML policy path")
+    digest_check.add_argument("--json", action="store_true", help="emit JSON")
 
     return parser
 
@@ -150,6 +166,74 @@ def run_content_check(args: argparse.Namespace) -> int:
     return 0 if not findings else 1
 
 
+def run_path_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_path_policy(policy_path)
+        findings, scanned_paths = scan_repo_paths(root=root, policy=policy)
+    except Exception as exc:
+        payload = {"status": "error", "scanner": "path", "error": str(exc)}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}")
+        return 2
+
+    payload = {
+        "status": "ok" if not findings else "violation",
+        "scanner": "path",
+        "scanned_paths": scanned_paths,
+        "finding_count": len(findings),
+        "findings": [item.to_dict() for item in findings],
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    elif findings:
+        print(f"path-guard: NG ({len(findings)} findings)")
+        for item in findings:
+            print(f"- {item.severity} {item.rule_id} {item.path} {item.message}")
+    else:
+        print(f"path-guard: OK ({scanned_paths} paths scanned)")
+
+    return 0 if not findings else 1
+
+
+def run_digest_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_digest_policy(policy_path)
+        findings, checked_files = scan_digests(root=root, policy=policy)
+    except Exception as exc:
+        payload = {"status": "error", "scanner": "digest", "error": str(exc)}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}")
+        return 2
+
+    payload = {
+        "status": "ok" if not findings else "violation",
+        "scanner": "digest",
+        "checked_files": checked_files,
+        "finding_count": len(findings),
+        "findings": [item.to_dict() for item in findings],
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    elif findings:
+        print(f"digest-guard: NG ({len(findings)} findings)")
+        for item in findings:
+            print(f"- {item.check_id} {item.path} {item.message}")
+    else:
+        print(f"digest-guard: OK ({checked_files} files checked)")
+
+    return 0 if not findings else 1
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -158,6 +242,10 @@ def main() -> int:
         return run_api_check(args)
     if args.scanner == "content" and args.command == "check":
         return run_content_check(args)
+    if args.scanner == "path" and args.command == "check":
+        return run_path_check(args)
+    if args.scanner == "digest" and args.command == "check":
+        return run_digest_check(args)
 
     parser.error("unknown command")
     return 2

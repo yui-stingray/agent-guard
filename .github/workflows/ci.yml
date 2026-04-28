@@ -36,6 +36,26 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run tests
         run: pytest -q
+      - name: Run CLI smoke tests
+        run: |
+          python -m agent_guard.cli path check --root . --policy examples/ai_resilience_path_policy.yaml --json
+          mkdir -p /tmp/agent-guard-digest-smoke
+          printf 'pinned\n' > /tmp/agent-guard-digest-smoke/pinned.txt
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          root = Path("/tmp/agent-guard-digest-smoke")
+          digest = hashlib.sha256((root / "pinned.txt").read_bytes()).hexdigest()
+          (root / "policy.yaml").write_text(
+              "checks:\n"
+              "  - id: pinned_text\n"
+              "    path: pinned.txt\n"
+              f"    sha256: '{digest}'\n",
+              encoding="utf-8",
+          )
+          PY
+          python -m agent_guard.cli digest check --root /tmp/agent-guard-digest-smoke --policy /tmp/agent-guard-digest-smoke/policy.yaml --json
       - name: Build sdist + wheel
         if: matrix.python-version == '3.12'
         run: python -m build
