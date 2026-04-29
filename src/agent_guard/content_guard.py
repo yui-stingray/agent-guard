@@ -141,6 +141,8 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
                 "severity": str(item.get("severity", "high")).strip() or "high",
                 "message": str(item.get("message", "policy violation")).strip() or "policy violation",
                 "regex": re.compile(pattern_text),
+                "include_globs": normalize_patterns(item.get("include_globs", [])),
+                "exclude_globs": normalize_patterns(item.get("exclude_globs", [])),
             }
         )
     return rules
@@ -277,11 +279,47 @@ def display_path(path: Path, repo_root: Path) -> str:
         return str(path)
 
 
+def rule_applies_to_path(rule: dict[str, object], path: Path, repo_root: Path) -> bool:
+    rel_path = Path(display_path(path, repo_root))
+    include_globs = rule.get("include_globs", [])
+    exclude_globs = rule.get("exclude_globs", [])
+
+    if isinstance(include_globs, list) and include_globs:
+        if not any(glob_matches(rel_path, str(pattern)) for pattern in include_globs):
+            return False
+
+    if isinstance(exclude_globs, list) and exclude_globs:
+        if any(glob_matches(rel_path, str(pattern)) for pattern in exclude_globs):
+            return False
+
+    return True
+
+
+def line_allows_rule(line: str, rule_id: str) -> bool:
+    match = re.search(r"agent-guard:\s*allow\s+([A-Za-z0-9_., -]+)", line)
+    if not match:
+        return False
+
+    allowed = {
+        item.strip()
+        for item in re.split(r"[,\s]+", match.group(1))
+        if item.strip()
+    }
+    return "all" in allowed or rule_id in allowed
+
+
 def scan_file(path: Path, rules: list[dict[str, object]], repo_root: Path) -> list[ContentGuardFinding]:
     findings: list[ContentGuardFinding] = []
     text = path.read_text(encoding="utf-8")
     for idx, line in enumerate(text.splitlines(), start=1):
         for rule in rules:
+            if not rule_applies_to_path(rule, path, repo_root):
+                continue
+
+            rule_id = str(rule["id"])
+            if line_allows_rule(line, rule_id):
+                continue
+
             regex = rule["regex"]
             assert isinstance(regex, re.Pattern)
             if regex.search(line):
@@ -289,7 +327,7 @@ def scan_file(path: Path, rules: list[dict[str, object]], repo_root: Path) -> li
                     ContentGuardFinding(
                         file=display_path(path, repo_root),
                         line=idx,
-                        rule_id=str(rule["id"]),
+                        rule_id=rule_id,
                         severity=str(rule["severity"]),
                         message=str(rule["message"]),
                         snippet=line.strip()[:200],

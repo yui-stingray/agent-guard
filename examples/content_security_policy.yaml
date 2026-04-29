@@ -9,9 +9,11 @@ exclude_globs:
 forbidden_patterns:
   - id: pipe_to_shell
     severity: high
-    pattern: "(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b"
+    pattern: '(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b'
     message: "pipe-to-shell pattern is forbidden"
+    exclude_globs:
+      - "fixtures/red-team/**"
   - id: secret_prompt
     severity: high
-    pattern: "(?i)(入力|貼り付け|provide|paste|enter).*(api[_ -]?key|token|password|secret)"
+    pattern: '(?i)(入力|貼り付け|provide|paste|enter).*(api[_ -]?key|token|password|secret)'
     message: "plaintext secret prompt is forbidden"

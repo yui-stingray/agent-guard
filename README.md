@@ -164,11 +164,20 @@ exclude_globs:
 forbidden_patterns:
   - id: pipe_to_shell
     severity: high
-    pattern: "(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b"
+    pattern: '(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b'
     message: "pipe-to-shell pattern is forbidden"
+    exclude_globs:
+      - "fixtures/red-team/**"
 ```
 
 A ready-to-run copy lives in [`examples/content_security_policy.yaml`](examples/content_security_policy.yaml).
+
+Content rules may define per-rule `include_globs` / `exclude_globs`. Use this
+when a repository contains intentional adversarial fixtures that should stay
+scannable for secrets but should not fail dangerous-command rules. For narrow
+documented examples, append an inline suppression such as
+`# agent-guard: allow pipe_to_shell` or `# agent-guard: allow all` on the same
+line.
 
 ### Path guard policy
 
