@@ -240,7 +240,8 @@ that the version is not already present on PyPI, then builds the sdist + wheel
 and publishes to PyPI via Trusted Publishing (OIDC). No maintainer-side PyPI
 token is required once the PyPI project environment is configured. Manual
 `workflow_dispatch` with `publish=false` is a build-only dry run; it skips the
-publish job.
+publish job. Manual `publish=true` must be run against a `v*` tag ref; running
+it from a branch fails before build.
 
 ## License
 

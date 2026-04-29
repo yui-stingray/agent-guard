@@ -23,8 +23,24 @@ permissions:
   contents: read
 
 jobs:
+  validate-release-request:
+    name: validate release request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate manual publish ref
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.publish }}" = "true" ] \
+             && [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "::error::manual publish=true must be run against a v* tag ref, not ${GITHUB_REF}"
+            exit 1
+          fi
+          echo "release request accepted for ${GITHUB_REF}"
+
   build:
     name: build sdist + wheel
+    needs: validate-release-request
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
