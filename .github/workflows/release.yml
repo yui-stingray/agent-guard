@@ -36,6 +36,9 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: python scripts/check_release_version.py "$TAG_NAME"
+      - name: Check PyPI release state
+        if: github.event_name == 'push' || startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/check_pypi_release_state.py
       - name: Install build + twine
         run: python -m pip install --upgrade build twine
       - name: Build distributions

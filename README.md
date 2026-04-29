@@ -235,10 +235,12 @@ Planned next steps:
 
 Tag-driven. Pushing a `vX.Y.Z` annotated tag triggers
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which first
-verifies that the tag matches `[project].version` in `pyproject.toml`, then
-builds the sdist + wheel and publishes to PyPI via Trusted Publishing (OIDC).
-No maintainer-side PyPI token is required once the PyPI project environment is
-configured.
+verifies that the tag matches `[project].version` in `pyproject.toml`, checks
+that the version is not already present on PyPI, then builds the sdist + wheel
+and publishes to PyPI via Trusted Publishing (OIDC). No maintainer-side PyPI
+token is required once the PyPI project environment is configured. Manual
+`workflow_dispatch` with `publish=false` is a build-only dry run; it skips the
+publish job.
 
 ## License
 
