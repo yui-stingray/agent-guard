@@ -23,6 +23,12 @@ It does **not** manage approvals, logs, state, or UI. Those belong in higher lay
 ## Install
 
 ```bash
+pip install yui-agent-guard
+```
+
+From a source checkout, install the package in editable mode:
+
+```bash
 pip install -e .
 ```
 
