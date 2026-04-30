@@ -5,7 +5,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.0` alpha. The current MVP ships four scanners: `api`, `content`, `path`, and `digest`.
+**Status**: `0.1.1` alpha. The current MVP ships four scanners: `api`, `content`, `path`, and `digest`.
 
 ## Why
 
