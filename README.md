@@ -69,6 +69,32 @@ agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml
 agent-guard digest check --root . --policy digest_policy.yaml --json
 ```
 
+## CI gate recipe
+
+For ai-resilience-style repositories, use `agent-guard` as the static half of
+the publication gate and pair it with a runtime approval wrapper such as
+`agent-policy`. A practical final gate runs all three static checks:
+
+```bash
+agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
+agent-guard digest check --root . --policy .agent-guard/constitution-digest-policy.yaml --json
+agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+```
+
+Recommended split:
+
+- `path`: blocks leak-prone names before content is even read, including
+  `artifacts/private/`, bypass corpora, red-team logs, and `.env*` files.
+- `digest`: pins governance documents and verifier scripts that must not drift
+  silently.
+- `content`: detects unsafe instruction drift in Markdown, scripts, and other
+  configured text surfaces.
+
+Keep explicit git-history checks in the repository workflow for material that
+must never have been tracked, such as bypass corpora and private artifacts.
+`agent-guard` checks the current tree; `git log --diff-filter=A --name-only`
+checks historical contamination.
+
 ## Current scanners
 
 ### API guard
