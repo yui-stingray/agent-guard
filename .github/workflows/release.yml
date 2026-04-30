@@ -82,3 +82,32 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify published package from PyPI
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          success=false
+          for attempt in {1..10}; do
+            target="$(mktemp -d)"
+            if python -m pip install --no-cache-dir --target "$target" "yui-agent-guard==${version}"; then
+              PYTHONPATH="$target" PACKAGE_VERSION="$version" python - <<'PY'
+          import os
+          import agent_guard
+
+          expected = os.environ["PACKAGE_VERSION"]
+          assert agent_guard.__version__ == expected, (agent_guard.__version__, expected)
+          PY
+              success=true
+              break
+            fi
+            echo "PyPI install check attempt ${attempt} failed; waiting for index propagation"
+            rm -rf "$target"
+            sleep 15
+          done
+          if [ "$success" != "true" ]; then
+            echo "::error::published package was not installable from PyPI after retries"
+            exit 1
+          fi
