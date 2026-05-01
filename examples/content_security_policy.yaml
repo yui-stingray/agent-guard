@@ -12,6 +12,7 @@ exclude_globs:
   - "archive/**"
   - "artifacts/**"
   - "node_modules/**"
+  - "examples/content_security_policy.yaml"
 forbidden_patterns:
   - id: pipe_to_shell
     severity: high
