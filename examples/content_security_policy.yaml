@@ -4,8 +4,14 @@
 
 file_globs:
   - "**/*.md"
+  - "**/*.yaml"
+  - "**/*.yml"
+  - "**/*.sh"
+  - "**/*.mjs"
 exclude_globs:
   - "archive/**"
+  - "artifacts/**"
+  - "node_modules/**"
 forbidden_patterns:
   - id: pipe_to_shell
     severity: high
@@ -15,5 +21,25 @@ forbidden_patterns:
       - "fixtures/red-team/**"
   - id: secret_prompt
     severity: high
-    pattern: '(?i)(入力|貼り付け|provide|paste|enter).*(api[_ -]?key|token|password|secret)'
+    pattern: '(?i)((貼り付け|provide|paste|enter).*(api[_ -]?key|token|password|secret)|入力.*(api[_ -]?key|password|secret))'
     message: "plaintext secret prompt is forbidden"
+  - id: destructive_rm_root
+    severity: high
+    pattern: '(?i)rm\s+-rf\s+(/|~|/home|/mnt/c)'
+    message: "destructive rm pattern is forbidden"
+  - id: force_history_rewrite
+    severity: high
+    pattern: '(?i)git\s+(reset\s+--hard|push\s+--force\b|clean\s+-f)'
+    message: "destructive git command pattern is forbidden"
+  - id: encoded_exec
+    severity: high
+    pattern: '(?i)base64\s+(-d|--decode).*(\||&&).*(bash|sh)\b'
+    message: "encoded execution pattern is forbidden"
+  - id: powershell_iex_download
+    severity: high
+    pattern: '(?i)(invoke-webrequest|iwr).*(\||;).*iex'
+    message: "PowerShell remote execution pattern is forbidden"
+  - id: hardcoded_credential
+    severity: high
+    pattern: '(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,})'
+    message: "hardcoded credential-like token found"

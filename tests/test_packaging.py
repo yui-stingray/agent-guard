@@ -46,6 +46,15 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
     )
 
 
+def test_readme_documents_operational_example_policy_coverage() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert '- "**/*.yaml"' in readme
+    assert '- "**/*.sh"' in readme
+    assert "destructive_rm_root" in readme
+    assert "local_artifacts" in readme
+
+
 def test_py_typed_marker_is_present() -> None:
     marker = PACKAGE_DIR / "py.typed"
     assert marker.is_file()

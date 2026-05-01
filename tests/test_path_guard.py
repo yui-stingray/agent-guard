@@ -13,6 +13,9 @@ import yaml
 from agent_guard.path_guard import PathGuardFinding, load_path_policy, scan_paths
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def write(path: Path, text: str = "x\n") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -71,6 +74,28 @@ def test_path_guard_blocks_private_artifacts_and_sensitive_names(tmp_path: Path)
         ("artifacts/private", "private_artifacts"),
         ("artifacts/private/bypass_cases.jsonl", "private_artifacts"),
         ("logs/red_session_001.txt", "red_session_log"),
+    }
+
+
+def test_ai_resilience_example_policy_matches_publication_gate_names(tmp_path: Path) -> None:
+    policy = load_path_policy(ROOT / "examples" / "ai_resilience_path_policy.yaml")
+    write(tmp_path / "artifacts" / "local" / "agent-policy-decisions.jsonl")
+    write(tmp_path / "artifacts" / "private" / ".gitkeep")
+    write(tmp_path / "data" / "bypass_cases.ndjson")
+    write(tmp_path / "logs" / "red_session_001.log")
+    write(tmp_path / ".env.local")
+    write(tmp_path / ".env.example")
+
+    findings, _ = scan_paths(root=tmp_path, policy=policy)
+
+    assert {(item.path, item.rule_id) for item in findings} == {
+        (".env.local", "env_file"),
+        ("artifacts/local", "local_artifacts"),
+        ("artifacts/local/agent-policy-decisions.jsonl", "local_artifacts"),
+        ("artifacts/private", "private_artifacts"),
+        ("artifacts/private/.gitkeep", "private_artifacts"),
+        ("data/bypass_cases.ndjson", "bypass_corpus"),
+        ("logs/red_session_001.log", "red_session_log"),
     }
 
 

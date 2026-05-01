@@ -122,7 +122,7 @@ Supported modes:
 
 Typical use cases:
 - keep dangerous install instructions out of skills docs
-- block hardcoded credential-like strings in agent-authored Markdown
+- block hardcoded credential-like strings in agent-authored Markdown, YAML, and scripts
 - catch destructive command suggestions before they spread
 
 It returns:
@@ -191,8 +191,14 @@ A ready-to-run copy lives in [`examples/architecture_policy.yaml`](examples/arch
 ```yaml
 file_globs:
   - "**/*.md"
+  - "**/*.yaml"
+  - "**/*.yml"
+  - "**/*.sh"
+  - "**/*.mjs"
 exclude_globs:
   - "archive/**"
+  - "artifacts/**"
+  - "node_modules/**"
 forbidden_patterns:
   - id: pipe_to_shell
     severity: high
@@ -200,6 +206,10 @@ forbidden_patterns:
     message: "pipe-to-shell pattern is forbidden"
     exclude_globs:
       - "fixtures/red-team/**"
+  - id: destructive_rm_root
+    severity: high
+    pattern: '(?i)rm\s+-rf\s+(/|~|/home|/mnt/c)'
+    message: "destructive rm pattern is forbidden"
 ```
 
 A ready-to-run copy lives in [`examples/content_security_policy.yaml`](examples/content_security_policy.yaml).
@@ -230,6 +240,10 @@ policy:
       severity: high
       pattern: "(^|/)artifacts/private(/|$)"
       message: "private artifact directory must stay outside published/tracked paths"
+    - id: local_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/local(/|$)"
+      message: "local-only artifact directory must stay outside published/tracked paths"
 ```
 
 A ready-to-run ai-resilience-style copy lives in
