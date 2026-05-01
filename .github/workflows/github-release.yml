@@ -51,9 +51,11 @@ jobs:
             echo "::error::tag not found: ${tag}"
             exit 1
           }
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          {
+            echo "publish=true"
+            echo "tag=${tag}"
+            echo "version=${tag#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout release tag
         if: steps.tag.outputs.publish == 'true'
