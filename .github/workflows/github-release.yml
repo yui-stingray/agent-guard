@@ -57,10 +57,6 @@ jobs:
             echo "version=${tag#v}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout release tag
-        if: steps.tag.outputs.publish == 'true'
-        run: git checkout --detach "${{ steps.tag.outputs.tag }}"
-
       - uses: actions/setup-python@v6
         if: steps.tag.outputs.publish == 'true'
         with:
