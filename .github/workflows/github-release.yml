@@ -1,0 +1,88 @@
+# Where: .github/workflows/github-release.yml
+# What: create or update a GitHub Release from CHANGELOG.md after PyPI release succeeds.
+# Why: keep GitHub release notes decoupled from PyPI upload so immutable PyPI
+#      versions do not make release-note retries unsafe.
+
+name: github-release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, for example v0.1.1'
+        required: true
+        type: string
+  workflow_run:
+    workflows: ['release']
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-github-release:
+    name: publish GitHub release
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="$(jq -r '.workflow_run.head_branch' "${GITHUB_EVENT_PATH}")"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+ ]]; then
+            echo "::notice::not a version tag release: ${tag}"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || {
+            echo "::error::tag not found: ${tag}"
+            exit 1
+          }
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        if: steps.tag.outputs.publish == 'true'
+        run: git checkout --detach "${{ steps.tag.outputs.tag }}"
+
+      - uses: actions/setup-python@v6
+        if: steps.tag.outputs.publish == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Extract release notes
+        if: steps.tag.outputs.publish == 'true'
+        run: python scripts/check_changelog.py --version "${{ steps.tag.outputs.version }}" --write-notes release-notes.md
+
+      - name: Create or update GitHub release
+        if: steps.tag.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG_NAME" \
+              --notes-file release-notes.md \
+              --verify-tag
+          else
+            gh release create "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG_NAME" \
+              --notes-file release-notes.md \
+              --verify-tag
+          fi

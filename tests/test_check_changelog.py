@@ -37,3 +37,18 @@ def test_current_project_version_has_changelog_entry() -> None:
 
     assert version in MODULE.changelog_versions(root / "CHANGELOG.md")
 
+
+def test_extract_release_notes_returns_selected_body(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## 0.1.1 - 2026-04-30\n\n"
+        "- Current release.\n"
+        "- Second item.\n\n"
+        "## 0.1.0\n\n"
+        "- Older release.\n",
+        encoding="utf-8",
+    )
+
+    assert MODULE.extract_release_notes(changelog, "0.1.1") == "- Current release.\n- Second item.\n"
+
