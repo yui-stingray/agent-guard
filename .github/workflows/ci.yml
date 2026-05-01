@@ -66,3 +66,6 @@ jobs:
       - name: Verify metadata (twine check)
         if: matrix.python-version == '3.12'
         run: python -m twine check dist/*
+      - name: Verify wheel public contract
+        if: matrix.python-version == '3.12'
+        run: python scripts/check_wheel_contract.py

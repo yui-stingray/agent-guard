@@ -63,6 +63,8 @@ jobs:
         run: python -m build
       - name: Verify metadata (twine check)
         run: python -m twine check dist/*
+      - name: Verify wheel public contract
+        run: python scripts/check_wheel_contract.py
       - uses: actions/upload-artifact@v7
         with:
           name: dist
