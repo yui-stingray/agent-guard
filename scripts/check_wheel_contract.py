@@ -5,6 +5,7 @@ Why: editable installs can hide packaging mistakes; releases must prove the whee
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -122,7 +123,8 @@ def main() -> int:
 
         context_policy = repo / "context-policy.yaml"
         context_policy.write_text("{}\n", encoding="utf-8")
-        (repo / "AGENTS.md").write_text("Use project tests before reporting success.\n", encoding="utf-8")
+        agent_context = "Use project tests before reporting success.\n"
+        (repo / "AGENTS.md").write_text(agent_context, encoding="utf-8")
         context_cli = run(
             [
                 str(python),
@@ -143,6 +145,15 @@ def main() -> int:
         assert context_payload["scanner"] == "context"
         assert context_payload["finding_count"] == 0
 
+        digest_policy = repo / "digest-policy.yaml"
+        agent_context_sha256 = hashlib.sha256(agent_context.encode("utf-8")).hexdigest()
+        digest_policy.write_text(
+            "checks:\n"
+            "  - id: agent_context_pin\n"
+            "    path: AGENTS.md\n"
+            f"    sha256: '{agent_context_sha256}'\n",
+            encoding="utf-8",
+        )
         report_cli = run(
             [
                 str(python),
@@ -153,12 +164,17 @@ def main() -> int:
                 str(repo),
                 "--context-policy",
                 str(context_policy),
+                "--digest-policy",
+                str(digest_policy),
             ],
             cwd=temp,
         )
         assert report_cli.stdout.startswith("# Agent Guard Evidence Report\n")
         assert "| Status | ok |" in report_cli.stdout
         assert "| Policy | context-policy.yaml |" in report_cli.stdout
+        assert "| Digest policy | digest-policy.yaml |" in report_cli.stdout
+        assert "| Digest checks | 1 |" in report_cli.stdout
+        assert agent_context_sha256 not in report_cli.stdout
         assert str(temp) not in report_cli.stdout
 
     print(f"wheel contract OK: {wheel.name}")

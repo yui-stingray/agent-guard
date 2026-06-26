@@ -5,6 +5,7 @@ Why: pin the shared exit-code and JSON envelope contract for wrappers and CI.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -34,6 +35,10 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def assert_shared_envelope(
@@ -460,6 +465,7 @@ def test_report_cli_markdown_ok_redacts_context_content(tmp_path: Path) -> None:
     assert "snippet" not in result.stdout
     assert "matched_text" not in result.stdout
     assert "raw regex" not in result.stdout.lower()
+    assert "## Digest Drift Evidence" not in result.stdout
 
 
 def test_report_cli_markdown_violation_omits_snippet_and_message(tmp_path: Path) -> None:
@@ -482,6 +488,114 @@ def test_report_cli_markdown_violation_omits_snippet_and_message(tmp_path: Path)
     assert raw_violation not in result.stdout
     assert "agent context must not instruct" not in result.stdout
     assert "snippet" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_digest_policy_ok(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Use project tests before reporting success.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: agent_context_pin\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+    )
+
+    assert result.returncode == 0
+    assert "| Scope | context+digest |" in result.stdout
+    assert "| Status | ok |" in result.stdout
+    assert "| Digest policy | digest_policy.yaml |" in result.stdout
+    assert "| Digest checks | 1 |" in result.stdout
+    assert "| Digest drift findings | 0 |" in result.stdout
+    assert "## Digest Drift Evidence" in result.stdout
+    assert "No digest drift was detected." in result.stdout
+    assert sha256_text(agent_context) not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_digest_mismatch_is_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    content = "Use project tests before reporting success.\n"
+    html_like_rule = "<img src=x onerror=alert(1)>"
+    write(tmp_path / "bang!" / "<img src=x onerror=alert(1)>" / "AGENTS.md", content)
+    expected_hash = "0" * 64
+    actual_hash = sha256_text(content)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        f"  - id: {html_like_rule!r}\n"
+        "    path: 'bang!/<img src=x onerror=alert(1)>/AGENTS.md'\n"
+        f"    sha256: '{expected_hash}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Status | violation |" in result.stdout
+    assert "| Digest drift findings | 1 |" in result.stdout
+    assert "sha256 digest mismatch" in result.stdout
+    assert "mismatch" in result.stdout
+    assert "&lt;img src=x onerror=alert\\(1\\)&gt;" in result.stdout
+    assert "bang\\!/" in result.stdout
+    assert "<img src=x" not in result.stdout
+    assert expected_hash not in result.stdout
+    assert actual_hash not in result.stdout
+    assert content.strip() not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_digest_missing_file_is_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    digest_policy = tmp_path / "digest_policy.yaml"
+    expected_hash = "0" * 64
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: missing_context_pin\n"
+        "    path: MISSING_AGENTS.md\n"
+        f"    sha256: '{expected_hash}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Status | violation |" in result.stdout
+    assert "| missing_context_pin | MISSING_AGENTS.md | missing | pinned file is missing |" in result.stdout
+    assert expected_hash not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 
@@ -521,6 +635,63 @@ def test_report_cli_markdown_error_scrubs_policy_path(tmp_path: Path) -> None:
     assert "| Status | error |" in result.stdout
     assert "## Error" in result.stdout
     assert "missing.yaml" in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_digest_policy_error_scrubs_paths(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    digest_policy = tmp_path / "digest_policy.yaml"
+    outside = tmp_path.parent / f"{tmp_path.name}-outside" / "AGENTS.md"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: outside_context_pin\n"
+        f"    path: {str(outside)!r}\n"
+        f"    sha256: '{'0' * 64}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "| Scope | context+digest |" in result.stdout
+    assert "| Digest policy | digest_policy.yaml |" in result.stdout
+    assert "outside_context_pin" in result.stdout
+    assert str(tmp_path) not in result.stdout
+    assert str(outside) not in result.stdout
+    assert "0000000000000000000000000000000000000000000000000000000000000000" not in result.stdout
+
+
+def test_report_cli_markdown_missing_digest_policy_scrubs_path(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(tmp_path / "missing_digest.yaml"),
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "| Scope | context+digest |" in result.stdout
+    assert "| Digest policy | missing_digest.yaml |" in result.stdout
+    assert "missing_digest.yaml" in result.stdout
     assert str(tmp_path) not in result.stdout
 
 

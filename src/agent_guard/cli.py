@@ -221,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     report = top.add_parser("report", help="emit sanitized Markdown evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    report.add_argument("--digest-policy", default="", help="optional digest YAML policy path for drift evidence")
     report.add_argument("--format", choices=("markdown",), default="markdown", help="report output format")
 
     return parser
@@ -468,11 +469,31 @@ def run_context_inventory(args: argparse.Namespace) -> int:
 def run_report(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.context_policy).resolve()
+    digest_policy_arg = str(args.digest_policy).strip()
 
     try:
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         inventory = collect_context_inventory(root=root, policy=policy)
+        digest_report: dict[str, object] | None = None
+        if digest_policy_arg:
+            digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
+            digest_findings, checked_files = scan_digests(root=root, policy=digest_policy)
+            digest_report = {
+                "policy": {"path": safe_policy_path(digest_policy_arg, root)},
+                "status": "ok" if not digest_findings else "violation",
+                "checked_count": checked_files,
+                "finding_count": len(digest_findings),
+                "findings": [
+                    {
+                        "check_id": item.check_id,
+                        "path": item.path,
+                        "status": "missing" if item.actual_sha256 is None else "mismatch",
+                        "message": item.message,
+                    }
+                    for item in digest_findings
+                ],
+            }
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -481,18 +502,29 @@ def run_report(args: argparse.Namespace) -> int:
             policy_arg=args.context_policy,
             root=root,
             error=str(exc),
+            error_paths=[digest_policy_arg] if digest_policy_arg else (),
             extra={
                 "command": "report",
-                "report": {"format": args.format, "scope": "context", "sanitized": True},
+                "report": {
+                    "format": args.format,
+                    "scope": "context+digest" if digest_policy_arg else "context",
+                    "sanitized": True,
+                },
+                **(
+                    {"digest": {"policy": {"path": safe_policy_path(digest_policy_arg, root)}}}
+                    if digest_policy_arg
+                    else {}
+                ),
             },
         )
         print(render_markdown_evidence_report(payload), end="")
         return 2
 
-    exit_code = 0 if not findings else 1
+    digest_finding_count = int(digest_report["finding_count"]) if digest_report else 0
+    exit_code = 0 if not findings and digest_finding_count == 0 else 1
     payload = result_payload(
         scanner="context",
-        status="ok" if not findings else "violation",
+        status="ok" if exit_code == 0 else "violation",
         exit_code=exit_code,
         policy_arg=args.context_policy,
         root=root,
@@ -510,12 +542,25 @@ def run_report(args: argparse.Namespace) -> int:
         summary_extra={
             "context_file_count": len(inventory.context_files),
             "evidence_count": inventory.evidence_count,
+            **(
+                {
+                    "digest_checked_count": digest_report["checked_count"],
+                    "digest_finding_count": digest_report["finding_count"],
+                }
+                if digest_report
+                else {}
+            ),
         },
         extra={
             "command": "report",
-            "report": {"format": args.format, "scope": "context", "sanitized": True},
+            "report": {
+                "format": args.format,
+                "scope": "context+digest" if digest_report else "context",
+                "sanitized": True,
+            },
             "scanned_files": scanned_files,
             "inventory": inventory.to_dict(),
+            **({"digest": digest_report} if digest_report else {}),
         },
     )
     print(render_markdown_evidence_report(payload), end="")

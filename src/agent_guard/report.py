@@ -71,23 +71,30 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     policy = as_mapping(payload.get("policy"))
     summary = as_mapping(payload.get("summary"))
     report = as_mapping(payload.get("report"))
+    digest = as_mapping(payload.get("digest"))
     inventory = as_mapping(payload.get("inventory"))
     context_files = as_sequence(inventory.get("context_files"))
     boundaries = as_sequence(inventory.get("permission_boundaries"))
     findings = as_sequence(payload.get("findings"))
+    digest_findings = as_sequence(digest.get("findings"))
+
+    overview_rows: list[tuple[object, object]] = [
+        ("Tool", f"{tool.get('name', 'agent-guard')} {tool.get('version', 'unknown')}"),
+        ("Scope", report.get("scope", "context")),
+        ("Status", payload.get("status", "unknown")),
+        ("Exit code", payload.get("exit_code", "-")),
+        ("Policy", policy.get("path", "-")),
+    ]
+    if digest:
+        digest_policy = as_mapping(digest.get("policy"))
+        overview_rows.append(("Digest policy", digest_policy.get("path", "-")))
 
     lines: list[str] = [
         "# Agent Guard Evidence Report",
         "",
         *markdown_table(
             ("Field", "Value"),
-            (
-                ("Tool", f"{tool.get('name', 'agent-guard')} {tool.get('version', 'unknown')}"),
-                ("Scope", report.get("scope", "context")),
-                ("Status", payload.get("status", "unknown")),
-                ("Exit code", payload.get("exit_code", "-")),
-                ("Policy", policy.get("path", "-")),
-            ),
+            overview_rows,
         ),
         "",
     ]
@@ -111,20 +118,26 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         1 for item in boundaries if as_mapping(item).get("status") == "missing"
     )
 
+    summary_rows: list[tuple[object, object]] = [
+        ("Context files scanned", summary.get("scanned_count", 0)),
+        ("Unsafe context findings", summary.get("finding_count", 0)),
+        ("Inventory evidence records", summary.get("evidence_count", 0)),
+        ("Permission boundaries present", present_boundaries),
+        ("Permission boundaries missing", missing_boundaries),
+    ]
+    if digest:
+        summary_rows.extend(
+            [
+                ("Digest checks", digest.get("checked_count", 0)),
+                ("Digest drift findings", digest.get("finding_count", 0)),
+            ]
+        )
+
     lines.extend(
         [
             "## Summary",
             "",
-            *markdown_table(
-                ("Metric", "Value"),
-                (
-                    ("Context files scanned", summary.get("scanned_count", 0)),
-                    ("Unsafe context findings", summary.get("finding_count", 0)),
-                    ("Inventory evidence records", summary.get("evidence_count", 0)),
-                    ("Permission boundaries present", present_boundaries),
-                    ("Permission boundaries missing", missing_boundaries),
-                ),
-            ),
+            *markdown_table(("Metric", "Value"), summary_rows),
             "",
             "## Context Check Findings",
             "",
@@ -146,6 +159,24 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         lines.extend(markdown_table(("Severity", "Rule", "File", "Line"), finding_rows))
     else:
         lines.append("No unsafe context findings were detected.")
+
+    if digest:
+        lines.extend(["", "## Digest Drift Evidence", ""])
+        if digest_findings:
+            digest_rows = []
+            for item in digest_findings:
+                finding = as_mapping(item)
+                digest_rows.append(
+                    (
+                        finding.get("check_id", "-"),
+                        finding.get("path", "-"),
+                        finding.get("status", "-"),
+                        finding.get("message", "-"),
+                    )
+                )
+            lines.extend(markdown_table(("Check", "Path", "Status", "Message"), digest_rows))
+        else:
+            lines.append("No digest drift was detected.")
 
     lines.extend(["", "## Context Files", ""])
     if context_files:

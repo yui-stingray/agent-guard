@@ -101,6 +101,7 @@ Sanitized review evidence report:
 
 ```bash
 agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
+agent-guard report --root . --context-policy examples/agent_context_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 ```
 
 Path-name guard:
@@ -338,18 +339,24 @@ and review notes:
 
 ```bash
 agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
+agent-guard report --root . --context-policy examples/agent_context_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 ```
 
 It runs the context check and redacted context inventory, then emits scanner
 status, counts, repository-relative context file paths, permission-boundary
-status, and finding anchors limited to severity, rule id, file, and line. It
-omits raw context contents, snippets, matched text, raw regex patterns, URLs,
-hashes, secrets, and absolute local paths. Markdown table cells escape HTML and
-Markdown control characters before output.
+status, and finding anchors limited to severity, rule id, file, and line. With
+`--digest-policy`, it also emits sanitized digest drift evidence for pinned
+context or policy files: check id, repository-relative path, status, and
+controlled message. It does not emit expected or actual SHA-256 values.
+
+Report output omits raw context contents, snippets, matched text, raw regex
+patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
+escape HTML and Markdown control characters before output.
 
 For `report`, it returns:
-- exit `0` when the report is generated and enabled checks pass
-- exit `1` when the report is generated and enabled checks find violations
+- exit `0` when the report is generated and all enabled checks pass
+- exit `1` when the report is generated and any enabled check finds violations
+  or digest drift
 - exit `2` on configuration/runtime error
 
 For `context check`, it returns:
@@ -526,7 +533,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--format markdown]
+agent-guard report --root <repo> --context-policy <yaml> [--digest-policy <yaml>] [--format markdown]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 ```
