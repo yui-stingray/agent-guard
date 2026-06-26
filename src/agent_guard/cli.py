@@ -12,6 +12,7 @@ from importlib import metadata
 from pathlib import Path, PureWindowsPath
 from typing import Iterable
 
+from . import __version__ as PACKAGE_VERSION
 from .api_guard import iter_scan_files as iter_api_scan_files
 from .api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
@@ -32,6 +33,8 @@ TOOL_NAME = "agent-guard"
 
 
 def tool_version() -> str:
+    if PACKAGE_VERSION:
+        return PACKAGE_VERSION
     try:
         return metadata.version("yui-agent-guard")
     except metadata.PackageNotFoundError:

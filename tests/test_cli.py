@@ -6,18 +6,25 @@ Why: pin the shared exit-code and JSON envelope contract for wrappers and CI.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+from agent_guard import __version__ as AGENT_GUARD_VERSION
+
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{SRC}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else str(SRC)
     return subprocess.run(
         [sys.executable, "-m", "agent_guard.cli", *args],
         cwd=ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -40,7 +47,7 @@ def assert_shared_envelope(
     scanned_unit: str | None = None,
 ) -> None:
     assert payload["schema_version"] == "agent-guard.result.v1"
-    assert payload["tool"] == {"name": "agent-guard", "version": "0.1.2"}
+    assert payload["tool"] == {"name": "agent-guard", "version": AGENT_GUARD_VERSION}
     assert payload["scanner"] == scanner
     assert payload["status"] == status
     assert payload["exit_code"] == exit_code
