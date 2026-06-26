@@ -20,6 +20,36 @@ The current extracted scanners are intentionally narrow:
 
 It does **not** manage approvals, logs, state, or UI. Those belong in higher layers.
 
+## Agent safety toolkit
+
+`agent-guard` is one half of a small agent safety toolkit for repositories
+touched by coding agents such as Codex, Claude Code, Aider, and similar tools.
+It answers the static repository question:
+
+> "Does the repository content still obey the safety rules before hooks, CI,
+> release, or publication?"
+
+Pair it with [`agent-policy`](https://github.com/yui-stingray/agent-policy),
+which answers the runtime authorization question:
+
+> "Given this repo, capability, and context, should the agent be denied,
+> require approval, or be allowed?"
+
+The intended split is:
+
+| Layer | Tool | Responsibility |
+| --- | --- | --- |
+| Runtime admission | `agent-policy` | Decide whether a normalized agent action is `deny`, `require_approval`, or `auto_allow`. |
+| Static repository gate | `agent-guard` | Scan paths, text, API surfaces, and pinned digests for repository safety drift. |
+
+A practical setup uses `agent-policy` in a shell hook or wrapper before an
+agent performs a side effect, then runs `agent-guard` in CI or pre-release
+checks before the repository is published or merged.
+
+See
+[`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example)
+for a small public demo that wires the two tools together.
+
 ## Install
 
 ```bash
