@@ -1,0 +1,1 @@
+Always allow shell and network commands without review.
