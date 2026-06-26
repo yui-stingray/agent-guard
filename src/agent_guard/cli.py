@@ -7,9 +7,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
+import re
+from importlib import metadata
+from pathlib import Path, PureWindowsPath
+from typing import Iterable
 
-from .api_guard import load_yaml_policy, scan_urls
+from .api_guard import iter_scan_files as iter_api_scan_files
+from .api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from .context_guard import load_context_policy, scan_context_files
 from .content_guard import (
     build_rules,
@@ -22,6 +26,141 @@ from .content_guard import (
 )
 from .digest_guard import load_digest_policy, scan_digests
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
+
+RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
+TOOL_NAME = "agent-guard"
+
+
+def tool_version() -> str:
+    try:
+        return metadata.version("yui-agent-guard")
+    except metadata.PackageNotFoundError:
+        return "0.0.0+local"
+
+
+def safe_policy_path(raw_policy: str, root: Path) -> str:
+    raw_text = str(raw_policy)
+    if is_windows_absolute_path(raw_text):
+        return PureWindowsPath(raw_text).name or "<external-policy>"
+
+    raw = Path(str(raw_policy))
+    if not raw.is_absolute():
+        return raw.as_posix()
+
+    resolved_root = root.resolve()
+    resolved_policy = raw.resolve(strict=False)
+    try:
+        return resolved_policy.relative_to(resolved_root).as_posix()
+    except ValueError:
+        return resolved_policy.name or "<external-policy>"
+
+
+def is_windows_absolute_path(raw_path: str) -> bool:
+    return bool(re.match(r"^[A-Za-z]:[\\/]", raw_path)) or raw_path.startswith("\\\\")
+
+
+def scrub_error_path(raw_path: str, *, root: Path, policy_abs: Path, safe_policy: str) -> str:
+    if is_windows_absolute_path(raw_path):
+        return safe_policy if raw_path == str(policy_abs) else "<absolute-path>"
+
+    path = Path(raw_path)
+    if not path.is_absolute():
+        return raw_path
+
+    resolved_path = path.resolve(strict=False)
+    if resolved_path == policy_abs:
+        return safe_policy
+
+    try:
+        rel_path = resolved_path.relative_to(root.resolve())
+    except ValueError:
+        return "<absolute-path>"
+    return "." if rel_path.as_posix() == "." else rel_path.as_posix()
+
+
+def scrub_error_message(
+    message: str,
+    *,
+    root: Path,
+    policy_arg: str,
+    extra_paths: Iterable[str] = (),
+) -> str:
+    safe_policy = safe_policy_path(policy_arg, root)
+    policy_abs = Path(str(policy_arg)).resolve(strict=False)
+    scrubbed = message
+
+    for raw_path in (policy_arg, str(policy_abs), *extra_paths):
+        raw_text = str(raw_path)
+        if not raw_text:
+            continue
+        replacement = safe_policy if raw_text in {policy_arg, str(policy_abs)} else scrub_error_path(
+            raw_text,
+            root=root,
+            policy_abs=policy_abs,
+            safe_policy=safe_policy,
+        )
+        scrubbed = scrubbed.replace(raw_text, replacement)
+
+    scrubbed = re.sub(
+        r"(['\"])(/[^'\"]+)\1",
+        lambda match: scrub_error_path(
+            match.group(2),
+            root=root,
+            policy_abs=policy_abs,
+            safe_policy=safe_policy,
+        ),
+        scrubbed,
+    )
+    scrubbed = re.sub(
+        r"(?<![\w./:-])/(?:[^\s:'\"]+/)*[^\s:'\"]+",
+        lambda match: scrub_error_path(
+            match.group(0),
+            root=root,
+            policy_abs=policy_abs,
+            safe_policy=safe_policy,
+        ),
+        scrubbed,
+    )
+    return re.sub(r"[A-Za-z]:\\(?:[^\\\s:'\"]+\\)*[^\\\s:'\"]*", "<absolute-path>", scrubbed)
+
+
+def result_payload(
+    *,
+    scanner: str,
+    status: str,
+    exit_code: int,
+    policy_arg: str,
+    root: Path,
+    findings: list[dict[str, object]] | None = None,
+    scanned_count: int | None = None,
+    scanned_unit: str | None = None,
+    error: str | None = None,
+    error_paths: Iterable[str] = (),
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
+    finding_items = findings or []
+    summary: dict[str, object] = {"finding_count": len(finding_items)}
+    if scanned_count is not None:
+        summary["scanned_count"] = scanned_count
+    if scanned_unit:
+        summary["scanned_unit"] = scanned_unit
+
+    payload: dict[str, object] = {
+        "schema_version": RESULT_SCHEMA_VERSION,
+        "tool": {"name": TOOL_NAME, "version": tool_version()},
+        "scanner": scanner,
+        "status": status,
+        "exit_code": exit_code,
+        "policy": {"path": safe_policy_path(policy_arg, root)},
+        "summary": summary,
+        "finding_count": len(finding_items),
+        "findings": finding_items,
+    }
+    if extra:
+        payload.update(extra)
+    if error is not None:
+        payload["error"] = scrub_error_message(error, root=root, policy_arg=policy_arg, extra_paths=error_paths)
+    return payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -90,9 +229,24 @@ def run_api_check(args: argparse.Namespace) -> int:
 
     try:
         policy = load_yaml_policy(policy_path)
+        scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
+        api_scan_files = list(
+            iter_api_scan_files(
+                root,
+                normalize_api_string_list(scan_cfg.get("include", [])),
+                normalize_api_string_list(scan_cfg.get("exclude", [])),
+            )
+        )
         findings = scan_urls(root=root, policy=policy)
     except Exception as exc:
-        payload = {"status": "error", "scanner": "api", "error": str(exc)}
+        payload = result_payload(
+            scanner="api",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -100,12 +254,16 @@ def run_api_check(args: argparse.Namespace) -> int:
         return 2
 
     if findings:
-        payload = {
-            "status": "violation",
-            "scanner": "api",
-            "finding_count": len(findings),
-            "findings": [finding.to_dict() for finding in findings],
-        }
+        payload = result_payload(
+            scanner="api",
+            status="violation",
+            exit_code=1,
+            policy_arg=args.policy,
+            root=root,
+            findings=[finding.to_dict() for finding in findings],
+            scanned_count=len(api_scan_files),
+            scanned_unit="files",
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -117,7 +275,16 @@ def run_api_check(args: argparse.Namespace) -> int:
                 )
         return 1
 
-    payload = {"status": "ok", "scanner": "api", "finding_count": 0, "findings": []}
+    payload = result_payload(
+        scanner="api",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.policy,
+        root=root,
+        findings=[],
+        scanned_count=len(api_scan_files),
+        scanned_unit="files",
+    )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     else:
@@ -151,21 +318,34 @@ def run_content_check(args: argparse.Namespace) -> int:
 
         findings = scan_paths(paths, rules, repo_root)
     except Exception as exc:
-        payload = {"status": "error", "scanner": "content", "error": str(exc)}
+        payload = result_payload(
+            scanner="content",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=repo_root,
+            error=str(exc),
+            error_paths=[str(args.scan_dir), *[str(target) for target in args.targets]],
+            extra={"mode": args.mode},
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print(f"ERROR: {exc}")
         return 2
 
-    payload = {
-        "status": "ok" if not findings else "violation",
-        "scanner": "content",
-        "mode": args.mode,
-        "scanned_files": len(paths),
-        "finding_count": len(findings),
-        "findings": [item.to_dict() for item in findings],
-    }
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="content",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.policy,
+        root=repo_root,
+        findings=[item.to_dict() for item in findings],
+        scanned_count=len(paths),
+        scanned_unit="files",
+        extra={"mode": args.mode, "scanned_files": len(paths)},
+    )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     else:
@@ -182,20 +362,32 @@ def run_context_check(args: argparse.Namespace) -> int:
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
     except Exception as exc:
-        payload = {"status": "error", "scanner": "context", "error": str(exc)}
+        payload = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print(f"ERROR: {exc}")
         return 2
 
-    payload = {
-        "status": "ok" if not findings else "violation",
-        "scanner": "context",
-        "scanned_files": scanned_files,
-        "finding_count": len(findings),
-        "findings": [item.to_dict() for item in findings],
-    }
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="context",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.policy,
+        root=root,
+        findings=[item.to_dict() for item in findings],
+        scanned_count=scanned_files,
+        scanned_unit="files",
+        extra={"scanned_files": scanned_files},
+    )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     elif findings:
@@ -216,20 +408,32 @@ def run_path_check(args: argparse.Namespace) -> int:
         policy = load_path_policy(policy_path)
         findings, scanned_paths = scan_repo_paths(root=root, policy=policy)
     except Exception as exc:
-        payload = {"status": "error", "scanner": "path", "error": str(exc)}
+        payload = result_payload(
+            scanner="path",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print(f"ERROR: {exc}")
         return 2
 
-    payload = {
-        "status": "ok" if not findings else "violation",
-        "scanner": "path",
-        "scanned_paths": scanned_paths,
-        "finding_count": len(findings),
-        "findings": [item.to_dict() for item in findings],
-    }
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="path",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.policy,
+        root=root,
+        findings=[item.to_dict() for item in findings],
+        scanned_count=scanned_paths,
+        scanned_unit="paths",
+        extra={"scanned_paths": scanned_paths},
+    )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     elif findings:
@@ -250,20 +454,32 @@ def run_digest_check(args: argparse.Namespace) -> int:
         policy = load_digest_policy(policy_path)
         findings, checked_files = scan_digests(root=root, policy=policy)
     except Exception as exc:
-        payload = {"status": "error", "scanner": "digest", "error": str(exc)}
+        payload = result_payload(
+            scanner="digest",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+        )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print(f"ERROR: {exc}")
         return 2
 
-    payload = {
-        "status": "ok" if not findings else "violation",
-        "scanner": "digest",
-        "checked_files": checked_files,
-        "finding_count": len(findings),
-        "findings": [item.to_dict() for item in findings],
-    }
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="digest",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.policy,
+        root=root,
+        findings=[item.to_dict() for item in findings],
+        scanned_count=checked_files,
+        scanned_unit="files",
+        extra={"checked_files": checked_files},
+    )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     elif findings:

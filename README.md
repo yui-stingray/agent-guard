@@ -113,6 +113,32 @@ agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml
 agent-guard digest check --root . --policy digest_policy.yaml --json
 ```
 
+JSON output uses a shared result envelope across scanners:
+
+```json
+{
+  "schema_version": "agent-guard.result.v1",
+  "tool": {"name": "agent-guard", "version": "0.1.2"},
+  "scanner": "context",
+  "status": "ok",
+  "exit_code": 0,
+  "policy": {"path": "examples/agent_context_policy.yaml"},
+  "summary": {
+    "finding_count": 0,
+    "scanned_count": 1,
+    "scanned_unit": "files"
+  },
+  "finding_count": 0,
+  "findings": []
+}
+```
+
+The envelope keeps existing scanner-specific top-level fields such as
+`mode`, `scanned_files`, `scanned_paths`, and `checked_files` where they apply.
+Policy paths are emitted as repository-relative or user-provided paths, not
+absolute local paths. Error JSON uses the same envelope with `status: "error"`
+and `exit_code: 2`.
+
 ## CI gate recipe
 
 For ai-resilience-style repositories, use `agent-guard` as the static half of
@@ -452,11 +478,6 @@ agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 ```
-
-## Roadmap
-
-Planned next steps:
-- shared result envelope helpers across scanners
 
 ## Releases
 
