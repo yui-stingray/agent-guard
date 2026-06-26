@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 import yaml
 
@@ -69,6 +69,51 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     },
 ]
 
+CONTEXT_INVENTORY_SCHEMA_VERSION = "agent-guard.context_inventory.v1"
+BOUNDARY_CATEGORIES = [
+    "approval_boundary",
+    "tool_permission_boundary",
+    "network_boundary",
+    "secret_handling",
+    "destructive_action_boundary",
+    "local_verification",
+]
+
+EVIDENCE_RULES = [
+    {
+        "category": "approval_boundary",
+        "rule_id": "approval_boundary_mention",
+        "pattern": r"(?i)\b(approval|approve|permission|policy|guardrail|human review|maintainer review)\b",
+    },
+    {
+        "category": "tool_permission_boundary",
+        "rule_id": "tool_permission_boundary_mention",
+        "pattern": r"(?i)\b(tool|bash|shell|network|write|edit|filesystem|file system)\b.{0,80}\b(allow|deny|approval|permission|policy)\b|\b(allow|deny|approval|permission|policy)\b.{0,80}\b(tool|bash|shell|network|write|edit|filesystem|file system)\b",
+    },
+    {
+        "category": "network_boundary",
+        "rule_id": "network_boundary_mention",
+        "pattern": r"(?i)\b(network|internet|web|http|https|external api|remote)\b.{0,80}\b(allow|deny|approval|permission|policy|offline)\b|\b(allow|deny|approval|permission|policy|offline)\b.{0,80}\b(network|internet|web|http|https|external api|remote)\b",
+    },
+    {
+        "category": "secret_handling",
+        "rule_id": "secret_handling_mention",
+        "pattern": r"(?i)\b(secrets?|tokens?|api[_ -]?keys?|passwords?|credentials?)\b",
+    },
+    {
+        "category": "destructive_action_boundary",
+        "rule_id": "destructive_action_boundary_mention",
+        "pattern": r"(?i)(git\s+(reset\s+--hard|push\s+--force\b|clean\s+-f)|rm\s+-rf\b|destructive)",
+    },
+    {
+        "category": "local_verification",
+        "rule_id": "local_verification_mention",
+        "pattern": r"(?i)\b(test|pytest|lint|typecheck|build|verify|verification|smoke check|ci)\b",
+    },
+]
+
+ReadStatus = Literal["scanned", "binary", "decode_error", "read_error"]
+
 
 @dataclass(frozen=True)
 class ContextGuardFinding:
@@ -87,6 +132,61 @@ class ContextGuardFinding:
             "severity": self.severity,
             "message": self.message,
             "snippet": self.snippet,
+        }
+
+
+@dataclass(frozen=True)
+class ContextEvidence:
+    evidence_id: str
+    category: str
+    rule_id: str
+    line: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "evidence_id": self.evidence_id,
+            "category": self.category,
+            "rule_id": self.rule_id,
+            "line": self.line,
+        }
+
+
+@dataclass(frozen=True)
+class ContextInventoryEntry:
+    path: str
+    kind: str
+    read_status: ReadStatus
+    size_bytes: int
+    line_count: int | None
+    evidence: tuple[ContextEvidence, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "path": self.path,
+            "kind": self.kind,
+            "read_status": self.read_status,
+            "size_bytes": self.size_bytes,
+            "evidence": [item.to_dict() for item in self.evidence],
+        }
+        if self.line_count is not None:
+            payload["line_count"] = self.line_count
+        return payload
+
+
+@dataclass(frozen=True)
+class ContextInventory:
+    context_files: tuple[ContextInventoryEntry, ...]
+    permission_boundaries: tuple[dict[str, object], ...]
+
+    @property
+    def evidence_count(self) -> int:
+        return sum(len(item.evidence) for item in self.context_files)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": CONTEXT_INVENTORY_SCHEMA_VERSION,
+            "context_files": [item.to_dict() for item in self.context_files],
+            "permission_boundaries": list(self.permission_boundaries),
         }
 
 
@@ -227,6 +327,138 @@ def display_path(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return str(path)
+
+
+def context_kind(rel_path: str) -> str:
+    name = Path(rel_path).name
+    if name == "AGENTS.md":
+        return "agents_md"
+    if name == "CLAUDE.md":
+        return "claude"
+    if name == "GEMINI.md":
+        return "gemini"
+    if rel_path == ".github/copilot-instructions.md" or (
+        rel_path.startswith(".github/instructions/") and rel_path.endswith(".instructions.md")
+    ):
+        return "copilot"
+    if rel_path == ".cursorrules" or rel_path == ".cursor/rules" or rel_path.startswith(".cursor/rules/"):
+        return "cursor"
+    if rel_path == ".windsurfrules" or rel_path.startswith(".windsurf/rules/"):
+        return "windsurf"
+    if rel_path.startswith(".continue/rules/"):
+        return "continue"
+    return "unknown"
+
+
+def read_inventory_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except Exception:
+        return None
+
+
+def stat_size_bytes(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except Exception:
+        return 0
+
+
+def read_inventory_text(path: Path) -> tuple[ReadStatus, bytes, str | None]:
+    data = read_inventory_bytes(path)
+    if data is None:
+        return "read_error", b"", None
+    if b"\x00" in data:
+        return "binary", data, None
+    try:
+        return "scanned", data, data.decode("utf-8")
+    except UnicodeDecodeError:
+        return "decode_error", data, None
+
+
+def evidence_id(*, category: str, rule_id: str, rel_path: str, line: int) -> str:
+    return f"{category}:{rel_path}:{line}:{rule_id}"
+
+
+def collect_context_evidence(*, rel_path: str, text: str) -> tuple[ContextEvidence, ...]:
+    compiled = [
+        {
+            "category": str(item["category"]),
+            "rule_id": str(item["rule_id"]),
+            "regex": re.compile(str(item["pattern"])),
+        }
+        for item in EVIDENCE_RULES
+    ]
+
+    evidence: list[ContextEvidence] = []
+    seen: set[tuple[str, str, int]] = set()
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        for rule in compiled:
+            regex = rule["regex"]
+            assert isinstance(regex, re.Pattern)
+            if not regex.search(line):
+                continue
+            category = str(rule["category"])
+            rule_id = str(rule["rule_id"])
+            key = (category, rule_id, lineno)
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append(
+                ContextEvidence(
+                    evidence_id=evidence_id(category=category, rule_id=rule_id, rel_path=rel_path, line=lineno),
+                    category=category,
+                    rule_id=rule_id,
+                    line=lineno,
+                )
+            )
+    return tuple(sorted(evidence, key=lambda item: (item.category, item.line, item.rule_id)))
+
+
+def boundary_summary(context_files: tuple[ContextInventoryEntry, ...]) -> tuple[dict[str, object], ...]:
+    by_category: dict[str, list[str]] = {category: [] for category in BOUNDARY_CATEGORIES}
+    for entry in context_files:
+        for item in entry.evidence:
+            by_category.setdefault(item.category, []).append(item.evidence_id)
+
+    summary: list[dict[str, object]] = []
+    for category in BOUNDARY_CATEGORIES:
+        evidence_ids = sorted(set(by_category.get(category, [])))
+        summary.append(
+            {
+                "category": category,
+                "status": "present" if evidence_ids else "missing",
+                "evidence_ids": evidence_ids,
+            }
+        )
+    return tuple(summary)
+
+
+def collect_context_inventory(*, root: Path, policy: dict[str, object]) -> ContextInventory:
+    root = root.resolve()
+    entries: list[ContextInventoryEntry] = []
+    for path in iter_context_files(root=root, policy=policy):
+        rel = display_path(path, root)
+        read_status, data, text = read_inventory_text(path)
+        line_count = len(text.splitlines()) if text is not None else None
+        evidence = collect_context_evidence(rel_path=rel, text=text) if text is not None else ()
+        size_bytes = stat_size_bytes(path) if read_status == "read_error" else len(data)
+        entries.append(
+            ContextInventoryEntry(
+                path=rel,
+                kind=context_kind(rel),
+                read_status=read_status,
+                size_bytes=size_bytes,
+                line_count=line_count,
+                evidence=evidence,
+            )
+        )
+
+    context_files = tuple(sorted(entries, key=lambda item: item.path))
+    return ContextInventory(
+        context_files=context_files,
+        permission_boundaries=boundary_summary(context_files),
+    )
 
 
 def line_allows_rule(line: str, rule_id: str) -> bool:

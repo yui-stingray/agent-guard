@@ -14,7 +14,7 @@ from typing import Iterable
 
 from .api_guard import iter_scan_files as iter_api_scan_files
 from .api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
-from .context_guard import load_context_policy, scan_context_files
+from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
 from .content_guard import (
     build_rules,
     collect_new_targets,
@@ -134,6 +134,7 @@ def result_payload(
     findings: list[dict[str, object]] | None = None,
     scanned_count: int | None = None,
     scanned_unit: str | None = None,
+    summary_extra: dict[str, object] | None = None,
     error: str | None = None,
     error_paths: Iterable[str] = (),
     extra: dict[str, object] | None = None,
@@ -144,6 +145,8 @@ def result_payload(
         summary["scanned_count"] = scanned_count
     if scanned_unit:
         summary["scanned_unit"] = scanned_unit
+    if summary_extra:
+        summary.update(summary_extra)
 
     payload: dict[str, object] = {
         "schema_version": RESULT_SCHEMA_VERSION,
@@ -192,6 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
     context_check.add_argument("--root", default=".", help="repository root path")
     context_check.add_argument("--policy", required=True, help="YAML policy path")
     context_check.add_argument("--json", action="store_true", help="emit JSON")
+    context_inventory = context_sub.add_parser("inventory", help="emit redacted agent context inventory evidence")
+    context_inventory.add_argument("--root", default=".", help="repository root path")
+    context_inventory.add_argument("--policy", required=True, help="YAML policy path")
+    context_inventory.add_argument("--json", action="store_true", help="emit JSON")
 
     path = top.add_parser("path", help="path-name guard for private artifacts and env-file leaks")
     path_sub = path.add_subparsers(dest="command", required=True)
@@ -400,6 +407,55 @@ def run_context_check(args: argparse.Namespace) -> int:
     return 0 if not findings else 1
 
 
+def run_context_inventory(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_context_policy(policy_path)
+        inventory = collect_context_inventory(root=root, policy=policy)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+            extra={"command": "inventory"},
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}")
+        return 2
+
+    payload = result_payload(
+        scanner="context",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.policy,
+        root=root,
+        findings=[],
+        scanned_count=len(inventory.context_files),
+        scanned_unit="files",
+        summary_extra={"evidence_count": inventory.evidence_count},
+        extra={
+            "command": "inventory",
+            "scanned_files": len(inventory.context_files),
+            "inventory": inventory.to_dict(),
+        },
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(
+            "context-inventory: OK "
+            f"({len(inventory.context_files)} files, {inventory.evidence_count} evidence records)"
+        )
+    return 0
+
+
 def run_path_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.policy).resolve()
@@ -502,6 +558,8 @@ def main() -> int:
         return run_content_check(args)
     if args.scanner == "context" and args.command == "check":
         return run_context_check(args)
+    if args.scanner == "context" and args.command == "inventory":
+        return run_context_inventory(args)
     if args.scanner == "path" and args.command == "check":
         return run_path_check(args)
     if args.scanner == "digest" and args.command == "check":

@@ -91,6 +91,12 @@ Agent context guard:
 agent-guard context check --root . --policy examples/agent_context_policy.yaml
 ```
 
+Redacted agent context inventory:
+
+```bash
+agent-guard context inventory --root . --policy examples/agent_context_policy.yaml --json
+```
+
 Path-name guard:
 
 ```bash
@@ -302,7 +308,26 @@ Typical use cases:
 - keep plaintext secret requests out of durable agent instructions
 - scan agent-specific rule files without scanning the entire repository
 
-It returns:
+The opt-in inventory command emits deterministic metadata for discovered
+context files without changing `context check --json`:
+
+```bash
+agent-guard context inventory --root . --policy examples/agent_context_policy.yaml --json
+```
+
+Inventory output uses the shared JSON envelope with `command: "inventory"` and
+an `inventory` payload. Each entry includes repository-relative paths, context
+kind, read status, file size, line count for readable text, and redacted
+evidence records for categories such as approval boundaries, tool permissions,
+network boundaries, secret handling, destructive-action boundaries, and local
+verification guidance. It does not emit raw context contents, snippets, matched
+text, raw regex patterns, or absolute local paths.
+
+For `context inventory`, exit `0` means inventory collection succeeded and exit
+`2` means configuration/runtime error. Evidence and missing boundary categories
+are report data, not violations.
+
+For `context check`, it returns:
 - exit `0` on clean
 - exit `1` on violation
 - exit `2` on configuration/runtime error

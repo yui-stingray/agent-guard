@@ -13,6 +13,7 @@ import yaml
 from agent_guard.context_guard import (
     ContextGuardFinding,
     build_rules,
+    collect_context_inventory,
     iter_context_files,
     load_context_policy,
     scan_context_files,
@@ -196,6 +197,106 @@ def test_context_guard_skips_binary_files(tmp_path: Path) -> None:
 
     assert scanned == 1
     assert findings == []
+
+
+def test_context_inventory_reports_families_and_redacted_evidence(tmp_path: Path) -> None:
+    content_marker = "fixture marker alpha"
+    write(
+        tmp_path / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        "Network access requires permission.\n"
+        f"Never paste secrets or {content_marker}.\n"
+        "Run pytest before reporting completion.\n",
+    )
+    write(tmp_path / "pkg" / "CLAUDE.md", "Do not run destructive commands without maintainer approval.\n")
+    write(tmp_path / ".github" / "copilot-instructions.md", "Use local verification before completion.\n")
+    write(tmp_path / ".cursor" / "rules" / "review.md", "Prefer policy-bounded tools.\n")
+    write(tmp_path / ".windsurfrules", "Keep network access offline unless approved.\n")
+    write(tmp_path / ".continue" / "rules" / "review.md", "Run tests locally.\n")
+
+    inventory = collect_context_inventory(root=tmp_path, policy=load_context_policy(policy_file(tmp_path)))
+    payload = inventory.to_dict()
+    entries = {item["path"]: item for item in payload["context_files"]}
+
+    assert list(entries) == [
+        ".continue/rules/review.md",
+        ".cursor/rules/review.md",
+        ".github/copilot-instructions.md",
+        ".windsurfrules",
+        "AGENTS.md",
+        "pkg/CLAUDE.md",
+    ]
+    assert entries["AGENTS.md"]["kind"] == "agents_md"
+    assert entries["pkg/CLAUDE.md"]["kind"] == "claude"
+    assert entries[".github/copilot-instructions.md"]["kind"] == "copilot"
+    assert entries[".cursor/rules/review.md"]["kind"] == "cursor"
+    assert entries[".windsurfrules"]["kind"] == "windsurf"
+    assert entries[".continue/rules/review.md"]["kind"] == "continue"
+    assert entries["AGENTS.md"]["read_status"] == "scanned"
+    assert entries["AGENTS.md"]["line_count"] == 4
+
+    serialized = str(payload)
+    assert content_marker not in serialized
+    assert "Require approval" not in serialized
+    assert "Never paste secrets" not in serialized
+    categories = {
+        evidence["category"]
+        for item in payload["context_files"]
+        for evidence in item["evidence"]
+    }
+    assert {
+        "approval_boundary",
+        "tool_permission_boundary",
+        "network_boundary",
+        "secret_handling",
+        "destructive_action_boundary",
+        "local_verification",
+    } <= categories
+    assert all("snippet" not in evidence for item in payload["context_files"] for evidence in item["evidence"])
+    assert all("matched_text" not in evidence for item in payload["context_files"] for evidence in item["evidence"])
+
+
+def test_context_inventory_reports_binary_and_decode_error_files(tmp_path: Path) -> None:
+    (tmp_path / "AGENTS.md").write_bytes(b"\x00approval")
+    (tmp_path / "CLAUDE.md").write_bytes(b"\xff\xfeapproval")
+
+    inventory = collect_context_inventory(root=tmp_path, policy=load_context_policy(policy_file(tmp_path)))
+    entries = {item.path: item for item in inventory.context_files}
+
+    assert entries["AGENTS.md"].read_status == "binary"
+    assert entries["AGENTS.md"].line_count is None
+    assert entries["AGENTS.md"].evidence == ()
+    assert entries["CLAUDE.md"].read_status == "decode_error"
+    assert entries["CLAUDE.md"].line_count is None
+    assert entries["CLAUDE.md"].evidence == ()
+
+
+def test_context_inventory_reports_read_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    write(tmp_path / "AGENTS.md", "Require approval before edits.\n")
+
+    def fail_read_bytes(path: Path) -> bytes | None:
+        if path.name == "AGENTS.md":
+            return None
+        return path.read_bytes()
+
+    monkeypatch.setattr("agent_guard.context_guard.read_inventory_bytes", fail_read_bytes)
+
+    inventory = collect_context_inventory(root=tmp_path, policy=load_context_policy(policy_file(tmp_path)))
+
+    assert inventory.context_files[0].path == "AGENTS.md"
+    assert inventory.context_files[0].read_status == "read_error"
+    assert inventory.context_files[0].size_bytes == len("Require approval before edits.\n".encode())
+    assert inventory.context_files[0].evidence == ()
+
+
+def test_context_inventory_unknown_kind_for_custom_include(tmp_path: Path) -> None:
+    custom_policy = policy_file(tmp_path, {"scan": {"include": ["docs/custom-agent.md"], "exclude": []}})
+    write(tmp_path / "docs" / "custom-agent.md", "Require approval before edits.\n")
+
+    inventory = collect_context_inventory(root=tmp_path, policy=load_context_policy(custom_policy))
+
+    assert inventory.context_files[0].path == "docs/custom-agent.md"
+    assert inventory.context_files[0].kind == "unknown"
 
 
 def test_context_guard_rejects_malformed_policy(tmp_path: Path) -> None:
