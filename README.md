@@ -7,6 +7,12 @@
 
 **Status**: `0.1.2` alpha. The current MVP ships five scanners: `api`, `content`, `context`, `path`, and `digest`.
 
+**Paired demo**: `agent-guard` is the static repository gate half of the
+toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
+for runtime admission, and see
+[`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example)
+for a public demo that wires both tools together.
+
 ## Why
 
 `agent-guard` exists to enforce fail-closed static checks around agent-operated repositories without pulling in a full control plane.
