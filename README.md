@@ -5,7 +5,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.2` alpha. The current MVP ships five scanners: `api`, `content`, `context`, `path`, and `digest`.
+**Status**: `0.1.3` alpha. The current MVP ships five scanners: `api`, `content`, `context`, `path`, and `digest`.
 
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
@@ -124,7 +124,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.2"},
+  "tool": {"name": "agent-guard", "version": "0.1.3"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -193,7 +193,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        additional_dependencies: ["yui-agent-guard==0.1.3"]
         args:
           - path
           - check
@@ -209,7 +209,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        additional_dependencies: ["yui-agent-guard==0.1.3"]
         args:
           - context
           - check
@@ -225,7 +225,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        additional_dependencies: ["yui-agent-guard==0.1.3"]
         args:
           - content
           - check
@@ -500,6 +500,7 @@ checks:
 agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
+agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 ```

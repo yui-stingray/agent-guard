@@ -4,6 +4,13 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.3 - 2026-06-26
+
+- Added `agent-guard context inventory --json` for redacted agent context
+  metadata, permission-boundary evidence, and CI-friendly audit records.
+- Kept `context check --json` unchanged while adding the opt-in inventory
+  command to the shared scanner result envelope.
+
 ## 0.1.2 - 2026-06-26
 
 - Added the `context` scanner for agent instruction files such as `AGENTS.md`,
