@@ -6,6 +6,7 @@ Why: keep the import surface explicit while the package is still young.
 from __future__ import annotations
 
 from .api_guard import ApiGuardFinding, scan_urls
+from .context_guard import ContextGuardFinding, scan_context_files
 from .content_guard import ContentGuardFinding, scan_paths as scan_content_paths
 from .digest_guard import DigestGuardFinding, scan_digests
 from .path_guard import PathGuardFinding, scan_paths as scan_repo_paths
@@ -15,6 +16,8 @@ scan_paths = scan_content_paths
 __all__ = [
     "scan_urls",
     "ApiGuardFinding",
+    "scan_context_files",
+    "ContextGuardFinding",
     "scan_paths",
     "scan_content_paths",
     "ContentGuardFinding",
@@ -24,4 +27,4 @@ __all__ = [
     "DigestGuardFinding",
 ]
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

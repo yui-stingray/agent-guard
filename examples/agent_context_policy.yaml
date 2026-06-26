@@ -1,0 +1,26 @@
+scan:
+  include:
+    - "AGENTS.md"
+    - "**/AGENTS.md"
+    - "CLAUDE.md"
+    - "**/CLAUDE.md"
+    - "GEMINI.md"
+    - "**/GEMINI.md"
+    - ".github/copilot-instructions.md"
+    - ".github/instructions/**/*.instructions.md"
+    - ".cursor/rules"
+    - ".cursor/rules/**/*.md"
+    - ".cursorrules"
+    - ".windsurfrules"
+    - ".windsurf/rules/**/*.md"
+    - ".continue/rules/**/*.md"
+  exclude:
+    - "archive/**"
+    - "node_modules/**"
+
+policy:
+  extra_forbidden_patterns:
+    - id: unreviewed_tool_allow
+      severity: medium
+      pattern: "(?i)always\\s+allow.{0,80}(bash|shell|network|write|edit)"
+      message: "agent context should not broadly auto-allow risky tools"

@@ -35,6 +35,7 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
 
     assert "## CI gate recipe" in readme
     assert "agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json" in readme
+    assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in readme
     assert (
         "agent-guard digest check --root . --policy .agent-guard/constitution-digest-policy.yaml --json"
         in readme

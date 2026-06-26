@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from .api_guard import load_yaml_policy, scan_urls
+from .context_guard import load_context_policy, scan_context_files
 from .content_guard import (
     build_rules,
     collect_new_targets,
@@ -45,6 +46,13 @@ def build_parser() -> argparse.ArgumentParser:
     content_check.add_argument("--since-ref", default="", help="base ref for new mode diff (e.g. origin/main)")
     content_check.add_argument("--no-untracked", action="store_true", help="exclude untracked files in new mode")
     content_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    context = top.add_parser("context", help="agent context file guard")
+    context_sub = context.add_subparsers(dest="command", required=True)
+    context_check = context_sub.add_parser("check", help="scan agent instruction files for unsafe directives")
+    context_check.add_argument("--root", default=".", help="repository root path")
+    context_check.add_argument("--policy", required=True, help="YAML policy path")
+    context_check.add_argument("--json", action="store_true", help="emit JSON")
 
     path = top.add_parser("path", help="path-name guard for private artifacts and env-file leaks")
     path_sub = path.add_subparsers(dest="command", required=True)
@@ -166,6 +174,40 @@ def run_content_check(args: argparse.Namespace) -> int:
     return 0 if not findings else 1
 
 
+def run_context_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_context_policy(policy_path)
+        findings, scanned_files = scan_context_files(root=root, policy=policy)
+    except Exception as exc:
+        payload = {"status": "error", "scanner": "context", "error": str(exc)}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}")
+        return 2
+
+    payload = {
+        "status": "ok" if not findings else "violation",
+        "scanner": "context",
+        "scanned_files": scanned_files,
+        "finding_count": len(findings),
+        "findings": [item.to_dict() for item in findings],
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    elif findings:
+        print(f"context-guard: NG ({len(findings)} findings)")
+        for item in findings:
+            print(f"- {item.severity} {item.rule_id} {item.file}:{item.line} {item.message}")
+    else:
+        print(f"context-guard: OK ({scanned_files} files scanned)")
+
+    return 0 if not findings else 1
+
+
 def run_path_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.policy).resolve()
@@ -242,6 +284,8 @@ def main() -> int:
         return run_api_check(args)
     if args.scanner == "content" and args.command == "check":
         return run_content_check(args)
+    if args.scanner == "context" and args.command == "check":
+        return run_context_check(args)
     if args.scanner == "path" and args.command == "check":
         return run_path_check(args)
     if args.scanner == "digest" and args.command == "check":

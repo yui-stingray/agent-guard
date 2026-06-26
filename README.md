@@ -5,7 +5,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.1` alpha. The current MVP ships four scanners: `api`, `content`, `path`, and `digest`.
+**Status**: `0.1.2` alpha. The current MVP ships five scanners: `api`, `content`, `context`, `path`, and `digest`.
 
 ## Why
 
@@ -14,6 +14,7 @@
 The current extracted scanners are intentionally narrow:
 - `api`: scan repository text files for URLs, allow approved API patterns, fail on forbidden API patterns
 - `content`: scan Markdown or other configured text files for dangerous instruction patterns
+- `context`: scan agent instruction files such as `AGENTS.md`, `CLAUDE.md`, and Copilot/Cursor/Windsurf rules
 - `path`: scan repository path names for private artifacts, env files, and other publish-time leaks
 - `digest`: verify SHA-256 pins for governance docs and safety-critical scripts
 - return stable JSON or text output for local hooks and CI
@@ -78,6 +79,12 @@ Content security guard:
 agent-guard content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir skills
 ```
 
+Agent context guard:
+
+```bash
+agent-guard context check --root . --policy examples/agent_context_policy.yaml
+```
+
 Path-name guard:
 
 ```bash
@@ -95,6 +102,7 @@ JSON mode is stable and intended for CI/wrappers:
 ```bash
 agent-guard api check --root . --policy examples/architecture_policy.yaml --json
 agent-guard content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir skills --json
+agent-guard context check --root . --policy examples/agent_context_policy.yaml --json
 agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml --json
 agent-guard digest check --root . --policy digest_policy.yaml --json
 ```
@@ -103,10 +111,11 @@ agent-guard digest check --root . --policy digest_policy.yaml --json
 
 For ai-resilience-style repositories, use `agent-guard` as the static half of
 the publication gate and pair it with a runtime approval wrapper such as
-`agent-policy`. A practical final gate runs all three static checks:
+`agent-policy`. A practical final gate runs these static checks:
 
 ```bash
 agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
+agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/constitution-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 ```
@@ -115,6 +124,8 @@ Recommended split:
 
 - `path`: blocks leak-prone names before content is even read, including
   `artifacts/private/`, bypass corpora, red-team logs, and `.env*` files.
+- `context`: checks repository-level agent instructions before they become
+  durable operating context for coding agents.
 - `digest`: pins governance documents and verifier scripts that must not drift
   silently.
 - `content`: detects unsafe instruction drift in Markdown, scripts, and other
@@ -154,6 +165,36 @@ Typical use cases:
 - keep dangerous install instructions out of skills docs
 - block hardcoded credential-like strings in agent-authored Markdown, YAML, and scripts
 - catch destructive command suggestions before they spread
+
+It returns:
+- exit `0` on clean
+- exit `1` on violation
+- exit `2` on configuration/runtime error
+
+### Context guard
+
+The context guard scans common agent instruction files and rule locations:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `GEMINI.md`
+- `.github/copilot-instructions.md`
+- `.github/instructions/**/*.instructions.md`
+- `.cursor/rules/**`
+- `.cursorrules`
+- `.windsurfrules`
+- `.windsurf/rules/**`
+- `.continue/rules/**`
+
+Default rules catch context drift that would weaken the repository safety
+boundary, such as approval bypass instructions, plaintext secret prompts,
+destructive command normalization, and hidden-action instructions.
+
+Typical use cases:
+- reject agent context files that tell coding agents to bypass approval or
+  policy checks
+- keep plaintext secret requests out of durable agent instructions
+- scan agent-specific rule files without scanning the entire repository
 
 It returns:
 - exit `0` on clean
@@ -252,6 +293,35 @@ documented examples, append an inline suppression such as
 `# agent-guard: allow pipe_to_shell` or `# agent-guard: allow all` on the same
 line.
 
+### Context guard policy
+
+```yaml
+scan:
+  include:
+    - "AGENTS.md"
+    - "**/AGENTS.md"
+    - "CLAUDE.md"
+    - "**/CLAUDE.md"
+    - ".github/copilot-instructions.md"
+    - ".github/instructions/**/*.instructions.md"
+    - ".cursor/rules/**/*.md"
+    - ".cursorrules"
+    - ".windsurfrules"
+  exclude:
+    - "archive/**"
+
+policy:
+  extra_forbidden_patterns:
+    - id: unreviewed_tool_allow
+      severity: medium
+      pattern: "(?i)always\\s+allow.{0,80}(bash|shell|network|write|edit)"
+      message: "agent context should not broadly auto-allow risky tools"
+```
+
+Use `forbidden_patterns` to replace the default context rules, or
+`extra_forbidden_patterns` to append repository-specific rules. A ready-to-run
+copy lives in [`examples/agent_context_policy.yaml`](examples/agent_context_policy.yaml).
+
 ### Path guard policy
 
 ```yaml
@@ -298,6 +368,7 @@ checks:
 ```bash
 agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
+agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 ```

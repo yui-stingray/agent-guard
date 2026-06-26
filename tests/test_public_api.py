@@ -10,6 +10,7 @@ import agent_guard
 
 def test_public_api_exports_all_scanners() -> None:
     assert callable(agent_guard.scan_urls)
+    assert callable(agent_guard.scan_context_files)
     assert callable(agent_guard.scan_paths)
     assert callable(agent_guard.scan_content_paths)
     assert callable(agent_guard.scan_repo_paths)
