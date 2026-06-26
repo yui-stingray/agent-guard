@@ -97,6 +97,12 @@ Redacted agent context inventory:
 agent-guard context inventory --root . --policy examples/agent_context_policy.yaml --json
 ```
 
+Sanitized review evidence report:
+
+```bash
+agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
+```
+
 Path-name guard:
 
 ```bash
@@ -327,6 +333,25 @@ For `context inventory`, exit `0` means inventory collection succeeded and exit
 `2` means configuration/runtime error. Evidence and missing boundary categories
 are report data, not violations.
 
+The report command renders a deterministic Markdown projection for pull requests
+and review notes:
+
+```bash
+agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
+```
+
+It runs the context check and redacted context inventory, then emits scanner
+status, counts, repository-relative context file paths, permission-boundary
+status, and finding anchors limited to severity, rule id, file, and line. It
+omits raw context contents, snippets, matched text, raw regex patterns, URLs,
+hashes, secrets, and absolute local paths. Markdown table cells escape HTML and
+Markdown control characters before output.
+
+For `report`, it returns:
+- exit `0` when the report is generated and enabled checks pass
+- exit `1` when the report is generated and enabled checks find violations
+- exit `2` on configuration/runtime error
+
 For `context check`, it returns:
 - exit `0` on clean
 - exit `1` on violation
@@ -501,6 +526,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
+agent-guard report --root <repo> --context-policy <yaml> [--format markdown]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 ```

@@ -143,6 +143,24 @@ def main() -> int:
         assert context_payload["scanner"] == "context"
         assert context_payload["finding_count"] == 0
 
+        report_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "report",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+            ],
+            cwd=temp,
+        )
+        assert report_cli.stdout.startswith("# Agent Guard Evidence Report\n")
+        assert "| Status | ok |" in report_cli.stdout
+        assert "| Policy | context-policy.yaml |" in report_cli.stdout
+        assert str(temp) not in report_cli.stdout
+
     print(f"wheel contract OK: {wheel.name}")
     return 0
 

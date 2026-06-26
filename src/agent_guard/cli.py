@@ -27,6 +27,7 @@ from .content_guard import (
 )
 from .digest_guard import load_digest_policy, scan_digests
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
+from .report import render_markdown_evidence_report
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
 TOOL_NAME = "agent-guard"
@@ -216,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
     digest_check.add_argument("--root", default=".", help="repository root path")
     digest_check.add_argument("--policy", required=True, help="YAML policy path")
     digest_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    report = top.add_parser("report", help="emit sanitized Markdown evidence for reviews")
+    report.add_argument("--root", default=".", help="repository root path")
+    report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    report.add_argument("--format", choices=("markdown",), default="markdown", help="report output format")
 
     return parser
 
@@ -459,6 +465,63 @@ def run_context_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_report(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.context_policy).resolve()
+
+    try:
+        policy = load_context_policy(policy_path)
+        findings, scanned_files = scan_context_files(root=root, policy=policy)
+        inventory = collect_context_inventory(root=root, policy=policy)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=str(exc),
+            extra={
+                "command": "report",
+                "report": {"format": args.format, "scope": "context", "sanitized": True},
+            },
+        )
+        print(render_markdown_evidence_report(payload), end="")
+        return 2
+
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="context",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.context_policy,
+        root=root,
+        findings=[
+            {
+                "file": item.file,
+                "line": item.line,
+                "rule_id": item.rule_id,
+                "severity": item.severity,
+            }
+            for item in findings
+        ],
+        scanned_count=scanned_files,
+        scanned_unit="files",
+        summary_extra={
+            "context_file_count": len(inventory.context_files),
+            "evidence_count": inventory.evidence_count,
+        },
+        extra={
+            "command": "report",
+            "report": {"format": args.format, "scope": "context", "sanitized": True},
+            "scanned_files": scanned_files,
+            "inventory": inventory.to_dict(),
+        },
+    )
+    print(render_markdown_evidence_report(payload), end="")
+    return exit_code
+
+
 def run_path_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.policy).resolve()
@@ -563,6 +626,8 @@ def main() -> int:
         return run_context_check(args)
     if args.scanner == "context" and args.command == "inventory":
         return run_context_inventory(args)
+    if args.scanner == "report":
+        return run_report(args)
     if args.scanner == "path" and args.command == "check":
         return run_path_check(args)
     if args.scanner == "digest" and args.command == "check":
