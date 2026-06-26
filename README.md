@@ -142,6 +142,80 @@ must never have been tracked, such as bypass corpora and private artifacts.
 `agent-guard` checks the current tree; `git log --diff-filter=A --name-only`
 checks historical contamination.
 
+## Optional pre-commit example
+
+If a repository already uses
+[`pre-commit`](https://pre-commit.com/), `agent-guard` can run as an optional
+local gate before commits. This is not required for CI; it is a fast feedback
+loop for maintainers who want the same checks locally.
+
+Adapt the policy paths to files in the target repository:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: agent-guard-path
+        name: agent-guard path check
+        entry: agent-guard
+        language: python
+        language_version: python3.11
+        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        args:
+          - path
+          - check
+          - --root
+          - .
+          - --policy
+          - .agent-guard/path-policy.yaml
+          - --json
+        pass_filenames: false
+
+      - id: agent-guard-context
+        name: agent-guard context check
+        entry: agent-guard
+        language: python
+        language_version: python3.11
+        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        args:
+          - context
+          - check
+          - --root
+          - .
+          - --policy
+          - .agent-guard/context-policy.yaml
+          - --json
+        pass_filenames: false
+
+      - id: agent-guard-content
+        name: agent-guard content check
+        entry: agent-guard
+        language: python
+        language_version: python3.11
+        additional_dependencies: ["yui-agent-guard==0.1.2"]
+        args:
+          - content
+          - check
+          - --repo-root
+          - .
+          - --policy
+          - .agent-guard/content-policy.yaml
+          - --mode
+          - registered
+          - --scan-dir
+          - .
+          - --json
+        pass_filenames: false
+```
+
+Install and test the hooks with:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
 ## Current scanners
 
 ### API guard
@@ -383,7 +457,6 @@ agent-guard digest check --root <repo> --policy <yaml> [--json]
 
 Planned next steps:
 - shared result envelope helpers across scanners
-- optional pre-commit examples
 
 ## Releases
 
