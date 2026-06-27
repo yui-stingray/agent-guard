@@ -1,0 +1,20 @@
+# Where: .agent-guard/context-digest-policy.yaml
+# What: self-dogfood digest pins for agent context and guard policies.
+# Why: make safety-critical context drift explicit in report output and CI.
+
+checks:
+  - id: root_agents_md
+    path: AGENTS.md
+    sha256: "245a9c822507597613400eb140563c7d62684ad63774e6a64b772c9ebd4ff4fe"
+  - id: path_policy
+    path: .agent-guard/path-policy.yaml
+    sha256: "28fda352e90fde02a479ea0f5bd369655488257f73d78ccd883e085557e5f6a7"
+  - id: context_policy
+    path: .agent-guard/context-policy.yaml
+    sha256: "b948800a40fa7c505d8f6dfd18e206b35e58b06787fd549b44b6e04b43556437"
+  - id: content_policy
+    path: .agent-guard/content-policy.yaml
+    sha256: "5ce2a9a402bbaeff028afa458376a7f199e99a96089434aa969466a8034553d8"
+  - id: workflow_policy
+    path: .agent-guard/workflow-policy.yaml
+    sha256: "2cd70d617eeaf35b79f05d24145b3239720ce0370dadda79a9994c93fb82ee2c"

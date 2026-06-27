@@ -149,10 +149,16 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
 
 
 def glob_matches(path: Path, pattern: str) -> bool:
-    if path.match(pattern):
+    normalized_pattern = pattern.replace("\\", "/")
+    normalized_path = path.as_posix()
+    if normalized_pattern.endswith("/**"):
+        prefix = normalized_pattern[:-3].rstrip("/")
+        if prefix and (normalized_path == prefix or normalized_path.startswith(f"{prefix}/")):
+            return True
+    if path.match(normalized_pattern):
         return True
-    if pattern.startswith("**/"):
-        return path.match(pattern[3:])
+    if normalized_pattern.startswith("**/"):
+        return path.match(normalized_pattern[3:])
     return False
 
 

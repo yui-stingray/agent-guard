@@ -1,0 +1,51 @@
+# Where: .agent-guard/content-policy.yaml
+# What: self-dogfood content policy for docs, policies, scripts, and workflows.
+# Why: keep dangerous instructions and credential-like material out of public text surfaces.
+
+file_globs:
+  - "**/*.md"
+  - "**/*.yaml"
+  - "**/*.yml"
+  - "**/*.sh"
+  - "**/*.mjs"
+exclude_globs:
+  - "archive/**"
+  - "artifacts/**"
+  - "node_modules/**"
+  - ".venv/**"
+  - ".venv312/**"
+  - ".venv-py312/**"
+  - ".pytest_cache/**"
+  - ".agent-guard/content-policy.yaml"
+  - "examples/content_security_policy.yaml"
+forbidden_patterns:
+  - id: pipe_to_shell
+    severity: high
+    pattern: '(?i)curl\s+[^\n|]+\|\s*(bash|sh)\b'
+    message: "pipe-to-shell pattern is forbidden"
+    exclude_globs:
+      - "fixtures/red-team/**"
+  - id: secret_prompt
+    severity: high
+    pattern: '(?i)(provide|paste|enter).*(api[_ -]?key|token|password|secret)'
+    message: "plaintext secret prompt is forbidden"
+  - id: destructive_rm_root
+    severity: high
+    pattern: '(?i)rm\s+-rf\s+(/|~|/home|/mnt/c)'
+    message: "destructive rm pattern is forbidden"
+  - id: force_history_rewrite
+    severity: high
+    pattern: '(?i)git\s+(reset\s+--hard|push\s+--force\b|clean\s+-f)'
+    message: "destructive git command pattern is forbidden"
+  - id: encoded_exec
+    severity: high
+    pattern: '(?i)base64\s+(-d|--decode).*(\||&&).*(bash|sh)\b'
+    message: "encoded execution pattern is forbidden"
+  - id: powershell_iex_download
+    severity: high
+    pattern: '(?i)(invoke-webrequest|iwr).*(\||;).*iex'
+    message: "PowerShell remote execution pattern is forbidden"
+  - id: hardcoded_credential
+    severity: high
+    pattern: '(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,})'
+    message: "hardcoded credential-like token found"

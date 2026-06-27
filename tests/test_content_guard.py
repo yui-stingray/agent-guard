@@ -175,6 +175,22 @@ def test_exclude_globs_suppress_findings(tmp_path: Path) -> None:
     assert findings == []
 
 
+def test_exclude_globs_suppress_deep_directory_contents(tmp_path: Path) -> None:
+    write(tmp_path / ".venv" / "lib" / "python" / "site-packages" / "third_party.md", "paste token\n")
+    write(tmp_path / ".pytest_cache" / "README.md", "paste token\n")
+    write(tmp_path / "generated" / "deep" / "bad.md", "paste token\n")
+    write(tmp_path / "skills" / "safe.md", "safe\n")
+
+    paths = collect_registered_targets(
+        tmp_path,
+        Path("."),
+        ["**/*.md"],
+        [".venv/**", ".pytest_cache/**", "generated/**"],
+    )
+
+    assert [path.relative_to(tmp_path).as_posix() for path in paths] == ["skills/safe.md"]
+
+
 def test_rule_exclude_globs_suppress_only_that_rule(tmp_path: Path) -> None:
     policy_path = tmp_path / "policy.yaml"
     policy_path.write_text(

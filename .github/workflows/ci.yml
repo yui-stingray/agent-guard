@@ -62,6 +62,14 @@ jobs:
           PY
           python -m agent_guard.cli digest check --root /tmp/agent-guard-digest-smoke --policy /tmp/agent-guard-digest-smoke/policy.yaml --json
           python -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
+      - name: Run self-dogfood evidence gates
+        run: |
+          python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml --json
+          python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+          python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
+          python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+          python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown > /tmp/agent-guard-evidence-report.md
       - name: Build sdist + wheel
         if: matrix.python-version == '3.12'
         run: python -m build

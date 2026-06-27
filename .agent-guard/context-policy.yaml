@@ -1,0 +1,37 @@
+# Where: .agent-guard/context-policy.yaml
+# What: self-dogfood policy for agent instruction files.
+# Why: prove agent-guard can scan its own durable coding-agent context.
+
+scan:
+  include:
+    - "AGENTS.md"
+    - "**/AGENTS.md"
+    - "CLAUDE.md"
+    - "**/CLAUDE.md"
+    - "GEMINI.md"
+    - "**/GEMINI.md"
+    - ".github/copilot-instructions.md"
+    - ".github/instructions/**/*.instructions.md"
+    - ".cursor/rules"
+    - ".cursor/rules/**/*.md"
+    - ".cursorrules"
+    - ".windsurfrules"
+    - ".windsurf/rules/**/*.md"
+    - ".continue/rules/**/*.md"
+  exclude:
+    - "archive/**"
+    - "node_modules/**"
+    - ".venv/**"
+    - ".venv312/**"
+    - ".venv-py312/**"
+
+policy:
+  extra_forbidden_patterns:
+    - id: unreviewed_tool_allow
+      severity: medium
+      pattern: "(?i)always\\s+allow.{0,80}(bash|shell|network|write|edit)"
+      message: "agent context should not broadly auto-allow risky tools"
+    - id: moa_model_benchmark_scope_creep
+      severity: low
+      pattern: "(?i)\\b(best|strongest|leaderboard|benchmark)\\b.{0,80}\\b(model|moa|router)\\b"
+      message: "agent context should not turn agent-guard into a model benchmark or router"

@@ -15,7 +15,7 @@ for a public demo that wires both tools together.
 
 ## Why
 
-`agent-guard` exists to enforce fail-closed static checks around agent-operated repositories without pulling in a full control plane.
+`agent-guard` exists to enforce fail-closed static checks around agent-operated repositories without pulling in a full control plane. It is model- and provider-agnostic: it checks the repository tree and configured policy files, so the same static gate can be used for repos touched by single-model coding agents, MoA-style multi-model agent loops, or persistent agent sessions.
 
 The current extracted scanners are intentionally narrow:
 - `api`: scan repository text files for URLs, allow approved API patterns, fail on forbidden API patterns
@@ -26,7 +26,7 @@ The current extracted scanners are intentionally narrow:
 - `workflow`: verify that declared CI guard commands and required policy files remain present
 - return stable JSON or text output for local hooks and CI
 
-It does **not** manage approvals, logs, state, or UI. Those belong in higher layers.
+It does **not** route models, score model quality, run LLM review, manage approvals, logs, state, or UI. Those belong in higher layers.
 
 ## Agent safety toolkit
 
@@ -83,56 +83,56 @@ agent-guard api check --root . --policy examples/architecture_policy.yaml
 Content security guard:
 
 ```bash
-agent-guard content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir skills
+agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir .
 ```
 
 Agent context guard:
 
 ```bash
-agent-guard context check --root . --policy examples/agent_context_policy.yaml
+agent-guard context check --root . --policy .agent-guard/context-policy.yaml
 ```
 
 Redacted agent context inventory:
 
 ```bash
-agent-guard context inventory --root . --policy examples/agent_context_policy.yaml --json
+agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 ```
 
 Sanitized review evidence report:
 
 ```bash
-agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
-agent-guard report --root . --context-policy examples/agent_context_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
-agent-guard report --root . --context-policy examples/agent_context_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy examples/workflow_policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 ```
 
 Path-name guard:
 
 ```bash
-agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml
+agent-guard path check --root . --policy .agent-guard/path-policy.yaml
 ```
 
 Digest guard:
 
 ```bash
-agent-guard digest check --root . --policy digest_policy.yaml
+agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml
 ```
 
 Workflow drift guard:
 
 ```bash
-agent-guard workflow check --root . --policy examples/workflow_policy.yaml
+agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
 ```
 
 JSON mode is stable and intended for CI/wrappers:
 
 ```bash
 agent-guard api check --root . --policy examples/architecture_policy.yaml --json
-agent-guard content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir skills --json
-agent-guard context check --root . --policy examples/agent_context_policy.yaml --json
-agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml --json
-agent-guard digest check --root . --policy digest_policy.yaml --json
-agent-guard workflow check --root . --policy examples/workflow_policy.yaml --json
+agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
+agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
+agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 ```
 
 JSON output uses a shared result envelope across scanners:
@@ -144,7 +144,7 @@ JSON output uses a shared result envelope across scanners:
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
-  "policy": {"path": "examples/agent_context_policy.yaml"},
+  "policy": {"path": ".agent-guard/context-policy.yaml"},
   "summary": {
     "finding_count": 0,
     "scanned_count": 1,
@@ -170,7 +170,7 @@ the publication gate and pair it with a runtime approval wrapper such as
 ```bash
 agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard digest check --root . --policy .agent-guard/constitution-digest-policy.yaml --json
+agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 ```
@@ -331,7 +331,7 @@ The opt-in inventory command emits deterministic metadata for discovered
 context files without changing `context check --json`:
 
 ```bash
-agent-guard context inventory --root . --policy examples/agent_context_policy.yaml --json
+agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 ```
 
 Inventory output uses the shared JSON envelope with `command: "inventory"` and
@@ -350,8 +350,9 @@ The report command renders a deterministic Markdown projection for pull requests
 and review notes:
 
 ```bash
-agent-guard report --root . --context-policy examples/agent_context_policy.yaml --format markdown
-agent-guard report --root . --context-policy examples/agent_context_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 ```
 
 It runs the context check and redacted context inventory, then emits scanner
@@ -579,7 +580,7 @@ required_files:
   - id: context_policy
     path: .agent-guard/context-policy.yaml
   - id: digest_policy
-    path: .agent-guard/constitution-digest-policy.yaml
+    path: .agent-guard/context-digest-policy.yaml
 
 workflow_checks:
   - id: ci_static_guards
@@ -591,8 +592,10 @@ workflow_checks:
         command: agent-guard digest check
 ```
 
-A ready-to-run copy for this repository lives in
-[`examples/workflow_policy.yaml`](examples/workflow_policy.yaml).
+Ready-to-run copies live in
+[`examples/workflow_policy.yaml`](examples/workflow_policy.yaml) for a minimal
+example and [`.agent-guard/workflow-policy.yaml`](.agent-guard/workflow-policy.yaml)
+for this repository's self-dogfood gate.
 
 ## CLI
 
