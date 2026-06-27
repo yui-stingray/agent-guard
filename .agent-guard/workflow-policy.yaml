@@ -26,6 +26,8 @@ workflow_checks:
         command: python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml
       - id: context_guard_self
         command: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml
+      - id: context_lock_self
+        command: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml
       - id: digest_guard_self
         command: python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml
       - id: content_guard_self

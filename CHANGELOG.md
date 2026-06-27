@@ -18,6 +18,8 @@ Why: keep static guard releases auditable while the package is still alpha.
   absolute local paths.
 - Added `agent-guard report --format github-annotations` for sanitized
   GitHub Actions annotations backed by the same report evidence payload.
+- Added `agent-guard context lock` to generate digest policy checks for
+  discovered agent context files without emitting raw context content.
 
 ## 0.1.2 - 2026-06-26
 

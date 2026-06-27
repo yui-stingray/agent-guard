@@ -96,6 +96,7 @@ Redacted agent context inventory:
 
 ```bash
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-lock.yaml
 ```
 
 Sanitized review evidence report:
@@ -334,6 +335,7 @@ context files without changing `context check --json`:
 
 ```bash
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-lock.yaml
 ```
 
 Inventory output uses the shared JSON envelope with `command: "inventory"` and
@@ -347,6 +349,15 @@ text, raw regex patterns, or absolute local paths.
 For `context inventory`, exit `0` means inventory collection succeeded and exit
 `2` means configuration/runtime error. Evidence and missing boundary categories
 are report data, not violations.
+
+The `context lock` command first requires the existing context check to pass,
+then emits a digest policy for the discovered agent context files. It hashes raw
+file bytes, emits only repository-relative paths and SHA-256 values, and omits
+raw context text. It fails closed when no agent context files are discovered.
+The generated YAML can be used directly with `agent-guard digest check` to make
+agent context drift explicit. If a repository already has a broader digest
+policy for guard policies or verifier scripts, merge the generated context
+checks into that policy instead of overwriting it.
 
 The report command renders deterministic review evidence for pull requests,
 review notes, and GitHub Actions annotations:
@@ -620,6 +631,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
+agent-guard context lock --root <repo> --policy <yaml> [--json]
 agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format <markdown|github-annotations>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]

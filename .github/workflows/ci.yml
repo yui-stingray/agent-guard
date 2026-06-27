@@ -43,6 +43,8 @@ jobs:
         run: |
           python -m agent_guard.cli content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir . --json
           python -m agent_guard.cli context check --root . --policy examples/agent_context_policy.yaml --json
+          python -m agent_guard.cli context lock --root . --policy examples/agent_context_policy.yaml > /tmp/agent-guard-context-lock.yaml
+          python -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-context-lock.yaml --json
           python -m agent_guard.cli path check --root . --policy examples/ai_resilience_path_policy.yaml --json
           mkdir -p /tmp/agent-guard-digest-smoke
           printf 'pinned\n' > /tmp/agent-guard-digest-smoke/pinned.txt
@@ -66,6 +68,8 @@ jobs:
         run: |
           python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml --json
           python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+          python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml > /tmp/agent-guard-self-context-lock.yaml
+          python -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-self-context-lock.yaml --json
           python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
           python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
           python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json

@@ -114,7 +114,7 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
         root=REPO_ROOT,
         policy=load_workflow_policy(SELF_WORKFLOW_POLICY),
     )
-    assert workflow_checked == 12
+    assert workflow_checked == 13
     assert workflow_findings == []
 
 

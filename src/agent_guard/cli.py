@@ -16,6 +16,7 @@ from . import __version__ as PACKAGE_VERSION
 from .api_guard import iter_scan_files as iter_api_scan_files
 from .api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from .context_lock import build_context_digest_policy, dump_digest_policy_yaml
 from .content_guard import (
     build_rules,
     collect_new_targets,
@@ -217,6 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
     context_inventory.add_argument("--root", default=".", help="repository root path")
     context_inventory.add_argument("--policy", required=True, help="YAML policy path")
     context_inventory.add_argument("--json", action="store_true", help="emit JSON")
+    context_lock = context_sub.add_parser("lock", help="emit digest policy checks for agent context files")
+    context_lock.add_argument("--root", default=".", help="repository root path")
+    context_lock.add_argument("--policy", required=True, help="agent context YAML policy path")
+    context_lock.add_argument("--json", action="store_true", help="emit JSON")
 
     path = top.add_parser("path", help="path-name guard for private artifacts and env-file leaks")
     path_sub = path.add_subparsers(dest="command", required=True)
@@ -504,6 +509,86 @@ def run_context_inventory(args: argparse.Namespace) -> int:
             "context-inventory: OK "
             f"({len(inventory.context_files)} files, {inventory.evidence_count} evidence records)"
         )
+    return 0
+
+
+def run_context_lock(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_context_policy(policy_path)
+        findings, scanned_files = scan_context_files(root=root, policy=policy)
+        if findings:
+            finding_items = [
+                {
+                    "file": item.file,
+                    "line": item.line,
+                    "rule_id": item.rule_id,
+                    "severity": item.severity,
+                }
+                for item in findings
+            ]
+            payload = result_payload(
+                scanner="context",
+                status="violation",
+                exit_code=1,
+                policy_arg=args.policy,
+                root=root,
+                findings=finding_items,
+                scanned_count=scanned_files,
+                scanned_unit="files",
+                extra={"command": "lock", "scanned_files": scanned_files},
+            )
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False))
+            else:
+                print(f"context-lock: NG ({len(findings)} findings)")
+                for item in finding_items:
+                    print(
+                        f"- {item['severity']} {item['rule_id']} "
+                        f"{item['file']}:{item['line']}"
+                    )
+            return 1
+        inventory = collect_context_inventory(root=root, policy=policy)
+        digest_policy = build_context_digest_policy(root=root, inventory=inventory)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+            extra={"command": "lock"},
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        return 2
+
+    checks = digest_policy.get("checks", [])
+    checked_count = len(checks) if isinstance(checks, list) else 0
+    payload = result_payload(
+        scanner="context",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.policy,
+        root=root,
+        findings=[],
+        scanned_count=checked_count,
+        scanned_unit="context_files",
+        summary_extra={"context_file_count": len(inventory.context_files)},
+        extra={
+            "command": "lock",
+            "digest_policy": digest_policy,
+        },
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(dump_digest_policy_yaml(digest_policy), end="")
     return 0
 
 
@@ -992,6 +1077,8 @@ def main() -> int:
         return run_context_check(args)
     if args.scanner == "context" and args.command == "inventory":
         return run_context_inventory(args)
+    if args.scanner == "context" and args.command == "lock":
+        return run_context_lock(args)
     if args.scanner == "report":
         return run_report(args)
     if args.scanner == "path" and args.command == "check":
