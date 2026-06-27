@@ -45,6 +45,7 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
         "--mode registered --scan-dir . --json"
         in readme
     )
+    assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in readme
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

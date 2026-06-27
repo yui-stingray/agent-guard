@@ -5,7 +5,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.3` alpha. The current MVP ships five scanners: `api`, `content`, `context`, `path`, and `digest`.
+**Status**: `0.1.3` alpha. The current MVP ships six scanners: `api`, `content`, `context`, `path`, `digest`, and `workflow`.
 
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
@@ -23,6 +23,7 @@ The current extracted scanners are intentionally narrow:
 - `context`: scan agent instruction files such as `AGENTS.md`, `CLAUDE.md`, and Copilot/Cursor/Windsurf rules
 - `path`: scan repository path names for private artifacts, env files, and other publish-time leaks
 - `digest`: verify SHA-256 pins for governance docs and safety-critical scripts
+- `workflow`: verify that declared CI guard commands and required policy files remain present
 - return stable JSON or text output for local hooks and CI
 
 It does **not** manage approvals, logs, state, or UI. Those belong in higher layers.
@@ -47,7 +48,7 @@ The intended split is:
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
 | Runtime admission | `agent-policy` | Decide whether a normalized agent action is `deny`, `require_approval`, or `auto_allow`. |
-| Static repository gate | `agent-guard` | Scan paths, text, API surfaces, and pinned digests for repository safety drift. |
+| Static repository gate | `agent-guard` | Scan paths, text, API surfaces, pinned digests, and workflow gates for repository safety drift. |
 
 A practical setup uses `agent-policy` in a shell hook or wrapper before an
 agent performs a side effect, then runs `agent-guard` in CI or pre-release
@@ -116,6 +117,12 @@ Digest guard:
 agent-guard digest check --root . --policy digest_policy.yaml
 ```
 
+Workflow drift guard:
+
+```bash
+agent-guard workflow check --root . --policy examples/workflow_policy.yaml
+```
+
 JSON mode is stable and intended for CI/wrappers:
 
 ```bash
@@ -124,6 +131,7 @@ agent-guard content check --repo-root . --policy examples/content_security_polic
 agent-guard context check --root . --policy examples/agent_context_policy.yaml --json
 agent-guard path check --root . --policy examples/ai_resilience_path_policy.yaml --json
 agent-guard digest check --root . --policy digest_policy.yaml --json
+agent-guard workflow check --root . --policy examples/workflow_policy.yaml --json
 ```
 
 JSON output uses a shared result envelope across scanners:
@@ -163,6 +171,7 @@ agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/constitution-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 ```
 
 Recommended split:
@@ -175,6 +184,8 @@ Recommended split:
   silently.
 - `content`: detects unsafe instruction drift in Markdown, scripts, and other
   configured text surfaces.
+- `workflow`: checks that the CI workflow still invokes the declared guard
+  commands and still carries the required policy files in the repository.
 
 Keep explicit git-history checks in the repository workflow for material that
 must never have been tracked, such as bypass corpora and private artifacts.
@@ -398,6 +409,34 @@ It returns:
 - exit `1` on violation
 - exit `2` on configuration/runtime error
 
+### Workflow guard
+
+The workflow guard checks a declared CI workflow for required guard commands
+and checks that configured policy files are still present in the repository.
+It is intentionally narrower than a workflow security scanner: it does not
+evaluate GitHub permissions, branch protection, workflow logs, action versions,
+or shell semantics.
+Workflow policies must declare `schema_version:
+agent-guard.workflow_policy.v1` and at least one `required_files` or
+`workflow_checks` entry; empty policies are configuration errors.
+
+Typical use cases:
+- catch CI drift where `context`, `digest`, `path`, or `content` guard commands
+  are removed from the release gate
+- make policy-file presence explicit before a workflow claims to run a guard
+- keep static guard coverage reviewable through deterministic JSON output
+
+Command matching only inspects active `jobs.*.steps[*].run` lines. Blank lines,
+comments, `echo` / `printf` documentation lines, and here-doc bodies are not
+treated as executed guard commands. Findings include repository-relative paths,
+rule ids, workflow ids, requirement ids, reasons, and controlled messages; they
+do not include raw workflow `run` bodies or raw command text.
+
+It returns:
+- exit `0` on clean
+- exit `1` on missing required files or missing required workflow commands
+- exit `2` on configuration/runtime error
+
 ## Example policies
 
 ### API guard policy
@@ -526,6 +565,30 @@ checks:
     start_line: 15
 ```
 
+### Workflow guard policy
+
+```yaml
+schema_version: agent-guard.workflow_policy.v1
+
+required_files:
+  - id: context_policy
+    path: .agent-guard/context-policy.yaml
+  - id: digest_policy
+    path: .agent-guard/constitution-digest-policy.yaml
+
+workflow_checks:
+  - id: ci_static_guards
+    path: .github/workflows/ci.yml
+    required_commands:
+      - id: context_guard
+        command: agent-guard context check
+      - id: digest_guard
+        command: agent-guard digest check
+```
+
+A ready-to-run copy for this repository lives in
+[`examples/workflow_policy.yaml`](examples/workflow_policy.yaml).
+
 ## CLI
 
 ```bash
@@ -536,6 +599,7 @@ agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard report --root <repo> --context-policy <yaml> [--digest-policy <yaml>] [--format markdown]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
+agent-guard workflow check --root <repo> --policy <yaml> [--json]
 ```
 
 ## Releases

@@ -28,6 +28,7 @@ from .content_guard import (
 from .digest_guard import load_digest_policy, scan_digests
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .report import render_markdown_evidence_report
+from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
 TOOL_NAME = "agent-guard"
@@ -217,6 +218,13 @@ def build_parser() -> argparse.ArgumentParser:
     digest_check.add_argument("--root", default=".", help="repository root path")
     digest_check.add_argument("--policy", required=True, help="YAML policy path")
     digest_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    workflow = top.add_parser("workflow", help="workflow drift guard for declared repository gates")
+    workflow_sub = workflow.add_subparsers(dest="command", required=True)
+    workflow_check = workflow_sub.add_parser("check", help="verify required files and workflow commands")
+    workflow_check.add_argument("--root", default=".", help="repository root path")
+    workflow_check.add_argument("--policy", required=True, help="YAML policy path")
+    workflow_check.add_argument("--json", action="store_true", help="emit JSON")
 
     report = top.add_parser("report", help="emit sanitized Markdown evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
@@ -659,6 +667,52 @@ def run_digest_check(args: argparse.Namespace) -> int:
     return 0 if not findings else 1
 
 
+def run_workflow_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = Path(args.policy).resolve()
+
+    try:
+        policy = load_workflow_policy(policy_path)
+        findings, checked_items = scan_workflow_policy(root=root, policy=policy)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="workflow",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=str(exc),
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}")
+        return 2
+
+    exit_code = 0 if not findings else 1
+    payload = result_payload(
+        scanner="workflow",
+        status="ok" if not findings else "violation",
+        exit_code=exit_code,
+        policy_arg=args.policy,
+        root=root,
+        findings=[item.to_dict() for item in findings],
+        scanned_count=checked_items,
+        scanned_unit="checks",
+        extra={"checked_items": checked_items},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    elif findings:
+        print(f"workflow-guard: NG ({len(findings)} findings)")
+        for item in findings:
+            print(f"- {item.severity} {item.rule_id} {item.file} {item.message}")
+    else:
+        print(f"workflow-guard: OK ({checked_items} checks)")
+
+    return 0 if not findings else 1
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -677,6 +731,8 @@ def main() -> int:
         return run_path_check(args)
     if args.scanner == "digest" and args.command == "check":
         return run_digest_check(args)
+    if args.scanner == "workflow" and args.command == "check":
+        return run_workflow_check(args)
 
     parser.error("unknown command")
     return 2

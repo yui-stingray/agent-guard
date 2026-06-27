@@ -61,6 +61,7 @@ jobs:
           )
           PY
           python -m agent_guard.cli digest check --root /tmp/agent-guard-digest-smoke --policy /tmp/agent-guard-digest-smoke/policy.yaml --json
+          python -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
       - name: Build sdist + wheel
         if: matrix.python-version == '3.12'
         run: python -m build

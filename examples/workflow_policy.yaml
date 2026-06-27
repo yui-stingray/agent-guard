@@ -1,0 +1,24 @@
+schema_version: agent-guard.workflow_policy.v1
+
+required_files:
+  - id: context_policy
+    path: examples/agent_context_policy.yaml
+  - id: content_policy
+    path: examples/content_security_policy.yaml
+  - id: path_policy
+    path: examples/ai_resilience_path_policy.yaml
+
+workflow_checks:
+  - id: ci_cli_smoke
+    path: .github/workflows/ci.yml
+    required_commands:
+      - id: content_guard
+        command: python -m agent_guard.cli content check
+      - id: context_guard
+        command: python -m agent_guard.cli context check
+      - id: path_guard
+        command: python -m agent_guard.cli path check
+      - id: digest_guard
+        command: python -m agent_guard.cli digest check
+      - id: workflow_guard
+        command: python -m agent_guard.cli workflow check

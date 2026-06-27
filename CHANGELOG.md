@@ -10,6 +10,8 @@ Why: keep static guard releases auditable while the package is still alpha.
   metadata, permission-boundary evidence, and CI-friendly audit records.
 - Kept `context check --json` unchanged while adding the opt-in inventory
   command to the shared scanner result envelope.
+- Added `agent-guard workflow check` for deterministic CI guard-command and
+  required-policy-file drift checks.
 
 ## 0.1.2 - 2026-06-26
 

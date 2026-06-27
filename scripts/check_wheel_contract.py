@@ -29,6 +29,8 @@ EXPECTED_EXPORTS = {
     "PathGuardFinding",
     "scan_digests",
     "DigestGuardFinding",
+    "scan_workflow_policy",
+    "WorkflowGuardFinding",
 }
 
 
@@ -154,6 +156,58 @@ def main() -> int:
             f"    sha256: '{agent_context_sha256}'\n",
             encoding="utf-8",
         )
+        workflow_file = repo / ".github" / "workflows" / "ci.yml"
+        workflow_file.parent.mkdir(parents=True, exist_ok=True)
+        workflow_file.write_text(
+            "name: ci\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Run guard checks\n"
+            "        run: |\n"
+            "          python -m agent_guard.cli context check --root . --policy context-policy.yaml --json\n"
+            "          python -m agent_guard.cli digest check --root . --policy digest-policy.yaml --json\n",
+            encoding="utf-8",
+        )
+        workflow_policy = repo / "workflow-policy.yaml"
+        workflow_policy.write_text(
+            "schema_version: agent-guard.workflow_policy.v1\n"
+            "required_files:\n"
+            "  - id: context_policy\n"
+            "    path: context-policy.yaml\n"
+            "  - id: digest_policy\n"
+            "    path: digest-policy.yaml\n"
+            "workflow_checks:\n"
+            "  - id: ci_guard_smoke\n"
+            "    path: .github/workflows/ci.yml\n"
+            "    required_commands:\n"
+            "      - id: context_guard\n"
+            "        command: python -m agent_guard.cli context check\n"
+            "      - id: digest_guard\n"
+            "        command: python -m agent_guard.cli digest check\n",
+            encoding="utf-8",
+        )
+        workflow_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "workflow",
+                "check",
+                "--root",
+                str(repo),
+                "--policy",
+                str(workflow_policy),
+                "--json",
+            ],
+            cwd=temp,
+        )
+        workflow_payload = json.loads(workflow_cli.stdout)
+        assert workflow_payload["status"] == "ok"
+        assert workflow_payload["scanner"] == "workflow"
+        assert workflow_payload["finding_count"] == 0
+
         report_cli = run(
             [
                 str(python),
