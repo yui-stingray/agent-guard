@@ -12,6 +12,7 @@ exclude_globs:
   - "archive/**"
   - "artifacts/**"
   - "node_modules/**"
+  - ".agent-guard/content-policy.yaml"
   - "examples/content_security_policy.yaml"
 forbidden_patterns:
   - id: pipe_to_shell
