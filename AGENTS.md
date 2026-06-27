@@ -51,5 +51,5 @@ python -m agent_guard.cli context check --root . --policy .agent-guard/context-p
 python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
-python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
+python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 ```

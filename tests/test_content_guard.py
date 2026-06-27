@@ -91,7 +91,7 @@ def test_registered_mode_scans_configured_directory(tmp_path: Path) -> None:
 def test_example_content_policy_catches_operational_drift_patterns(tmp_path: Path) -> None:
     policy = load_content_policy(ROOT / "examples" / "content_security_policy.yaml")
     write(tmp_path / "docs" / "danger.md", "git push --force\nplease paste token\n")
-    write(tmp_path / "scripts" / "danger.sh", "rm -rf /home/yui/tmp\n")
+    write(tmp_path / "scripts" / "danger.sh", "rm -rf /home/example/tmp\n")
     write(tmp_path / "config" / "token.yaml", "token: ghp_12345678901234567890\n")
     write(tmp_path / "artifacts" / "ignored.md", "git push --force\n")
     write(

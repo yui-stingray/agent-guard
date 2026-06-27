@@ -104,6 +104,7 @@ Sanitized review evidence report:
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 ```
 
 Path-name guard:
@@ -353,13 +354,20 @@ and review notes:
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 ```
 
 It runs the context check and redacted context inventory, then emits scanner
 status, counts, repository-relative context file paths, permission-boundary
 status, and finding anchors limited to severity, rule id, file, and line. With
-`--digest-policy`, it also emits sanitized digest drift evidence for pinned
-context or policy files: check id, repository-relative path, status, and
+`--path-policy`, it emits path-name evidence limited to severity, rule id, and
+repository-relative path. With `--content-policy`, it emits registered-mode
+content evidence limited to severity, rule id, repository-relative file, and
+line. With `--api-policy`, it emits API evidence limited to repository-relative
+file, line, and controlled category. The report command does not support content
+`new` or `preregister` modes; use `content check` directly for those workflows.
+With `--digest-policy`, it also emits sanitized digest drift evidence for
+pinned context or policy files: check id, repository-relative path, status, and
 controlled message. With `--workflow-policy`, it emits sanitized workflow drift
 evidence: checked count, drift finding count, repository-relative workflow file
 paths, rule ids, workflow ids, requirement ids, and controlled reasons. It does
@@ -604,7 +612,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format markdown]
+agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format markdown]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]

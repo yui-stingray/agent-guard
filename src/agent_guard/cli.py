@@ -130,10 +130,15 @@ def scrub_error_message(
 
 
 def scrub_report_error_message(message: str) -> str:
-    return re.sub(
+    scrubbed = re.sub(
         r"(?im)^(\s*-?\s*['\"]?run['\"]?\s*:\s*).*$",
         r"\1<workflow-run>",
         message,
+    )
+    return re.sub(
+        r"(invalid [^\n]* regex[^\n]*?: )(['\"])(?:\\.|(?!\2).)*\2(?=:)",
+        r"\1<regex>",
+        scrubbed,
     )
 
 
@@ -237,6 +242,14 @@ def build_parser() -> argparse.ArgumentParser:
     report = top.add_parser("report", help="emit sanitized Markdown evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    report.add_argument("--path-policy", default="", help="optional path YAML policy path for path-name evidence")
+    report.add_argument("--content-policy", default="", help="optional content YAML policy path for content evidence")
+    report.add_argument(
+        "--content-scan-dir",
+        default=".",
+        help="repository-relative directory for content report evidence (registered mode only)",
+    )
+    report.add_argument("--api-policy", default="", help="optional API YAML policy path for API surface evidence")
     report.add_argument("--digest-policy", default="", help="optional digest YAML policy path for drift evidence")
     report.add_argument("--workflow-policy", default="", help="optional workflow YAML policy path for drift evidence")
     report.add_argument("--format", choices=("markdown",), default="markdown", help="report output format")
@@ -483,8 +496,21 @@ def run_context_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
-def report_scope(*, digest_enabled: bool, workflow_enabled: bool) -> str:
+def report_scope(
+    *,
+    path_enabled: bool,
+    content_enabled: bool,
+    api_enabled: bool,
+    digest_enabled: bool,
+    workflow_enabled: bool,
+) -> str:
     parts = ["context"]
+    if path_enabled:
+        parts.append("path")
+    if content_enabled:
+        parts.append("content")
+    if api_enabled:
+        parts.append("api")
     if digest_enabled:
         parts.append("digest")
     if workflow_enabled:
@@ -492,17 +518,114 @@ def report_scope(*, digest_enabled: bool, workflow_enabled: bool) -> str:
     return "+".join(parts)
 
 
+def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
+    policy = load_yaml_policy(Path(policy_arg).resolve())
+    scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
+    api_scan_files = list(
+        iter_api_scan_files(
+            root,
+            normalize_api_string_list(scan_cfg.get("include", [])),
+            normalize_api_string_list(scan_cfg.get("exclude", [])),
+        )
+    )
+    findings = scan_urls(root=root, policy=policy)
+    return {
+        "policy": {"path": safe_policy_path(policy_arg, root)},
+        "status": "ok" if not findings else "violation",
+        "checked_count": len(api_scan_files),
+        "finding_count": len(findings),
+        "findings": [
+            {
+                "path": item.path,
+                "line": item.line,
+                "category": "forbidden_api",
+            }
+            for item in findings
+        ],
+    }
+
+
+def build_content_report(*, root: Path, policy_arg: str, scan_dir_arg: str) -> dict[str, object]:
+    scan_dir = Path(scan_dir_arg)
+    target_root = scan_dir if scan_dir.is_absolute() else root / scan_dir
+    target_root = target_root.resolve()
+    try:
+        relative_scan_dir = target_root.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError("content scan dir must stay under report root") from exc
+
+    policy = load_content_policy(Path(policy_arg).resolve())
+    rules = build_rules(policy)
+    file_globs = normalize_patterns(policy.get("file_globs", [])) or ["**/*.md"]
+    exclude_globs = normalize_patterns(policy.get("exclude_globs", []))
+    paths = collect_registered_targets(root, target_root, file_globs, exclude_globs)
+    findings = scan_paths(paths, rules, root)
+    return {
+        "policy": {"path": safe_policy_path(policy_arg, root)},
+        "status": "ok" if not findings else "violation",
+        "mode": "registered",
+        "scan_dir": "." if relative_scan_dir == "." else relative_scan_dir,
+        "checked_count": len(paths),
+        "finding_count": len(findings),
+        "findings": [
+            {
+                "severity": item.severity,
+                "rule_id": item.rule_id,
+                "file": item.file,
+                "line": item.line,
+            }
+            for item in findings
+        ],
+    }
+
+
+def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
+    policy = load_path_policy(Path(policy_arg).resolve())
+    findings, scanned_paths = scan_repo_paths(root=root, policy=policy)
+    return {
+        "policy": {"path": safe_policy_path(policy_arg, root)},
+        "status": "ok" if not findings else "violation",
+        "checked_count": scanned_paths,
+        "finding_count": len(findings),
+        "findings": [
+            {
+                "severity": item.severity,
+                "rule_id": item.rule_id,
+                "path": item.path,
+            }
+            for item in findings
+        ],
+    }
+
+
 def run_report(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.context_policy).resolve()
+    path_policy_arg = str(args.path_policy).strip()
+    content_policy_arg = str(args.content_policy).strip()
+    content_scan_dir_arg = str(args.content_scan_dir).strip() or "."
+    api_policy_arg = str(args.api_policy).strip()
     digest_policy_arg = str(args.digest_policy).strip()
     workflow_policy_arg = str(args.workflow_policy).strip()
-    scope = report_scope(digest_enabled=bool(digest_policy_arg), workflow_enabled=bool(workflow_policy_arg))
+    scope = report_scope(
+        path_enabled=bool(path_policy_arg),
+        content_enabled=bool(content_policy_arg),
+        api_enabled=bool(api_policy_arg),
+        digest_enabled=bool(digest_policy_arg),
+        workflow_enabled=bool(workflow_policy_arg),
+    )
 
     try:
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         inventory = collect_context_inventory(root=root, policy=policy)
+        path_report = build_path_report(root=root, policy_arg=path_policy_arg) if path_policy_arg else None
+        content_report = (
+            build_content_report(root=root, policy_arg=content_policy_arg, scan_dir_arg=content_scan_dir_arg)
+            if content_policy_arg
+            else None
+        )
+        api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
             digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
@@ -551,7 +674,18 @@ def run_report(args: argparse.Namespace) -> int:
             policy_arg=args.context_policy,
             root=root,
             error=scrub_report_error_message(str(exc)),
-            error_paths=[path for path in (digest_policy_arg, workflow_policy_arg) if path],
+            error_paths=[
+                path
+                for path in (
+                    path_policy_arg,
+                    content_policy_arg,
+                    *([content_scan_dir_arg] if content_policy_arg else []),
+                    api_policy_arg,
+                    digest_policy_arg,
+                    workflow_policy_arg,
+                )
+                if path
+            ],
             extra={
                 "command": "report",
                 "report": {
@@ -559,6 +693,27 @@ def run_report(args: argparse.Namespace) -> int:
                     "scope": scope,
                     "sanitized": True,
                 },
+                **(
+                    {"path": {"policy": {"path": safe_policy_path(path_policy_arg, root)}}}
+                    if path_policy_arg
+                    else {}
+                ),
+                **(
+                    {
+                        "content": {
+                            "policy": {"path": safe_policy_path(content_policy_arg, root)},
+                            "mode": "registered",
+                            "scan_dir": content_scan_dir_arg,
+                        }
+                    }
+                    if content_policy_arg
+                    else {}
+                ),
+                **(
+                    {"api": {"policy": {"path": safe_policy_path(api_policy_arg, root)}}}
+                    if api_policy_arg
+                    else {}
+                ),
                 **(
                     {"digest": {"policy": {"path": safe_policy_path(digest_policy_arg, root)}}}
                     if digest_policy_arg
@@ -574,9 +729,21 @@ def run_report(args: argparse.Namespace) -> int:
         print(render_markdown_evidence_report(payload), end="")
         return 2
 
+    path_finding_count = int(path_report["finding_count"]) if path_report else 0
+    content_finding_count = int(content_report["finding_count"]) if content_report else 0
+    api_finding_count = int(api_report["finding_count"]) if api_report else 0
     digest_finding_count = int(digest_report["finding_count"]) if digest_report else 0
     workflow_finding_count = int(workflow_report["finding_count"]) if workflow_report else 0
-    exit_code = 0 if not findings and digest_finding_count == 0 and workflow_finding_count == 0 else 1
+    exit_code = (
+        0
+        if not findings
+        and path_finding_count == 0
+        and content_finding_count == 0
+        and api_finding_count == 0
+        and digest_finding_count == 0
+        and workflow_finding_count == 0
+        else 1
+    )
     payload = result_payload(
         scanner="context",
         status="ok" if exit_code == 0 else "violation",
@@ -599,6 +766,30 @@ def run_report(args: argparse.Namespace) -> int:
             "evidence_count": inventory.evidence_count,
             **(
                 {
+                    "path_checked_count": path_report["checked_count"],
+                    "path_finding_count": path_report["finding_count"],
+                }
+                if path_report
+                else {}
+            ),
+            **(
+                {
+                    "content_checked_count": content_report["checked_count"],
+                    "content_finding_count": content_report["finding_count"],
+                }
+                if content_report
+                else {}
+            ),
+            **(
+                {
+                    "api_checked_count": api_report["checked_count"],
+                    "api_finding_count": api_report["finding_count"],
+                }
+                if api_report
+                else {}
+            ),
+            **(
+                {
                     "digest_checked_count": digest_report["checked_count"],
                     "digest_finding_count": digest_report["finding_count"],
                 }
@@ -619,6 +810,9 @@ def run_report(args: argparse.Namespace) -> int:
             "report": {
                 "format": args.format,
                 "scope": report_scope(
+                    path_enabled=path_report is not None,
+                    content_enabled=content_report is not None,
+                    api_enabled=api_report is not None,
                     digest_enabled=digest_report is not None,
                     workflow_enabled=workflow_report is not None,
                 ),
@@ -626,6 +820,9 @@ def run_report(args: argparse.Namespace) -> int:
             },
             "scanned_files": scanned_files,
             "inventory": inventory.to_dict(),
+            **({"path": path_report} if path_report else {}),
+            **({"content": content_report} if content_report else {}),
+            **({"api": api_report} if api_report else {}),
             **({"digest": digest_report} if digest_report else {}),
             **({"workflow": workflow_report} if workflow_report else {}),
         },

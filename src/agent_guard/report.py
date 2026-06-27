@@ -71,12 +71,18 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     policy = as_mapping(payload.get("policy"))
     summary = as_mapping(payload.get("summary"))
     report = as_mapping(payload.get("report"))
+    path = as_mapping(payload.get("path"))
+    content = as_mapping(payload.get("content"))
+    api = as_mapping(payload.get("api"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     inventory = as_mapping(payload.get("inventory"))
     context_files = as_sequence(inventory.get("context_files"))
     boundaries = as_sequence(inventory.get("permission_boundaries"))
     findings = as_sequence(payload.get("findings"))
+    path_findings = as_sequence(path.get("findings"))
+    content_findings = as_sequence(content.get("findings"))
+    api_findings = as_sequence(api.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
 
@@ -87,6 +93,15 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         ("Exit code", payload.get("exit_code", "-")),
         ("Policy", policy.get("path", "-")),
     ]
+    if path:
+        path_policy = as_mapping(path.get("policy"))
+        overview_rows.append(("Path policy", path_policy.get("path", "-")))
+    if content:
+        content_policy = as_mapping(content.get("policy"))
+        overview_rows.append(("Content policy", content_policy.get("path", "-")))
+    if api:
+        api_policy = as_mapping(api.get("policy"))
+        overview_rows.append(("API policy", api_policy.get("path", "-")))
     if digest:
         digest_policy = as_mapping(digest.get("policy"))
         overview_rows.append(("Digest policy", digest_policy.get("path", "-")))
@@ -130,6 +145,27 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         ("Permission boundaries present", present_boundaries),
         ("Permission boundaries missing", missing_boundaries),
     ]
+    if path:
+        summary_rows.extend(
+            [
+                ("Path names scanned", path.get("checked_count", 0)),
+                ("Path guard findings", path.get("finding_count", 0)),
+            ]
+        )
+    if content:
+        summary_rows.extend(
+            [
+                ("Content files scanned", content.get("checked_count", 0)),
+                ("Content guard findings", content.get("finding_count", 0)),
+            ]
+        )
+    if api:
+        summary_rows.extend(
+            [
+                ("API files scanned", api.get("checked_count", 0)),
+                ("API guard findings", api.get("finding_count", 0)),
+            ]
+        )
     if digest:
         summary_rows.extend(
             [
@@ -171,6 +207,58 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         lines.extend(markdown_table(("Severity", "Rule", "File", "Line"), finding_rows))
     else:
         lines.append("No unsafe context findings were detected.")
+
+    if path:
+        lines.extend(["", "## Path Guard Evidence", ""])
+        if path_findings:
+            path_rows = []
+            for item in path_findings:
+                finding = as_mapping(item)
+                path_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("path", "-"),
+                    )
+                )
+            lines.extend(markdown_table(("Severity", "Rule", "Path"), path_rows))
+        else:
+            lines.append("No path guard findings were detected.")
+
+    if content:
+        lines.extend(["", "## Content Guard Evidence", ""])
+        if content_findings:
+            content_rows = []
+            for item in content_findings:
+                finding = as_mapping(item)
+                content_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("file", "-"),
+                        finding.get("line", "-"),
+                    )
+                )
+            lines.extend(markdown_table(("Severity", "Rule", "File", "Line"), content_rows))
+        else:
+            lines.append("No content guard findings were detected.")
+
+    if api:
+        lines.extend(["", "## API Guard Evidence", ""])
+        if api_findings:
+            api_rows = []
+            for item in api_findings:
+                finding = as_mapping(item)
+                api_rows.append(
+                    (
+                        finding.get("path", "-"),
+                        finding.get("line", "-"),
+                        finding.get("category", "-"),
+                    )
+                )
+            lines.extend(markdown_table(("File", "Line", "Category"), api_rows))
+        else:
+            lines.append("No API guard findings were detected.")
 
     if digest:
         lines.extend(["", "## Digest Drift Evidence", ""])

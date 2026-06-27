@@ -5,7 +5,7 @@
 checks:
   - id: root_agents_md
     path: AGENTS.md
-    sha256: "245a9c822507597613400eb140563c7d62684ad63774e6a64b772c9ebd4ff4fe"
+    sha256: "c5356741882ae1fdc6ae3c75cf435fb79e9de82d356338f5007dc3bf1a698548"
   - id: path_policy
     path: .agent-guard/path-policy.yaml
     sha256: "28fda352e90fde02a479ea0f5bd369655488257f73d78ccd883e085557e5f6a7"

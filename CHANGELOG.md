@@ -13,6 +13,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Added `agent-guard workflow check` for deterministic CI guard-command and
   required-policy-file drift checks.
 - Added optional workflow drift evidence to `agent-guard report`.
+- Added optional path, content, and API evidence sections to
+  `agent-guard report` without emitting snippets, URLs, raw regex patterns, or
+  absolute local paths.
 
 ## 0.1.2 - 2026-06-26
 
