@@ -4,6 +4,20 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.4 - 2026-06-27
+
+- Added `agent-guard report --format json` for sanitized machine-readable
+  evidence reports backed by the shared `agent-guard.result.v1` envelope.
+- Added golden fixture coverage for Markdown, JSON, and GitHub annotation
+  report evidence outputs.
+- Added `agent-guard context lock --check --digest-policy <yaml>` to fail when
+  discovered agent context files are missing from, partially pinned by, or
+  mismatched against a committed digest policy.
+- Added context lock coverage evidence and an `agent-guard.report_evidence.v1`
+  contract marker to sanitized reports.
+- Documented SARIF as intentionally deferred while JSON and GitHub annotations
+  remain the supported CI-friendly report formats.
+
 ## 0.1.3 - 2026-06-26
 
 - Added `agent-guard context inventory --json` for redacted agent context
@@ -20,11 +34,6 @@ Why: keep static guard releases auditable while the package is still alpha.
   GitHub Actions annotations backed by the same report evidence payload.
 - Added `agent-guard context lock` to generate digest policy checks for
   discovered agent context files without emitting raw context content.
-- Added `agent-guard context lock --check --digest-policy <yaml>` to fail when
-  discovered agent context files are missing from, partially pinned by, or
-  mismatched against a committed digest policy.
-- Added context lock coverage evidence and an `agent-guard.report_evidence.v1`
-  contract marker to sanitized reports.
 
 ## 0.1.2 - 2026-06-26
 

@@ -77,9 +77,12 @@ def test_readme_documents_report_evidence_contract() -> None:
 
     assert "agent-guard.report_evidence.v1" in readme
     assert "agent-guard.result.v1" in readme
+    assert "--format <markdown|json|github-annotations>" in readme
+    assert "Use `--format json`" in readme
     assert "Context Lock Coverage Evidence" in readme
     assert "does not emit context text" in readme
     assert "hash values" in readme
+    assert "SARIF is intentionally" in readme
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

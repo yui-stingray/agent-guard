@@ -270,7 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--workflow-policy", default="", help="optional workflow YAML policy path for drift evidence")
     report.add_argument(
         "--format",
-        choices=("markdown", "github-annotations"),
+        choices=("markdown", "json", "github-annotations"),
         default="markdown",
         help="report output format",
     )
@@ -279,6 +279,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def render_report_output(payload: dict[str, object], output_format: str) -> str:
+    if output_format == "json":
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
     if output_format == "github-annotations":
         return render_github_annotations_report(payload)
     return render_markdown_evidence_report(payload)
@@ -769,6 +771,18 @@ def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
     }
 
 
+def safe_report_scan_dir(raw_scan_dir: str, root: Path, policy_abs: Path, safe_policy: str) -> str:
+    scan_dir = Path(raw_scan_dir)
+    if not scan_dir.is_absolute():
+        return raw_scan_dir
+    return scrub_error_path(
+        raw_scan_dir,
+        root=root,
+        policy_abs=policy_abs,
+        safe_policy=safe_policy,
+    )
+
+
 def build_context_lock_report(
     *,
     root: Path,
@@ -800,6 +814,7 @@ def run_report(args: argparse.Namespace) -> int:
     api_policy_arg = str(args.api_policy).strip()
     digest_policy_arg = str(args.digest_policy).strip()
     workflow_policy_arg = str(args.workflow_policy).strip()
+    safe_context_policy_path = safe_policy_path(args.context_policy, root)
     scope = report_scope(
         path_enabled=bool(path_policy_arg),
         content_enabled=bool(content_policy_arg),
@@ -904,7 +919,12 @@ def run_report(args: argparse.Namespace) -> int:
                         "content": {
                             "policy": {"path": safe_policy_path(content_policy_arg, root)},
                             "mode": "registered",
-                            "scan_dir": content_scan_dir_arg,
+                            "scan_dir": safe_report_scan_dir(
+                                content_scan_dir_arg,
+                                root,
+                                policy_path,
+                                safe_context_policy_path,
+                            ),
                         }
                     }
                     if content_policy_arg

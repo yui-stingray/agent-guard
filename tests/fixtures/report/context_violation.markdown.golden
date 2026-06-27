@@ -1,0 +1,55 @@
+# Agent Guard Evidence Report
+
+| Field | Value |
+| --- | --- |
+| Tool | agent-guard <version> |
+| Scope | context |
+| Status | violation |
+| Exit code | 1 |
+| Policy | context_policy.yaml |
+| Evidence contract | agent-guard.report_evidence.v1 |
+
+## Summary
+
+| Metric | Value |
+| --- | --- |
+| Context files scanned | 1 |
+| Unsafe context findings | 1 |
+| Inventory evidence records | 5 |
+| Permission boundaries present | 3 |
+| Permission boundaries missing | 3 |
+
+## Context Check Findings
+
+| Severity | Rule | File | Line |
+| --- | --- | --- | --- |
+| high | approval_bypass | AGENTS.md | 1 |
+
+## Context Files
+
+| Path | Kind | Read status | Lines | Evidence records |
+| --- | --- | --- | --- | --- |
+| AGENTS.md | agents_md | scanned | 3 | 5 |
+
+## Evidence Records
+
+| File | Line | Category | Rule |
+| --- | --- | --- | --- |
+| AGENTS.md | 1 | approval_boundary | approval_boundary_mention |
+| AGENTS.md | 2 | approval_boundary | approval_boundary_mention |
+| AGENTS.md | 3 | local_verification | local_verification_mention |
+| AGENTS.md | 1 | tool_permission_boundary | tool_permission_boundary_mention |
+| AGENTS.md | 2 | tool_permission_boundary | tool_permission_boundary_mention |
+
+## Permission Boundary Evidence
+
+| Category | Status | Evidence records |
+| --- | --- | --- |
+| approval_boundary | present | 2 |
+| tool_permission_boundary | present | 2 |
+| network_boundary | missing | 0 |
+| secret_handling | missing | 0 |
+| destructive_action_boundary | missing | 0 |
+| local_verification | present | 1 |
+
+Sanitization: report cells are limited to deterministic metadata; raw source lines, raw workflow commands, workflow run bodies, rule patterns, URLs, hashes, secrets, and absolute local paths are omitted or redacted.

@@ -5,7 +5,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.3` alpha. The current MVP ships six scanners: `api`, `content`, `context`, `path`, `digest`, and `workflow`.
+**Status**: `0.1.4` alpha. The current MVP ships six scanners: `api`, `content`, `context`, `path`, `digest`, and `workflow`.
 
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
@@ -104,6 +104,7 @@ Sanitized review evidence report:
 
 ```bash
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
@@ -144,7 +145,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.3"},
+  "tool": {"name": "agent-guard", "version": "0.1.4"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -220,7 +221,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.3"]
+        additional_dependencies: ["yui-agent-guard==0.1.4"]
         args:
           - path
           - check
@@ -236,7 +237,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.3"]
+        additional_dependencies: ["yui-agent-guard==0.1.4"]
         args:
           - context
           - check
@@ -252,7 +253,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.3"]
+        additional_dependencies: ["yui-agent-guard==0.1.4"]
         args:
           - content
           - check
@@ -376,6 +377,7 @@ review notes, and GitHub Actions annotations:
 
 ```bash
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
@@ -411,6 +413,12 @@ The Markdown heading for this evidence is `Context Lock Coverage Evidence`.
 Report output omits raw context contents, snippets, matched text, raw regex
 patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
 escape HTML and Markdown control characters before output.
+
+Use `--format json` to emit the same sanitized evidence payload inside the
+shared `agent-guard.result.v1` envelope. This is the machine-readable report
+contract for wrappers, CI checks, and downstream tooling. SARIF is intentionally
+deferred until this JSON evidence contract has downstream usage; the current
+CI-friendly report formats are JSON and GitHub annotations.
 
 Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean
@@ -659,7 +667,7 @@ agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format <markdown|github-annotations>]
+agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format <markdown|json|github-annotations>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]
