@@ -16,6 +16,8 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Added optional path, content, and API evidence sections to
   `agent-guard report` without emitting snippets, URLs, raw regex patterns, or
   absolute local paths.
+- Added `agent-guard report --format github-annotations` for sanitized
+  GitHub Actions annotations backed by the same report evidence payload.
 
 ## 0.1.2 - 2026-06-26
 

@@ -102,6 +102,7 @@ Sanitized review evidence report:
 
 ```bash
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
@@ -347,11 +348,12 @@ For `context inventory`, exit `0` means inventory collection succeeded and exit
 `2` means configuration/runtime error. Evidence and missing boundary categories
 are report data, not violations.
 
-The report command renders a deterministic Markdown projection for pull requests
-and review notes:
+The report command renders deterministic review evidence for pull requests,
+review notes, and GitHub Actions annotations:
 
 ```bash
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
@@ -377,6 +379,12 @@ not emit expected or actual SHA-256 values, raw workflow commands, or workflow
 Report output omits raw context contents, snippets, matched text, raw regex
 patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
 escape HTML and Markdown control characters before output.
+
+Use `--format github-annotations` in GitHub Actions to emit `::error` or
+`::warning` lines for findings and drift from the same sanitized payload. Clean
+reports are quiet in this format. Annotation titles and messages contain only
+controlled scanner metadata such as scanner name, rule id, category, status, or
+reason.
 
 For `report`, it returns:
 - exit `0` when the report is generated and all enabled checks pass
@@ -612,7 +620,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format markdown]
+agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format <markdown|github-annotations>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]

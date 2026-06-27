@@ -27,7 +27,7 @@ from .content_guard import (
 )
 from .digest_guard import load_digest_policy, scan_digests
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
-from .report import render_markdown_evidence_report
+from .report import render_github_annotations_report, render_markdown_evidence_report
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
@@ -239,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_check.add_argument("--policy", required=True, help="YAML policy path")
     workflow_check.add_argument("--json", action="store_true", help="emit JSON")
 
-    report = top.add_parser("report", help="emit sanitized Markdown evidence for reviews")
+    report = top.add_parser("report", help="emit sanitized evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
     report.add_argument("--path-policy", default="", help="optional path YAML policy path for path-name evidence")
@@ -252,9 +252,20 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--api-policy", default="", help="optional API YAML policy path for API surface evidence")
     report.add_argument("--digest-policy", default="", help="optional digest YAML policy path for drift evidence")
     report.add_argument("--workflow-policy", default="", help="optional workflow YAML policy path for drift evidence")
-    report.add_argument("--format", choices=("markdown",), default="markdown", help="report output format")
+    report.add_argument(
+        "--format",
+        choices=("markdown", "github-annotations"),
+        default="markdown",
+        help="report output format",
+    )
 
     return parser
+
+
+def render_report_output(payload: dict[str, object], output_format: str) -> str:
+    if output_format == "github-annotations":
+        return render_github_annotations_report(payload)
+    return render_markdown_evidence_report(payload)
 
 
 def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None:
@@ -726,7 +737,7 @@ def run_report(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        print(render_markdown_evidence_report(payload), end="")
+        print(render_report_output(payload, args.format), end="")
         return 2
 
     path_finding_count = int(path_report["finding_count"]) if path_report else 0
@@ -827,7 +838,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"workflow": workflow_report} if workflow_report else {}),
         },
     )
-    print(render_markdown_evidence_report(payload), end="")
+    print(render_report_output(payload, args.format), end="")
     return exit_code
 
 

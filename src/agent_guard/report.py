@@ -1,5 +1,5 @@
 """Where: src/agent_guard/report.py
-What: sanitized Markdown evidence report rendering.
+What: sanitized evidence report rendering.
 Why: let maintainers attach deterministic guard evidence to reviews without leaking raw repository content.
 """
 
@@ -54,6 +54,54 @@ def markdown_table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> 
     return table
 
 
+def github_command_data(value: object) -> str:
+    text = "-" if value is None or value == "" else str(value)
+    text = redact_text(text)
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def github_command_property(value: object) -> str:
+    return github_command_data(value).replace(":", "%3A").replace(",", "%2C")
+
+
+def positive_line_number(value: object) -> str:
+    try:
+        line = int(str(value))
+    except (TypeError, ValueError):
+        return ""
+    return str(line) if line > 0 else ""
+
+
+def annotation_level(severity: object, *, default: str = "warning") -> str:
+    return "error" if str(severity).lower() == "high" else default
+
+
+def github_annotation(
+    *,
+    level: str,
+    title: object,
+    message: object,
+    file: object = "",
+    line: object = "",
+) -> str:
+    properties: list[tuple[str, object]] = []
+    if file not in (None, "", "-"):
+        properties.append(("file", file))
+    line_number = positive_line_number(line)
+    if line_number:
+        properties.append(("line", line_number))
+    if title not in (None, ""):
+        properties.append(("title", title))
+
+    property_text = ",".join(
+        f"{key}={github_command_property(value)}" for key, value in properties
+    )
+    prefix = f"::{level}"
+    if property_text:
+        prefix = f"{prefix} {property_text}"
+    return f"{prefix}::{github_command_data(message)}"
+
+
 def as_mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
@@ -62,6 +110,118 @@ def as_sequence(value: object) -> Sequence[object]:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return value
     return ()
+
+
+def render_github_annotations_report(payload: Mapping[str, object]) -> str:
+    """Render sanitized GitHub Actions workflow-command annotations."""
+
+    path = as_mapping(payload.get("path"))
+    content = as_mapping(payload.get("content"))
+    api = as_mapping(payload.get("api"))
+    digest = as_mapping(payload.get("digest"))
+    workflow = as_mapping(payload.get("workflow"))
+    findings = as_sequence(payload.get("findings"))
+    path_findings = as_sequence(path.get("findings"))
+    content_findings = as_sequence(content.get("findings"))
+    api_findings = as_sequence(api.get("findings"))
+    digest_findings = as_sequence(digest.get("findings"))
+    workflow_findings = as_sequence(workflow.get("findings"))
+
+    lines: list[str] = []
+    if payload.get("status") == "error":
+        lines.append(
+            github_annotation(
+                level="error",
+                title="agent-guard report",
+                message=f"report error: {payload.get('error', 'unknown error')}",
+            )
+        )
+        return "\n".join(lines) + "\n"
+
+    for item in findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard context: {rule_id}",
+                message=f"context finding: {rule_id}",
+                file=finding.get("file", ""),
+                line=finding.get("line", ""),
+            )
+        )
+
+    for item in path_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard path: {rule_id}",
+                message=f"path guard finding: {rule_id}",
+                file=finding.get("path", ""),
+            )
+        )
+
+    for item in content_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard content: {rule_id}",
+                message=f"content guard finding: {rule_id}",
+                file=finding.get("file", ""),
+                line=finding.get("line", ""),
+            )
+        )
+
+    for item in api_findings:
+        finding = as_mapping(item)
+        category = finding.get("category", "forbidden_api")
+        lines.append(
+            github_annotation(
+                level="error",
+                title=f"agent-guard api: {category}",
+                message=f"api guard finding: {category}",
+                file=finding.get("path", ""),
+                line=finding.get("line", ""),
+            )
+        )
+
+    for item in digest_findings:
+        finding = as_mapping(item)
+        check_id = finding.get("check_id", "-")
+        status = finding.get("status", "-")
+        lines.append(
+            github_annotation(
+                level="error",
+                title=f"agent-guard digest: {check_id}",
+                message=f"digest drift: {check_id} ({status})",
+                file=finding.get("path", ""),
+            )
+        )
+
+    for item in workflow_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        workflow_id = finding.get("workflow_id", "")
+        requirement_id = finding.get("requirement_id", "")
+        suffix = (
+            f" ({workflow_id}/{requirement_id})"
+            if workflow_id and requirement_id
+            else ""
+        )
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard workflow: {rule_id}",
+                message=f"workflow drift: {finding.get('reason', '-')}{suffix}",
+                file=finding.get("file", ""),
+            )
+        )
+
+    return "\n".join(lines) + ("\n" if lines else "")
 
 
 def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
