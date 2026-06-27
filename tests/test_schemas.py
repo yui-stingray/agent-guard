@@ -16,6 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "src" / "agent_guard" / "schemas"
+EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 EXPECTED_SCHEMAS = {
     "agent-guard.result.v1.schema.json": "agent-guard.result.v1",
     "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
@@ -184,3 +185,22 @@ def test_report_schema_validates_error_cli_payload(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert "inventory" not in payload
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+
+
+def test_public_sample_report_matches_schema_and_is_sanitized() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+
+    validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+    serialized = json.dumps(payload, sort_keys=True)
+    forbidden_fragments = (
+        "/home/",
+        "/Users/",
+        "C:\\Users\\",
+        "snippet",
+        "matched_text",
+        "raw_regex",
+        "sha256",
+        "token",
+    )
+    for fragment in forbidden_fragments:
+        assert fragment not in serialized

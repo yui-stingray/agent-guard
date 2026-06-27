@@ -58,6 +58,10 @@ See
 [`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example)
 for a small public demo that wires the two tools together.
 
+See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
+versioned evidence contract, public-safe sample report, CI artifact guidance,
+SARIF status, and non-goals.
+
 ## Install
 
 ```bash

@@ -21,6 +21,8 @@ from agent_guard.workflow_guard import load_workflow_policy, scan_workflow_polic
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
+EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
+EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
 SELF_PATH_POLICY = REPO_ROOT / ".agent-guard" / "path-policy.yaml"
@@ -76,6 +78,7 @@ def test_readme_documents_agent_policy_companion_boundary() -> None:
 def test_readme_documents_report_evidence_contract() -> None:
     readme = README.read_text(encoding="utf-8")
 
+    assert "docs/evidence-contracts.md" in readme
     assert "agent-guard.report_evidence.v1" in readme
     assert "agent-guard.result.v1" in readme
     assert "--format <markdown|json|github-annotations>" in readme
@@ -88,6 +91,19 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "does not emit context text" in readme
     assert "hash values" in readme
     assert "SARIF is intentionally" in readme
+
+
+def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
+    docs = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
+
+    assert EVIDENCE_SAMPLE_REPORT.is_file()
+    assert "Minimal Adoption Path" in docs
+    assert "CI artifact" in docs
+    assert "agent-policy" in docs
+    assert "SARIF is intentionally deferred" in docs
+    assert "LLM reviewer" in docs
+    assert "model router" in docs
+    assert "large governance framework" in docs
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

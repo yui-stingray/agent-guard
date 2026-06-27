@@ -1,0 +1,153 @@
+{
+  "schema_version": "agent-guard.result.v1",
+  "tool": {
+    "name": "agent-guard",
+    "version": "0.1.5"
+  },
+  "scanner": "context",
+  "status": "ok",
+  "exit_code": 0,
+  "policy": {
+    "path": ".agent-guard/context-policy.yaml"
+  },
+  "summary": {
+    "finding_count": 0,
+    "scanned_count": 1,
+    "scanned_unit": "files",
+    "context_file_count": 1,
+    "evidence_count": 6
+  },
+  "finding_count": 0,
+  "findings": [],
+  "command": "report",
+  "report": {
+    "schema_version": "agent-guard.report_evidence.v1",
+    "format": "json",
+    "scope": "context,digest,workflow",
+    "sanitized": true
+  },
+  "inventory": {
+    "schema_version": "agent-guard.context_inventory.v1",
+    "context_files": [
+      {
+        "path": "AGENTS.md",
+        "kind": "agents_md",
+        "read_status": "scanned",
+        "line_count": 42,
+        "size_bytes": 1800,
+        "evidence": [
+          {
+            "category": "approval_boundary",
+            "rule_id": "approval_boundary_mention",
+            "line": 10,
+            "evidence_id": "approval_boundary:AGENTS.md:10:approval_boundary_mention"
+          },
+          {
+            "category": "tool_permission_boundary",
+            "rule_id": "tool_permission_boundary_mention",
+            "line": 14,
+            "evidence_id": "tool_permission_boundary:AGENTS.md:14:tool_permission_boundary_mention"
+          },
+          {
+            "category": "network_boundary",
+            "rule_id": "network_boundary_mention",
+            "line": 18,
+            "evidence_id": "network_boundary:AGENTS.md:18:network_boundary_mention"
+          },
+          {
+            "category": "secret_handling",
+            "rule_id": "secret_handling_mention",
+            "line": 22,
+            "evidence_id": "secret_handling:AGENTS.md:22:secret_handling_mention"
+          },
+          {
+            "category": "destructive_action_boundary",
+            "rule_id": "destructive_action_boundary_mention",
+            "line": 26,
+            "evidence_id": "destructive_action_boundary:AGENTS.md:26:destructive_action_boundary_mention"
+          },
+          {
+            "category": "local_verification",
+            "rule_id": "local_verification_mention",
+            "line": 30,
+            "evidence_id": "local_verification:AGENTS.md:30:local_verification_mention"
+          }
+        ]
+      }
+    ],
+    "permission_boundaries": [
+      {
+        "category": "approval_boundary",
+        "status": "present",
+        "evidence_ids": [
+          "approval_boundary:AGENTS.md:10:approval_boundary_mention"
+        ]
+      },
+      {
+        "category": "tool_permission_boundary",
+        "status": "present",
+        "evidence_ids": [
+          "tool_permission_boundary:AGENTS.md:14:tool_permission_boundary_mention"
+        ]
+      },
+      {
+        "category": "network_boundary",
+        "status": "present",
+        "evidence_ids": [
+          "network_boundary:AGENTS.md:18:network_boundary_mention"
+        ]
+      },
+      {
+        "category": "secret_handling",
+        "status": "present",
+        "evidence_ids": [
+          "secret_handling:AGENTS.md:22:secret_handling_mention"
+        ]
+      },
+      {
+        "category": "destructive_action_boundary",
+        "status": "present",
+        "evidence_ids": [
+          "destructive_action_boundary:AGENTS.md:26:destructive_action_boundary_mention"
+        ]
+      },
+      {
+        "category": "local_verification",
+        "status": "present",
+        "evidence_ids": [
+          "local_verification:AGENTS.md:30:local_verification_mention"
+        ]
+      }
+    ]
+  },
+  "context_lock": {
+    "policy": {
+      "path": ".agent-guard/context-digest-policy.yaml"
+    },
+    "status": "ok",
+    "checked_count": 1,
+    "covered_count": 1,
+    "covered": [
+      {
+        "path": "AGENTS.md",
+        "kind": "agents_md",
+        "status": "covered",
+        "check_id": "root_agents_md"
+      }
+    ],
+    "finding_count": 0,
+    "findings": []
+  },
+  "digest": {
+    "status": "ok",
+    "checked_count": 2,
+    "finding_count": 0,
+    "findings": []
+  },
+  "workflow": {
+    "status": "ok",
+    "checked_count": 1,
+    "finding_count": 0,
+    "findings": []
+  }
+}
