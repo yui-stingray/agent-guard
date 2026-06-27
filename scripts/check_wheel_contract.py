@@ -72,7 +72,9 @@ def main() -> int:
         run([str(python), "-m", "pip", "install", "--quiet", str(wheel)], cwd=temp)
         smoke = textwrap.dedent(
             f"""
+            import json
             import agent_guard
+            from importlib import resources
 
             expected_exports = {sorted(EXPECTED_EXPORTS)!r}
             assert sorted(agent_guard.__all__) == expected_exports
@@ -80,6 +82,21 @@ def main() -> int:
             assert agent_guard.scan_paths is agent_guard.scan_content_paths
             for name in expected_exports:
                 assert getattr(agent_guard, name) is not None
+
+            schema_names = {{
+                "agent-guard.result.v1.schema.json": "agent-guard.result.v1",
+                "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
+                "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
+                "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+            }}
+            schema_dir = resources.files("agent_guard.schemas")
+            for filename, schema_version in schema_names.items():
+                schema = json.loads((schema_dir / filename).read_text(encoding="utf-8"))
+                assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+                if filename == "agent-guard.report_evidence.v1.schema.json":
+                    assert schema["properties"]["report"]["properties"]["schema_version"]["const"] == schema_version
+                else:
+                    assert schema["properties"]["schema_version"]["const"] == schema_version
             """
         )
         run([str(python), "-c", smoke], cwd=temp)
@@ -235,6 +252,44 @@ def main() -> int:
         assert "| Workflow drift findings | 0 |" in report_cli.stdout
         assert agent_context_sha256 not in report_cli.stdout
         assert str(temp) not in report_cli.stdout
+
+        report_output = repo / ".agent-guard" / "evidence" / "agent-guard-report.json"
+        report_output_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "report",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+                "--digest-policy",
+                str(digest_policy),
+                "--workflow-policy",
+                str(workflow_policy),
+                "--format",
+                "json",
+                "--output",
+                str(report_output),
+            ],
+            cwd=temp,
+        )
+        assert report_output_cli.stdout == ""
+        report_payload = json.loads(report_output.read_text(encoding="utf-8"))
+        assert report_payload["schema_version"] == "agent-guard.result.v1"
+        assert report_payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
+        assert report_payload["report"]["format"] == "json"
+        assert report_payload["context_lock"]["covered"] == [
+            {
+                "path": "AGENTS.md",
+                "kind": "agents_md",
+                "status": "covered",
+                "check_id": "agent_context_pin",
+            }
+        ]
+        assert agent_context_sha256 not in report_output.read_text(encoding="utf-8")
+        assert str(temp) not in report_output.read_text(encoding="utf-8")
 
     print(f"wheel contract OK: {wheel.name}")
     return 0

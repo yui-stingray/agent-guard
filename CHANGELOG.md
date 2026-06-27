@@ -4,6 +4,18 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.5 - 2026-06-27
+
+- Added packaged JSON Schema resources for the shared result envelope, context
+  inventory, context lock coverage, and sanitized report evidence contracts.
+- Added `agent-guard report --output <path>` so CI can write deterministic
+  Markdown or JSON evidence artifacts without stdout redirection.
+- Added hash-free covered context file evidence to context lock coverage and
+  report JSON/Markdown output.
+- Updated self-dogfood CI to upload sanitized evidence report artifacts.
+- Kept SARIF intentionally deferred until the JSON evidence contract has more
+  downstream usage.
+
 ## 0.1.4 - 2026-06-27
 
 - Added `agent-guard report --format json` for sanitized machine-readable

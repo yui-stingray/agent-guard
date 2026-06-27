@@ -125,6 +125,14 @@ def test_context_lock_coverage_accepts_full_digest_pin(tmp_path: Path) -> None:
         "status": "ok",
         "context_file_count": 1,
         "covered_count": 1,
+        "covered": [
+            {
+                "path": "AGENTS.md",
+                "kind": "agents_md",
+                "status": "covered",
+                "check_id": "root_agents_md",
+            }
+        ],
         "finding_count": 0,
         "findings": [],
     }

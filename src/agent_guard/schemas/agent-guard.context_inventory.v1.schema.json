@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.context_inventory.v1.schema.json",
+  "title": "agent-guard context inventory v1",
+  "type": "object",
+  "required": ["schema_version", "context_files", "permission_boundaries"],
+  "properties": {
+    "schema_version": {"const": "agent-guard.context_inventory.v1"},
+    "context_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "read_status", "size_bytes", "evidence"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"type": "string"},
+          "read_status": {
+            "type": "string",
+            "enum": ["scanned", "binary", "decode_error", "read_error"]
+          },
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "line_count": {"type": "integer", "minimum": 0},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["evidence_id", "category", "rule_id", "line"],
+              "properties": {
+                "evidence_id": {"type": "string"},
+                "category": {"type": "string"},
+                "rule_id": {"type": "string"},
+                "line": {"type": "integer", "minimum": 1}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "permission_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "status", "evidence_ids"],
+        "properties": {
+          "category": {"type": "string"},
+          "status": {"type": "string", "enum": ["present", "missing"]},
+          "evidence_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

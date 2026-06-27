@@ -66,6 +66,7 @@ jobs:
           python -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
       - name: Run self-dogfood evidence gates
         run: |
+          mkdir -p .agent-guard/evidence
           python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml --json
           python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
           python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml > /tmp/agent-guard-self-context-lock.yaml
@@ -74,8 +75,16 @@ jobs:
           python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
           python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
           python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
-          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown > /tmp/agent-guard-evidence-report.md
+          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md
+          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
           python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format github-annotations
+      - name: Upload self-dogfood evidence report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: agent-guard-evidence-report
+          path: .agent-guard/evidence/
+          if-no-files-found: error
       - name: Build sdist + wheel
         if: matrix.python-version == '3.12'
         run: python -m build

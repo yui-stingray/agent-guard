@@ -38,3 +38,5 @@ workflow_checks:
         command: python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: evidence_report_self
         command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml
+      - id: evidence_report_json_artifact_self
+        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json

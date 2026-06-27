@@ -634,6 +634,14 @@ def test_context_lock_cli_check_coverage_ok(tmp_path: Path) -> None:
     assert payload["digest_policy"] == {"path": "digest_policy.yaml"}
     assert payload["coverage"]["schema_version"] == "agent-guard.context_lock_coverage.v1"
     assert payload["coverage"]["covered_count"] == 1
+    assert payload["coverage"]["covered"] == [
+        {
+            "path": "AGENTS.md",
+            "kind": "agents_md",
+            "status": "covered",
+            "check_id": "root_agents_md",
+        }
+    ]
     assert payload["coverage"]["findings"] == []
     assert sha256_text(agent_context) not in result.stdout
     assert agent_context.strip() not in result.stdout
@@ -691,6 +699,14 @@ def test_context_lock_cli_check_coverage_fails_on_unpinned_context(tmp_path: Pat
         }
     ]
     assert payload["coverage"]["covered_count"] == 1
+    assert payload["coverage"]["covered"] == [
+        {
+            "path": "AGENTS.md",
+            "kind": "agents_md",
+            "status": "covered",
+            "check_id": "root_agents_md",
+        }
+    ]
     assert sha256_text(agent_context) not in result.stdout
     assert claude_context.strip() not in result.stdout
     assert str(tmp_path) not in result.stdout
@@ -877,6 +893,45 @@ def test_report_cli_json_violation_is_sanitized(tmp_path: Path) -> None:
     assert "agent context must not instruct" not in result.stdout
     assert "snippet" not in result.stdout
     assert "matched_text" not in result.stdout
+
+
+def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    content_marker = "fixture marker output"
+    write(
+        tmp_path / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        f"Run pytest before reporting completion. {content_marker}\n",
+    )
+    output = tmp_path / "evidence" / "agent-guard-report.json"
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--format",
+        "json",
+        "--output",
+        str(output),
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert_shared_envelope(payload, scanner="context", status="ok", exit_code=0, finding_count=0)
+    assert payload["command"] == "report"
+    assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
+    assert payload["report"]["format"] == "json"
+    assert payload["report"]["sanitized"] is True
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert str(tmp_path) not in serialized
+    assert content_marker not in serialized
+    assert "snippet" not in serialized
+    assert "matched_text" not in serialized
 
 
 def test_report_cli_json_error_is_parseable_and_scrubs_paths(tmp_path: Path) -> None:
@@ -1075,6 +1130,8 @@ def test_report_cli_markdown_digest_policy_ok(tmp_path: Path) -> None:
     assert "| Context lock checked | 1 |" in result.stdout
     assert "| Context lock covered | 1 |" in result.stdout
     assert "| Context lock coverage findings | 0 |" in result.stdout
+    assert "Covered context files:" in result.stdout
+    assert "| AGENTS.md | agents_md | covered | agent_context_pin |" in result.stdout
     assert "| Digest checks | 1 |" in result.stdout
     assert "| Digest drift findings | 0 |" in result.stdout
     assert "## Context Lock Coverage Evidence" in result.stdout

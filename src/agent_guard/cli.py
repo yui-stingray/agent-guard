@@ -274,6 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="markdown",
         help="report output format",
     )
+    report.add_argument("--output", default="", help="optional output path; stdout when omitted")
 
     return parser
 
@@ -284,6 +285,17 @@ def render_report_output(payload: dict[str, object], output_format: str) -> str:
     if output_format == "github-annotations":
         return render_github_annotations_report(payload)
     return render_markdown_evidence_report(payload)
+
+
+def emit_report_output(rendered: str, output_path: str) -> None:
+    output = str(output_path).strip()
+    if not output:
+        print(rendered, end="")
+        return
+
+    path = Path(output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(rendered, encoding="utf-8")
 
 
 def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None:
@@ -800,6 +812,7 @@ def build_context_lock_report(
         "status": coverage["status"],
         "checked_count": coverage["context_file_count"],
         "covered_count": coverage["covered_count"],
+        "covered": coverage.get("covered", []),
         "finding_count": coverage["finding_count"],
         "findings": coverage["findings"],
     }
@@ -947,7 +960,7 @@ def run_report(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        print(render_report_output(payload, args.format), end="")
+        emit_report_output(render_report_output(payload, args.format), args.output)
         return 2
 
     path_finding_count = int(path_report["finding_count"]) if path_report else 0
@@ -1063,7 +1076,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"workflow": workflow_report} if workflow_report else {}),
         },
     )
-    print(render_report_output(payload, args.format), end="")
+    emit_report_output(render_report_output(payload, args.format), args.output)
     return exit_code
 
 

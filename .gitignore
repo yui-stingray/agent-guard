@@ -6,3 +6,4 @@ dist/
 *.egg-info/
 .venv312/
 .venv-py312/
+.agent-guard/evidence/

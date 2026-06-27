@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.context_lock_coverage.v1.schema.json",
+  "title": "agent-guard context lock coverage v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "context_file_count",
+    "covered_count",
+    "covered",
+    "finding_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "agent-guard.context_lock_coverage.v1"},
+    "status": {"type": "string", "enum": ["ok", "violation"]},
+    "context_file_count": {"type": "integer", "minimum": 0},
+    "covered_count": {"type": "integer", "minimum": 0},
+    "covered": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "status", "check_id"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"type": "string"},
+          "status": {"const": "covered"},
+          "check_id": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "finding_count": {"type": "integer", "minimum": 0},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "severity", "path", "status", "check_id", "message"],
+        "properties": {
+          "rule_id": {"type": "string"},
+          "severity": {"type": "string"},
+          "path": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["missing", "partial", "mismatch"]
+          },
+          "check_id": {"type": "string"},
+          "message": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
+SCHEMA_DIR = PACKAGE_DIR / "schemas"
 SELF_PATH_POLICY = REPO_ROOT / ".agent-guard" / "path-policy.yaml"
 SELF_CONTEXT_POLICY = REPO_ROOT / ".agent-guard" / "context-policy.yaml"
 SELF_CONTENT_POLICY = REPO_ROOT / ".agent-guard" / "content-policy.yaml"
@@ -78,7 +79,11 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "agent-guard.report_evidence.v1" in readme
     assert "agent-guard.result.v1" in readme
     assert "--format <markdown|json|github-annotations>" in readme
+    assert "--output <path>" in readme
     assert "Use `--format json`" in readme
+    assert "Packaged JSON schemas" in readme
+    assert "agent-guard.context_inventory.v1.schema.json" in readme
+    assert "agent-guard.context_lock_coverage.v1.schema.json" in readme
     assert "Context Lock Coverage Evidence" in readme
     assert "does not emit context text" in readme
     assert "hash values" in readme
@@ -145,14 +150,34 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
     )
     assert coverage["status"] == "ok"
     assert coverage["covered_count"] == coverage["context_file_count"]
+    assert coverage["covered"] == [
+        {
+            "path": "AGENTS.md",
+            "kind": "agents_md",
+            "status": "covered",
+            "check_id": "root_agents_md",
+        }
+    ]
     assert coverage["findings"] == []
 
     workflow_findings, workflow_checked = scan_workflow_policy(
         root=REPO_ROOT,
         policy=load_workflow_policy(SELF_WORKFLOW_POLICY),
     )
-    assert workflow_checked == 14
+    assert workflow_checked == 15
     assert workflow_findings == []
+
+
+def test_schema_resources_are_present_in_package_tree() -> None:
+    expected = {
+        "agent-guard.result.v1.schema.json",
+        "agent-guard.context_inventory.v1.schema.json",
+        "agent-guard.context_lock_coverage.v1.schema.json",
+        "agent-guard.report_evidence.v1.schema.json",
+    }
+
+    assert SCHEMA_DIR.is_dir()
+    assert {path.name for path in SCHEMA_DIR.glob("*.schema.json")} == expected
 
 
 def test_py_typed_marker_is_present() -> None:

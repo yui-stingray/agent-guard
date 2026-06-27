@@ -259,6 +259,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
     api_findings = as_sequence(api.get("findings"))
+    context_lock_covered = as_sequence(context_lock.get("covered"))
     context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
@@ -464,6 +465,20 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             )
         else:
             lines.append("All discovered agent context files are fully pinned by the digest policy.")
+        if context_lock_covered:
+            lines.extend(["", "Covered context files:"])
+            covered_rows = []
+            for item in context_lock_covered:
+                covered = as_mapping(item)
+                covered_rows.append(
+                    (
+                        covered.get("path", "-"),
+                        covered.get("kind", "-"),
+                        covered.get("status", "-"),
+                        covered.get("check_id", "-"),
+                    )
+                )
+            lines.extend(markdown_table(("Path", "Kind", "Status", "Check"), covered_rows))
 
     if digest:
         lines.extend(["", "## Digest Drift Evidence", ""])

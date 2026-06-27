@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.result.v1.schema.json",
+  "title": "agent-guard shared result envelope v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool",
+    "scanner",
+    "status",
+    "exit_code",
+    "policy",
+    "summary",
+    "finding_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "agent-guard.result.v1"},
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "agent-guard"},
+        "version": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "scanner": {
+      "type": "string",
+      "enum": ["api", "content", "context", "path", "digest", "workflow"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "violation", "error"]
+    },
+    "exit_code": {"type": "integer"},
+    "policy": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["finding_count"],
+      "properties": {
+        "finding_count": {"type": "integer", "minimum": 0},
+        "scanned_count": {"type": "integer", "minimum": 0},
+        "scanned_unit": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "finding_count": {"type": "integer", "minimum": 0},
+    "findings": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": true}
+    },
+    "error": {"type": "string"}
+  },
+  "additionalProperties": true
+}

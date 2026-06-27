@@ -113,6 +113,7 @@ def check_context_digest_coverage(
         checks_by_path.setdefault(rel_path, []).append(check)
 
     findings: list[ContextLockCoverageFinding] = []
+    covered: list[dict[str, object]] = []
     covered_count = 0
     for entry in inventory.context_files:
         target = (root / entry.path).resolve()
@@ -161,8 +162,20 @@ def check_context_digest_coverage(
             continue
 
         actual_sha256 = sha256_file(target)
-        if any(check.expected_sha256 == actual_sha256 for check in full_file_checks):
+        matching_check = next(
+            (check for check in full_file_checks if check.expected_sha256 == actual_sha256),
+            None,
+        )
+        if matching_check is not None:
             covered_count += 1
+            covered.append(
+                {
+                    "path": rel_path,
+                    "kind": entry.kind,
+                    "status": "covered",
+                    "check_id": matching_check.check_id,
+                }
+            )
             continue
         findings.append(
             ContextLockCoverageFinding(
@@ -180,6 +193,7 @@ def check_context_digest_coverage(
         "status": "ok" if not findings else "violation",
         "context_file_count": len(inventory.context_files),
         "covered_count": covered_count,
+        "covered": covered,
         "finding_count": len(findings),
         "findings": [finding.to_dict() for finding in findings],
     }
