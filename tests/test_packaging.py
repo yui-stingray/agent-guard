@@ -10,6 +10,7 @@ from pathlib import Path
 
 import agent_guard
 from agent_guard.context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from agent_guard.context_lock import check_context_digest_coverage
 from agent_guard.content_guard import build_rules, collect_registered_targets, load_content_policy
 from agent_guard.content_guard import scan_paths as scan_content_paths
 from agent_guard.digest_guard import load_digest_policy, scan_digests
@@ -47,6 +48,11 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
     assert "## CI gate recipe" in readme
     assert "agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json" in readme
     assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in readme
+    assert (
+        "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml "
+        "--check --digest-policy .agent-guard/context-digest-policy.yaml --json"
+        in readme
+    )
     assert "agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json" in readme
     assert (
         "agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml "
@@ -54,6 +60,26 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
         in readme
     )
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in readme
+
+
+def test_readme_documents_agent_policy_companion_boundary() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "`agent-policy` decides whether an agent should do something." in readme
+    assert "`agent-guard` checks whether the repository content still obeys the rules." in readme
+    assert "| Runtime admission | `agent-policy` |" in readme
+    assert "| Static repository gate | `agent-guard` |" in readme
+    assert "It does **not** route models, score model quality, run LLM review" in readme
+
+
+def test_readme_documents_report_evidence_contract() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "agent-guard.report_evidence.v1" in readme
+    assert "agent-guard.result.v1" in readme
+    assert "Context Lock Coverage Evidence" in readme
+    assert "does not emit context text" in readme
+    assert "hash values" in readme
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:
@@ -109,12 +135,20 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
     )
     assert digest_checked == 5
     assert digest_findings == []
+    coverage = check_context_digest_coverage(
+        root=REPO_ROOT,
+        inventory=inventory,
+        digest_policy=load_digest_policy(SELF_DIGEST_POLICY),
+    )
+    assert coverage["status"] == "ok"
+    assert coverage["covered_count"] == coverage["context_file_count"]
+    assert coverage["findings"] == []
 
     workflow_findings, workflow_checked = scan_workflow_policy(
         root=REPO_ROOT,
         policy=load_workflow_policy(SELF_WORKFLOW_POLICY),
     )
-    assert workflow_checked == 13
+    assert workflow_checked == 14
     assert workflow_findings == []
 
 

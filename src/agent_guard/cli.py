@@ -16,7 +16,11 @@ from . import __version__ as PACKAGE_VERSION
 from .api_guard import iter_scan_files as iter_api_scan_files
 from .api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
-from .context_lock import build_context_digest_policy, dump_digest_policy_yaml
+from .context_lock import (
+    build_context_digest_policy,
+    check_context_digest_coverage,
+    dump_digest_policy_yaml,
+)
 from .content_guard import (
     build_rules,
     collect_new_targets,
@@ -32,6 +36,7 @@ from .report import render_github_annotations_report, render_markdown_evidence_r
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
+REPORT_EVIDENCE_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
 TOOL_NAME = "agent-guard"
 
 
@@ -221,6 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
     context_lock = context_sub.add_parser("lock", help="emit digest policy checks for agent context files")
     context_lock.add_argument("--root", default=".", help="repository root path")
     context_lock.add_argument("--policy", required=True, help="agent context YAML policy path")
+    context_lock.add_argument(
+        "--check",
+        action="store_true",
+        help="verify discovered context files are covered by --digest-policy instead of emitting YAML",
+    )
+    context_lock.add_argument("--digest-policy", default="", help="digest YAML policy path for coverage checks")
     context_lock.add_argument("--json", action="store_true", help="emit JSON")
 
     path = top.add_parser("path", help="path-name guard for private artifacts and env-file leaks")
@@ -515,8 +526,13 @@ def run_context_inventory(args: argparse.Namespace) -> int:
 def run_context_lock(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.policy).resolve()
+    digest_policy_arg = str(args.digest_policy).strip()
 
     try:
+        if args.check and not digest_policy_arg:
+            raise ValueError("context lock --check requires --digest-policy")
+        if digest_policy_arg and not args.check:
+            raise ValueError("context lock --digest-policy requires --check")
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         if findings:
@@ -551,8 +567,58 @@ def run_context_lock(args: argparse.Namespace) -> int:
                     )
             return 1
         inventory = collect_context_inventory(root=root, policy=policy)
+        if args.check:
+            digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
+            coverage = check_context_digest_coverage(
+                root=root,
+                inventory=inventory,
+                digest_policy=digest_policy,
+            )
+            coverage_findings = coverage.get("findings", [])
+            finding_items = coverage_findings if isinstance(coverage_findings, list) else []
+            exit_code = 0 if coverage.get("status") == "ok" else 1
+            payload = result_payload(
+                scanner="context",
+                status="ok" if exit_code == 0 else "violation",
+                exit_code=exit_code,
+                policy_arg=args.policy,
+                root=root,
+                findings=finding_items,
+                scanned_count=int(coverage.get("context_file_count", len(inventory.context_files))),
+                scanned_unit="context_files",
+                summary_extra={
+                    "covered_count": coverage.get("covered_count", 0),
+                    "coverage_finding_count": coverage.get("finding_count", 0),
+                },
+                extra={
+                    "command": "lock",
+                    "lock_mode": "coverage",
+                    "digest_policy": {"path": safe_policy_path(digest_policy_arg, root)},
+                    "coverage": coverage,
+                },
+            )
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False))
+            elif exit_code == 0:
+                print(
+                    "context-lock: OK "
+                    f"({coverage.get('covered_count', 0)}/"
+                    f"{coverage.get('context_file_count', 0)} context files covered)"
+                )
+            else:
+                print(
+                    "context-lock: NG "
+                    f"({coverage.get('finding_count', 0)} coverage findings)"
+                )
+                for item in finding_items:
+                    print(
+                        f"- {item.get('severity', 'high')} {item.get('rule_id', '-')} "
+                        f"{item.get('path', '-')} {item.get('status', '-')}"
+                    )
+            return exit_code
         digest_policy = build_context_digest_policy(root=root, inventory=inventory)
     except Exception as exc:
+        error_paths = [digest_policy_arg] if digest_policy_arg else []
         payload = result_payload(
             scanner="context",
             status="error",
@@ -560,7 +626,16 @@ def run_context_lock(args: argparse.Namespace) -> int:
             policy_arg=args.policy,
             root=root,
             error=str(exc),
-            extra={"command": "lock"},
+            error_paths=error_paths,
+            extra={
+                "command": "lock",
+                **({"lock_mode": "coverage"} if args.check else {}),
+                **(
+                    {"digest_policy": {"path": safe_policy_path(digest_policy_arg, root)}}
+                    if digest_policy_arg
+                    else {}
+                ),
+            },
         )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
@@ -694,6 +769,28 @@ def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
     }
 
 
+def build_context_lock_report(
+    *,
+    root: Path,
+    inventory: object,
+    digest_policy: dict[str, object],
+    digest_policy_arg: str,
+) -> dict[str, object]:
+    coverage = check_context_digest_coverage(
+        root=root,
+        inventory=inventory,
+        digest_policy=digest_policy,
+    )
+    return {
+        "policy": {"path": safe_policy_path(digest_policy_arg, root)},
+        "status": coverage["status"],
+        "checked_count": coverage["context_file_count"],
+        "covered_count": coverage["covered_count"],
+        "finding_count": coverage["finding_count"],
+        "findings": coverage["findings"],
+    }
+
+
 def run_report(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.context_policy).resolve()
@@ -722,9 +819,16 @@ def run_report(args: argparse.Namespace) -> int:
             else None
         )
         api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
+        context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
             digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
+            context_lock_report = build_context_lock_report(
+                root=root,
+                inventory=inventory,
+                digest_policy=digest_policy,
+                digest_policy_arg=digest_policy_arg,
+            )
             digest_findings, checked_files = scan_digests(root=root, policy=digest_policy)
             digest_report = {
                 "policy": {"path": safe_policy_path(digest_policy_arg, root)},
@@ -785,6 +889,7 @@ def run_report(args: argparse.Namespace) -> int:
             extra={
                 "command": "report",
                 "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
                     "format": args.format,
                     "scope": scope,
                     "sanitized": True,
@@ -829,6 +934,9 @@ def run_report(args: argparse.Namespace) -> int:
     content_finding_count = int(content_report["finding_count"]) if content_report else 0
     api_finding_count = int(api_report["finding_count"]) if api_report else 0
     digest_finding_count = int(digest_report["finding_count"]) if digest_report else 0
+    context_lock_finding_count = (
+        int(context_lock_report["finding_count"]) if context_lock_report else 0
+    )
     workflow_finding_count = int(workflow_report["finding_count"]) if workflow_report else 0
     exit_code = (
         0
@@ -836,6 +944,7 @@ def run_report(args: argparse.Namespace) -> int:
         and path_finding_count == 0
         and content_finding_count == 0
         and api_finding_count == 0
+        and context_lock_finding_count == 0
         and digest_finding_count == 0
         and workflow_finding_count == 0
         else 1
@@ -886,6 +995,15 @@ def run_report(args: argparse.Namespace) -> int:
             ),
             **(
                 {
+                    "context_lock_checked_count": context_lock_report["checked_count"],
+                    "context_lock_covered_count": context_lock_report["covered_count"],
+                    "context_lock_finding_count": context_lock_report["finding_count"],
+                }
+                if context_lock_report
+                else {}
+            ),
+            **(
+                {
                     "digest_checked_count": digest_report["checked_count"],
                     "digest_finding_count": digest_report["finding_count"],
                 }
@@ -904,6 +1022,7 @@ def run_report(args: argparse.Namespace) -> int:
         extra={
             "command": "report",
             "report": {
+                "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
                 "format": args.format,
                 "scope": report_scope(
                     path_enabled=path_report is not None,
@@ -919,6 +1038,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"path": path_report} if path_report else {}),
             **({"content": content_report} if content_report else {}),
             **({"api": api_report} if api_report else {}),
+            **({"context_lock": context_lock_report} if context_lock_report else {}),
             **({"digest": digest_report} if digest_report else {}),
             **({"workflow": workflow_report} if workflow_report else {}),
         },

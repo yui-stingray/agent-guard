@@ -564,6 +564,111 @@ def test_context_lock_cli_detects_drift_after_generation(tmp_path: Path) -> None
     assert str(tmp_path) not in digest_result.stdout
 
 
+def test_context_lock_cli_check_coverage_ok(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Require approval before shell writes.\nRun tests locally.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: root_agents_md\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "context",
+        "lock",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--check",
+        "--digest-policy",
+        str(digest_policy),
+        "--json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="context",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_count=1,
+        scanned_unit="context_files",
+    )
+    assert payload["command"] == "lock"
+    assert payload["lock_mode"] == "coverage"
+    assert payload["digest_policy"] == {"path": "digest_policy.yaml"}
+    assert payload["coverage"]["schema_version"] == "agent-guard.context_lock_coverage.v1"
+    assert payload["coverage"]["covered_count"] == 1
+    assert payload["coverage"]["findings"] == []
+    assert sha256_text(agent_context) not in result.stdout
+    assert agent_context.strip() not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_context_lock_cli_check_coverage_fails_on_unpinned_context(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Require approval before shell writes.\n"
+    claude_context = "Run tests before reporting completion.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    write(tmp_path / "CLAUDE.md", claude_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: root_agents_md\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "context",
+        "lock",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--check",
+        "--digest-policy",
+        str(digest_policy),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="context",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_count=2,
+        scanned_unit="context_files",
+    )
+    assert payload["findings"] == [
+        {
+            "rule_id": "context_lock_missing",
+            "severity": "high",
+            "path": "CLAUDE.md",
+            "status": "missing",
+            "check_id": "",
+            "message": "context file is not pinned by digest policy",
+        }
+    ]
+    assert payload["coverage"]["covered_count"] == 1
+    assert sha256_text(agent_context) not in result.stdout
+    assert claude_context.strip() not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
 def test_context_lock_cli_rejects_empty_inventory(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")
@@ -779,12 +884,94 @@ def test_report_cli_markdown_digest_policy_ok(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "| Scope | context+digest |" in result.stdout
     assert "| Status | ok |" in result.stdout
+    assert "| Evidence contract | agent-guard.report_evidence.v1 |" in result.stdout
     assert "| Digest policy | digest_policy.yaml |" in result.stdout
+    assert "| Context lock checked | 1 |" in result.stdout
+    assert "| Context lock covered | 1 |" in result.stdout
+    assert "| Context lock coverage findings | 0 |" in result.stdout
     assert "| Digest checks | 1 |" in result.stdout
     assert "| Digest drift findings | 0 |" in result.stdout
+    assert "## Context Lock Coverage Evidence" in result.stdout
+    assert "All discovered agent context files are fully pinned by the digest policy." in result.stdout
     assert "## Digest Drift Evidence" in result.stdout
     assert "No digest drift was detected." in result.stdout
     assert sha256_text(agent_context) not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_context_lock_missing_coverage_is_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Use project tests before reporting success.\n"
+    claude_context = "Run tests before reporting completion.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    write(tmp_path / "CLAUDE.md", claude_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: agent_context_pin\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Status | violation |" in result.stdout
+    assert "| Context lock checked | 2 |" in result.stdout
+    assert "| Context lock covered | 1 |" in result.stdout
+    assert "| Context lock coverage findings | 1 |" in result.stdout
+    assert "| high | context_lock_missing | CLAUDE.md | missing | - |" in result.stdout
+    assert sha256_text(agent_context) not in result.stdout
+    assert agent_context.strip() not in result.stdout
+    assert claude_context.strip() not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_github_annotations_context_lock_missing_coverage(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Use project tests before reporting success.\n"
+    claude_context = "Run tests before reporting completion.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    write(tmp_path / "CLAUDE.md", claude_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: agent_context_pin\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+        "--format",
+        "github-annotations",
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == (
+        "::error file=CLAUDE.md,title=agent-guard context lock%3A context_lock_missing"
+        "::context lock coverage: missing\n"
+    )
+    assert sha256_text(agent_context) not in result.stdout
+    assert claude_context.strip() not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 

@@ -20,6 +20,11 @@ Why: keep static guard releases auditable while the package is still alpha.
   GitHub Actions annotations backed by the same report evidence payload.
 - Added `agent-guard context lock` to generate digest policy checks for
   discovered agent context files without emitting raw context content.
+- Added `agent-guard context lock --check --digest-policy <yaml>` to fail when
+  discovered agent context files are missing from, partially pinned by, or
+  mismatched against a committed digest policy.
+- Added context lock coverage evidence and an `agent-guard.report_evidence.v1`
+  contract marker to sanitized reports.
 
 ## 0.1.2 - 2026-06-26
 

@@ -109,6 +109,53 @@ jobs:
     }
 
 
+def test_context_lock_coverage_requirement_needs_digest_policy_option(tmp_path: Path) -> None:
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml --check --json
+""",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_self_dogfood",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {
+                        "id": "context_lock_coverage",
+                        "command": (
+                            "python -m agent_guard.cli context lock --root . "
+                            "--policy .agent-guard/context-policy.yaml --check "
+                            "--digest-policy .agent-guard/context-digest-policy.yaml"
+                        ),
+                    },
+                ],
+            },
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert len(findings) == 1
+    assert findings[0].to_dict() == {
+        "rule_id": "context_lock_coverage",
+        "severity": "high",
+        "file": ".github/workflows/ci.yml",
+        "message": "required workflow command is missing",
+        "reason": "missing_required_workflow_command",
+        "workflow_id": "ci_self_dogfood",
+        "requirement_id": "context_lock_coverage",
+    }
+
+
 def test_command_match_requires_command_segment_start() -> None:
     assert command_line_matches_required(
         "python -m agent_guard.cli context check --root . --json",

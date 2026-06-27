@@ -118,12 +118,14 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     path = as_mapping(payload.get("path"))
     content = as_mapping(payload.get("content"))
     api = as_mapping(payload.get("api"))
+    context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     findings = as_sequence(payload.get("findings"))
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
     api_findings = as_sequence(api.get("findings"))
+    context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
 
@@ -189,6 +191,19 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
             )
         )
 
+    for item in context_lock_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        status = finding.get("status", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity"), default="error"),
+                title=f"agent-guard context lock: {rule_id}",
+                message=f"context lock coverage: {status}",
+                file=finding.get("path", ""),
+            )
+        )
+
     for item in digest_findings:
         finding = as_mapping(item)
         check_id = finding.get("check_id", "-")
@@ -234,6 +249,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     path = as_mapping(payload.get("path"))
     content = as_mapping(payload.get("content"))
     api = as_mapping(payload.get("api"))
+    context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     inventory = as_mapping(payload.get("inventory"))
@@ -243,6 +259,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
     api_findings = as_sequence(api.get("findings"))
+    context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
 
@@ -252,6 +269,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         ("Status", payload.get("status", "unknown")),
         ("Exit code", payload.get("exit_code", "-")),
         ("Policy", policy.get("path", "-")),
+        ("Evidence contract", report.get("schema_version", "-")),
     ]
     if path:
         path_policy = as_mapping(path.get("policy"))
@@ -329,6 +347,9 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     if digest:
         summary_rows.extend(
             [
+                ("Context lock checked", context_lock.get("checked_count", 0)),
+                ("Context lock covered", context_lock.get("covered_count", 0)),
+                ("Context lock coverage findings", context_lock.get("finding_count", 0)),
                 ("Digest checks", digest.get("checked_count", 0)),
                 ("Digest drift findings", digest.get("finding_count", 0)),
             ]
@@ -419,6 +440,30 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             lines.extend(markdown_table(("File", "Line", "Category"), api_rows))
         else:
             lines.append("No API guard findings were detected.")
+
+    if context_lock:
+        lines.extend(["", "## Context Lock Coverage Evidence", ""])
+        if context_lock_findings:
+            coverage_rows = []
+            for item in context_lock_findings:
+                finding = as_mapping(item)
+                coverage_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("path", "-"),
+                        finding.get("status", "-"),
+                        finding.get("check_id", "-"),
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Severity", "Rule", "Path", "Status", "Check"),
+                    coverage_rows,
+                )
+            )
+        else:
+            lines.append("All discovered agent context files are fully pinned by the digest policy.")
 
     if digest:
         lines.extend(["", "## Digest Drift Evidence", ""])

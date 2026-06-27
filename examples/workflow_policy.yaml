@@ -16,6 +16,8 @@ workflow_checks:
         command: python -m agent_guard.cli content check
       - id: context_guard
         command: python -m agent_guard.cli context check
+      - id: context_lock
+        command: python -m agent_guard.cli context lock
       - id: path_guard
         command: python -m agent_guard.cli path check
       - id: digest_guard

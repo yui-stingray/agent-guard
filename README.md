@@ -97,6 +97,7 @@ Redacted agent context inventory:
 ```bash
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-lock.yaml
+agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 ```
 
 Sanitized review evidence report:
@@ -173,6 +174,7 @@ the publication gate and pair it with a runtime approval wrapper such as
 ```bash
 agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
@@ -184,6 +186,9 @@ Recommended split:
   `artifacts/private/`, bypass corpora, red-team logs, and `.env*` files.
 - `context`: checks repository-level agent instructions before they become
   durable operating context for coding agents.
+- `context lock`: verifies that discovered agent context files are fully
+  pinned by the configured digest policy, so newly added agent instructions do
+  not bypass drift checks.
 - `digest`: pins governance documents and verifier scripts that must not drift
   silently.
 - `content`: detects unsafe instruction drift in Markdown, scripts, and other
@@ -359,6 +364,13 @@ agent context drift explicit. If a repository already has a broader digest
 policy for guard policies or verifier scripts, merge the generated context
 checks into that policy instead of overwriting it.
 
+Use `context lock --check --digest-policy <yaml>` in CI after the lock has
+been reviewed and committed. This coverage gate checks that every discovered
+agent context file is present in the digest policy as a full-file pin and that
+the current bytes still match. It fails on missing, partial, or mismatched
+coverage and emits only repository-relative paths, rule ids, statuses, and
+controlled messages.
+
 The report command renders deterministic review evidence for pull requests,
 review notes, and GitHub Actions annotations:
 
@@ -387,6 +399,15 @@ paths, rule ids, workflow ids, requirement ids, and controlled reasons. It does
 not emit expected or actual SHA-256 values, raw workflow commands, or workflow
 `run` bodies.
 
+When `--digest-policy` is supplied, the report also emits context lock coverage
+evidence. This is separate from digest drift: digest drift checks existing pins,
+while context lock coverage checks that all discovered agent context files are
+actually pinned. The coverage section contains only severity, rule id,
+repository-relative path, status, and check id. It does not emit context text or
+hash values.
+
+The Markdown heading for this evidence is `Context Lock Coverage Evidence`.
+
 Report output omits raw context contents, snippets, matched text, raw regex
 patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
 escape HTML and Markdown control characters before output.
@@ -400,8 +421,12 @@ reason.
 For `report`, it returns:
 - exit `0` when the report is generated and all enabled checks pass
 - exit `1` when the report is generated and any enabled check finds violations
-  or digest/workflow drift
+  or context-lock coverage, digest, or workflow drift
 - exit `2` on configuration/runtime error
+
+Report output follows `agent-guard.report_evidence.v1`: the evidence payload is
+limited to deterministic scanner metadata and sanitized findings. The shared
+scanner JSON envelope remains `agent-guard.result.v1`.
 
 For `context check`, it returns:
 - exit `0` on clean
@@ -615,6 +640,8 @@ workflow_checks:
     required_commands:
       - id: context_guard
         command: agent-guard context check
+      - id: context_lock_coverage
+        command: agent-guard context lock --check --digest-policy .agent-guard/context-digest-policy.yaml
       - id: digest_guard
         command: agent-guard digest check
 ```
@@ -631,7 +658,7 @@ agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
-agent-guard context lock --root <repo> --policy <yaml> [--json]
+agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard report --root <repo> --context-policy <yaml> [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--format <markdown|github-annotations>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
