@@ -222,7 +222,9 @@ def load_workflow_file(path: Path, *, workflow_id: str) -> dict[str, Any]:
     try:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
-        raise ValueError(f"{workflow_id}: workflow YAML is invalid: {exc}") from exc
+        mark = getattr(exc, "problem_mark", None) or getattr(exc, "context_mark", None)
+        location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+        raise ValueError(f"{workflow_id}: workflow YAML is invalid{location}") from exc
     if not isinstance(loaded, dict):
         raise ValueError(f"{workflow_id}: workflow file must be a YAML object")
     return loaded

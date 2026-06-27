@@ -72,11 +72,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     summary = as_mapping(payload.get("summary"))
     report = as_mapping(payload.get("report"))
     digest = as_mapping(payload.get("digest"))
+    workflow = as_mapping(payload.get("workflow"))
     inventory = as_mapping(payload.get("inventory"))
     context_files = as_sequence(inventory.get("context_files"))
     boundaries = as_sequence(inventory.get("permission_boundaries"))
     findings = as_sequence(payload.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
+    workflow_findings = as_sequence(workflow.get("findings"))
 
     overview_rows: list[tuple[object, object]] = [
         ("Tool", f"{tool.get('name', 'agent-guard')} {tool.get('version', 'unknown')}"),
@@ -88,6 +90,9 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     if digest:
         digest_policy = as_mapping(digest.get("policy"))
         overview_rows.append(("Digest policy", digest_policy.get("path", "-")))
+    if workflow:
+        workflow_policy = as_mapping(workflow.get("policy"))
+        overview_rows.append(("Workflow policy", workflow_policy.get("path", "-")))
 
     lines: list[str] = [
         "# Agent Guard Evidence Report",
@@ -106,7 +111,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 "",
                 *markdown_table(("Field", "Value"), (("Error", payload.get("error", "unknown error")),)),
                 "",
-                "Sanitization: report cells are limited to deterministic metadata; raw source lines, rule patterns, URLs, hashes, secrets, and absolute local paths are omitted or redacted.",
+                "Sanitization: report cells are limited to deterministic metadata; raw source lines, raw workflow commands, workflow run bodies, rule patterns, URLs, hashes, secrets, and absolute local paths are omitted or redacted.",
             ]
         )
         return "\n".join(lines) + "\n"
@@ -130,6 +135,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             [
                 ("Digest checks", digest.get("checked_count", 0)),
                 ("Digest drift findings", digest.get("finding_count", 0)),
+            ]
+        )
+    if workflow:
+        summary_rows.extend(
+            [
+                ("Workflow checks", workflow.get("checked_count", 0)),
+                ("Workflow drift findings", workflow.get("finding_count", 0)),
             ]
         )
 
@@ -177,6 +189,31 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             lines.extend(markdown_table(("Check", "Path", "Status", "Message"), digest_rows))
         else:
             lines.append("No digest drift was detected.")
+
+    if workflow:
+        lines.extend(["", "## Workflow Drift Evidence", ""])
+        if workflow_findings:
+            workflow_rows = []
+            for item in workflow_findings:
+                finding = as_mapping(item)
+                workflow_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("file", "-"),
+                        finding.get("reason", "-"),
+                        finding.get("workflow_id", "-"),
+                        finding.get("requirement_id", "-"),
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Severity", "Rule", "File", "Reason", "Workflow", "Requirement"),
+                    workflow_rows,
+                )
+            )
+        else:
+            lines.append("No workflow drift was detected.")
 
     lines.extend(["", "## Context Files", ""])
     if context_files:
@@ -235,7 +272,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     lines.extend(
         [
             "",
-            "Sanitization: report cells are limited to deterministic metadata; raw source lines, rule patterns, URLs, hashes, secrets, and absolute local paths are omitted or redacted.",
+            "Sanitization: report cells are limited to deterministic metadata; raw source lines, raw workflow commands, workflow run bodies, rule patterns, URLs, hashes, secrets, and absolute local paths are omitted or redacted.",
         ]
     )
     return "\n".join(lines) + "\n"

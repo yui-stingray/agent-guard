@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from agent_guard import __version__ as AGENT_GUARD_VERSION
+from agent_guard.cli import scrub_report_error_message
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -466,6 +467,7 @@ def test_report_cli_markdown_ok_redacts_context_content(tmp_path: Path) -> None:
     assert "matched_text" not in result.stdout
     assert "raw regex" not in result.stdout.lower()
     assert "## Digest Drift Evidence" not in result.stdout
+    assert "## Workflow Drift Evidence" not in result.stdout
 
 
 def test_report_cli_markdown_violation_omits_snippet_and_message(tmp_path: Path) -> None:
@@ -524,6 +526,143 @@ def test_report_cli_markdown_digest_policy_ok(tmp_path: Path) -> None:
     assert "## Digest Drift Evidence" in result.stdout
     assert "No digest drift was detected." in result.stdout
     assert sha256_text(agent_context) not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_workflow_policy_ok(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run guard checks
+        run: |
+          python -m agent_guard.cli context check --root . --policy context_policy.yaml --json
+""",
+    )
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: context_policy.yaml\n"
+        "workflow_checks:\n"
+        "  - id: ci_guard_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: context_guard\n"
+        "        command: python -m agent_guard.cli context check\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 0
+    assert "| Scope | context+workflow |" in result.stdout
+    assert "| Status | ok |" in result.stdout
+    assert "| Workflow policy | workflow_policy.yaml |" in result.stdout
+    assert "| Workflow checks | 2 |" in result.stdout
+    assert "| Workflow drift findings | 0 |" in result.stdout
+    assert "## Workflow Drift Evidence" in result.stdout
+    assert "No workflow drift was detected." in result.stdout
+    assert "python -m agent_guard.cli context check" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_workflow_missing_command_is_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        f"""
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # {raw_command}
+          echo "{raw_command}"
+          python - <<'PY'
+          print("{raw_command}")
+          PY
+""",
+    )
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "workflow_checks:\n"
+        "  - id: ci_guard_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: digest_guard\n"
+        "        command: python -m agent_guard.cli digest check\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Scope | context+workflow |" in result.stdout
+    assert "| Status | violation |" in result.stdout
+    assert "| Workflow drift findings | 1 |" in result.stdout
+    assert "| high | digest_guard | .github/workflows/ci.yml | missing_required_workflow_command | ci_guard_smoke | digest_guard |" in result.stdout
+    assert raw_command not in result.stdout
+    assert "echo" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_workflow_missing_required_file_is_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: workflow_policy_file\n"
+        "    path: .agent-guard/workflow-policy.yaml\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Status | violation |" in result.stdout
+    assert "| Workflow drift findings | 1 |" in result.stdout
+    assert "| high | workflow_policy_file | .agent-guard/workflow-policy.yaml | missing_required_file | - | workflow_policy_file |" in result.stdout
     assert str(tmp_path) not in result.stdout
 
 
@@ -596,6 +735,66 @@ def test_report_cli_markdown_digest_missing_file_is_sanitized(tmp_path: Path) ->
     assert "| Status | violation |" in result.stdout
     assert "| missing_context_pin | MISSING_AGENTS.md | missing | pinned file is missing |" in result.stdout
     assert expected_hash not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_digest_and_workflow_combined_status(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Use project tests before reporting success.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: agent_context_pin\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "documented only"
+""",
+    )
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "workflow_checks:\n"
+        "  - id: ci_guard_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: context_guard\n"
+        "        command: python -m agent_guard.cli context check\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--digest-policy",
+        str(digest_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 1
+    assert "| Scope | context+digest+workflow |" in result.stdout
+    assert "| Status | violation |" in result.stdout
+    assert "| Digest checks | 1 |" in result.stdout
+    assert "| Digest drift findings | 0 |" in result.stdout
+    assert "| Workflow checks | 1 |" in result.stdout
+    assert "| Workflow drift findings | 1 |" in result.stdout
+    assert "python -m agent_guard.cli context check" not in result.stdout
+    assert sha256_text(agent_context) not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 
@@ -693,6 +892,120 @@ def test_report_cli_markdown_missing_digest_policy_scrubs_path(tmp_path: Path) -
     assert "| Digest policy | missing_digest.yaml |" in result.stdout
     assert "missing_digest.yaml" in result.stdout
     assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_missing_workflow_policy_scrubs_path(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(tmp_path / "missing_workflow.yaml"),
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "| Scope | context+workflow |" in result.stdout
+    assert "| Workflow policy | missing_workflow.yaml |" in result.stdout
+    assert "missing_workflow.yaml" in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_workflow_policy_error_scrubs_paths(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: outside\n"
+        "    path: ../outside.yaml\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "| Scope | context+workflow |" in result.stdout
+    assert "| Workflow policy | workflow_policy.yaml |" in result.stdout
+    assert "path must not contain" in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_malformed_workflow_yaml_omits_run_body(tmp_path: Path) -> None:
+    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "name: ci\n"
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        f'      - run: "{raw_command}\n',
+    )
+    workflow_policy = tmp_path / "workflow_policy.yaml"
+    workflow_policy.write_text(
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "workflow_checks:\n"
+        "  - id: ci_guard_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: digest_guard\n"
+        "        command: python -m agent_guard.cli digest check\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--workflow-policy",
+        str(workflow_policy),
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "workflow YAML is invalid" in result.stdout
+    assert raw_command not in result.stdout
+    assert "python -m agent_guard.cli" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_scrub_report_error_message_omits_workflow_run_variants() -> None:
+    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    messages = [
+        f'      - run: "{raw_command}',
+        f'      - run : "{raw_command}',
+        f'      - "run": "{raw_command}',
+        f"      - 'run': \"{raw_command}",
+    ]
+
+    for message in messages:
+        scrubbed = scrub_report_error_message(message)
+        assert raw_command not in scrubbed
+        assert "python -m agent_guard.cli" not in scrubbed
+        assert "<workflow-run>" in scrubbed
 
 
 def test_path_cli_json_violation(tmp_path: Path) -> None:

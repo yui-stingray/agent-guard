@@ -129,6 +129,14 @@ def scrub_error_message(
     return re.sub(r"[A-Za-z]:\\(?:[^\\\s:'\"]+\\)*[^\\\s:'\"]*", "<absolute-path>", scrubbed)
 
 
+def scrub_report_error_message(message: str) -> str:
+    return re.sub(
+        r"(?im)^(\s*-?\s*['\"]?run['\"]?\s*:\s*).*$",
+        r"\1<workflow-run>",
+        message,
+    )
+
+
 def result_payload(
     *,
     scanner: str,
@@ -230,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
     report.add_argument("--digest-policy", default="", help="optional digest YAML policy path for drift evidence")
+    report.add_argument("--workflow-policy", default="", help="optional workflow YAML policy path for drift evidence")
     report.add_argument("--format", choices=("markdown",), default="markdown", help="report output format")
 
     return parser
@@ -474,10 +483,21 @@ def run_context_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def report_scope(*, digest_enabled: bool, workflow_enabled: bool) -> str:
+    parts = ["context"]
+    if digest_enabled:
+        parts.append("digest")
+    if workflow_enabled:
+        parts.append("workflow")
+    return "+".join(parts)
+
+
 def run_report(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = Path(args.context_policy).resolve()
     digest_policy_arg = str(args.digest_policy).strip()
+    workflow_policy_arg = str(args.workflow_policy).strip()
+    scope = report_scope(digest_enabled=bool(digest_policy_arg), workflow_enabled=bool(workflow_policy_arg))
 
     try:
         policy = load_context_policy(policy_path)
@@ -502,6 +522,27 @@ def run_report(args: argparse.Namespace) -> int:
                     for item in digest_findings
                 ],
             }
+        workflow_report: dict[str, object] | None = None
+        if workflow_policy_arg:
+            workflow_policy = load_workflow_policy(Path(workflow_policy_arg).resolve())
+            workflow_findings, checked_items = scan_workflow_policy(root=root, policy=workflow_policy)
+            workflow_report = {
+                "policy": {"path": safe_policy_path(workflow_policy_arg, root)},
+                "status": "ok" if not workflow_findings else "violation",
+                "checked_count": checked_items,
+                "finding_count": len(workflow_findings),
+                "findings": [
+                    {
+                        "severity": item.severity,
+                        "rule_id": item.rule_id,
+                        "file": item.file,
+                        "reason": item.reason,
+                        "workflow_id": item.workflow_id or "",
+                        "requirement_id": item.requirement_id or "",
+                    }
+                    for item in workflow_findings
+                ],
+            }
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -509,18 +550,23 @@ def run_report(args: argparse.Namespace) -> int:
             exit_code=2,
             policy_arg=args.context_policy,
             root=root,
-            error=str(exc),
-            error_paths=[digest_policy_arg] if digest_policy_arg else (),
+            error=scrub_report_error_message(str(exc)),
+            error_paths=[path for path in (digest_policy_arg, workflow_policy_arg) if path],
             extra={
                 "command": "report",
                 "report": {
                     "format": args.format,
-                    "scope": "context+digest" if digest_policy_arg else "context",
+                    "scope": scope,
                     "sanitized": True,
                 },
                 **(
                     {"digest": {"policy": {"path": safe_policy_path(digest_policy_arg, root)}}}
                     if digest_policy_arg
+                    else {}
+                ),
+                **(
+                    {"workflow": {"policy": {"path": safe_policy_path(workflow_policy_arg, root)}}}
+                    if workflow_policy_arg
                     else {}
                 ),
             },
@@ -529,7 +575,8 @@ def run_report(args: argparse.Namespace) -> int:
         return 2
 
     digest_finding_count = int(digest_report["finding_count"]) if digest_report else 0
-    exit_code = 0 if not findings and digest_finding_count == 0 else 1
+    workflow_finding_count = int(workflow_report["finding_count"]) if workflow_report else 0
+    exit_code = 0 if not findings and digest_finding_count == 0 and workflow_finding_count == 0 else 1
     payload = result_payload(
         scanner="context",
         status="ok" if exit_code == 0 else "violation",
@@ -558,17 +605,29 @@ def run_report(args: argparse.Namespace) -> int:
                 if digest_report
                 else {}
             ),
+            **(
+                {
+                    "workflow_checked_count": workflow_report["checked_count"],
+                    "workflow_finding_count": workflow_report["finding_count"],
+                }
+                if workflow_report
+                else {}
+            ),
         },
         extra={
             "command": "report",
             "report": {
                 "format": args.format,
-                "scope": "context+digest" if digest_report else "context",
+                "scope": report_scope(
+                    digest_enabled=digest_report is not None,
+                    workflow_enabled=workflow_report is not None,
+                ),
                 "sanitized": True,
             },
             "scanned_files": scanned_files,
             "inventory": inventory.to_dict(),
             **({"digest": digest_report} if digest_report else {}),
+            **({"workflow": workflow_report} if workflow_report else {}),
         },
     )
     print(render_markdown_evidence_report(payload), end="")

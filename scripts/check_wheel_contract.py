@@ -220,6 +220,8 @@ def main() -> int:
                 str(context_policy),
                 "--digest-policy",
                 str(digest_policy),
+                "--workflow-policy",
+                str(workflow_policy),
             ],
             cwd=temp,
         )
@@ -228,6 +230,9 @@ def main() -> int:
         assert "| Policy | context-policy.yaml |" in report_cli.stdout
         assert "| Digest policy | digest-policy.yaml |" in report_cli.stdout
         assert "| Digest checks | 1 |" in report_cli.stdout
+        assert "| Workflow policy | workflow-policy.yaml |" in report_cli.stdout
+        assert "| Workflow checks | 4 |" in report_cli.stdout
+        assert "| Workflow drift findings | 0 |" in report_cli.stdout
         assert agent_context_sha256 not in report_cli.stdout
         assert str(temp) not in report_cli.stdout
 

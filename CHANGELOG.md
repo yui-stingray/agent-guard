@@ -12,6 +12,7 @@ Why: keep static guard releases auditable while the package is still alpha.
   command to the shared scanner result envelope.
 - Added `agent-guard workflow check` for deterministic CI guard-command and
   required-policy-file drift checks.
+- Added optional workflow drift evidence to `agent-guard report`.
 
 ## 0.1.2 - 2026-06-26
 
