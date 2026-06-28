@@ -4,6 +4,18 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.7 - 2026-06-28
+
+- Added profile-based conformance evidence for `minimal`, `recommended`, and
+  `strict` adoption levels.
+- Added sanitized evidence pack manifests for pull request review artifacts.
+- Added surface inventory v2 metadata for documented guard commands and
+  evidence artifact references without emitting raw workflow commands.
+- Added profile-aware policy/spec drift v2 checks for README, workflow policy,
+  guard policy files, and required agent-context safety boundary categories.
+- Updated the downstream evidence consumer and packaged schemas for the new
+  conformance and evidence-pack contracts.
+
 ## 0.1.6 - 2026-06-28
 
 - Added review-first `agent-guard init` for printing or writing starter

@@ -107,6 +107,47 @@ def test_evidence_consumer_rejects_missing_evidence_coverage(tmp_path: Path) -> 
     assert "$.evidence_coverage is required" in result.stderr
 
 
+def test_evidence_consumer_accepts_v2_inventory_and_manifest(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["surface_inventory"]["schema_version"] = "agent-guard.agent_surface_inventory.v2"
+    payload["conformance"] = {
+        "schema_version": "agent-guard.conformance.v1",
+        "profile": "recommended",
+        "status": "ok",
+        "checked_count": 1,
+        "finding_count": 0,
+        "findings": [],
+    }
+    payload["evidence_pack_manifest"] = {
+        "schema_version": "agent-guard.evidence_pack_manifest.v1",
+        "sanitized": True,
+        "report": {
+            "schema_version": "agent-guard.report_evidence.v1",
+            "format": "json",
+            "scope": "context",
+            "status": "ok",
+            "finding_count": 0,
+        },
+        "summary": {
+            "gate_count": 1,
+            "enabled_gate_count": 1,
+            "missing_gate_count": 0,
+            "failing_gate_count": 0,
+            "surface_count": 1,
+        },
+        "gates": [{"gate": "context", "status": "ok", "finding_count": 0}],
+        "artifacts": [],
+    }
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["conformance_status"] == "ok"
+
+
 def test_evidence_consumer_rejects_missing_report_scope(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     del payload["report"]["scope"]

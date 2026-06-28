@@ -88,6 +88,8 @@ def main() -> int:
                 "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
                 "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
                 "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+                "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
+                "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
             }}
             schema_dir = resources.files("agent_guard.schemas")
             for filename, schema_version in schema_names.items():
@@ -97,6 +99,10 @@ def main() -> int:
                     assert schema["properties"]["report"]["properties"]["schema_version"]["const"] == schema_version
                     assert "surface_inventory" in schema["allOf"][0]["then"]["required"]
                     assert "evidence_coverage" in schema["allOf"][0]["then"]["required"]
+                    assert "conformance" in schema["properties"]
+                    assert "evidence_pack_manifest" in schema["properties"]
+                    surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
+                    assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
                 else:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """
@@ -263,6 +269,26 @@ def main() -> int:
         assert surface_payload["status"] == "ok"
         assert surface_payload["scanner"] == "surface"
         assert surface_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+        surface_v2_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "surface",
+                "inventory",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+                "--schema-version",
+                "v2",
+                "--json",
+            ],
+            cwd=temp,
+        )
+        surface_v2_payload = json.loads(surface_v2_cli.stdout)
+        assert surface_v2_payload["status"] == "ok"
+        assert surface_v2_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
 
         (repo / "README.md").write_text(
             "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
@@ -384,6 +410,71 @@ def main() -> int:
         ]
         assert agent_context_sha256 not in report_output.read_text(encoding="utf-8")
         assert str(temp) not in report_output.read_text(encoding="utf-8")
+
+        conformance_input = repo / ".agent-guard" / "evidence" / "minimal-conformance.json"
+        conformance_input.write_text(
+            json.dumps(
+                {
+                    "evidence_coverage": {
+                        "gates": [
+                            {"gate": "context", "status": "ok", "checked_count": 1, "finding_count": 0},
+                            {"gate": "surface_inventory", "status": "ok", "checked_count": 1, "finding_count": 0},
+                        ]
+                    },
+                    "surface_inventory": {"summary": {"by_surface": {"agent_context": 1}}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        conformance_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "conformance",
+                "check",
+                "--root",
+                str(repo),
+                "--evidence",
+                str(conformance_input),
+                "--profile",
+                "minimal",
+                "--json",
+            ],
+            cwd=temp,
+        )
+        conformance_payload = json.loads(conformance_cli.stdout)
+        assert conformance_payload["status"] == "ok"
+        assert conformance_payload["conformance"]["schema_version"] == "agent-guard.conformance.v1"
+
+        manifest_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "evidence-pack",
+                "manifest",
+                "--root",
+                str(repo),
+                "--report",
+                str(report_output),
+                "--artifact",
+                str(report_output),
+                "--artifact",
+                r"C:\Users\alice\secret\agent-guard-report.json",
+                "--json",
+            ],
+            cwd=temp,
+        )
+        manifest_payload = json.loads(manifest_cli.stdout)
+        assert manifest_payload["status"] == "ok"
+        assert manifest_payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
+        assert manifest_payload["evidence_pack_manifest"]["artifacts"] == [
+            {"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"},
+            {"path": "agent-guard-report.json", "role": "report"},
+        ]
+        assert r"C:\Users\alice" not in manifest_cli.stdout
+        assert str(temp) not in manifest_cli.stdout
 
     print(f"wheel contract OK: {wheel.name}")
     return 0

@@ -32,22 +32,28 @@ jobs:
           agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json > .agent-guard/evidence/agent-surface-inventory.json
+          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard drift check --root . --json
+          agent-guard drift check --root . --profile recommended --schema-version v2 --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format markdown --output .agent-guard/evidence/agent-guard-report.md
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format github-annotations
+          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format github-annotations
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"
@@ -66,10 +72,12 @@ supply-chain policy.
 ## How Maintainers Should Read It
 
 Use the Markdown artifact for a short human review and the JSON artifact for
-automation or downstream conformance checks. The JSON report follows
+automation, downstream conformance checks, or evidence-pack manifests. The JSON report follows
 `agent-guard.report_evidence.v1` inside the shared `agent-guard.result.v1`
 envelope and includes `surface_inventory` plus `evidence_coverage` on
-success/violation payloads.
+success/violation payloads. When `--conformance-profile` and
+`--evidence-pack-manifest` are enabled, it also includes `conformance` and
+`evidence_pack_manifest` sections.
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,

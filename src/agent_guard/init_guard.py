@@ -135,13 +135,17 @@ workflow_checks:
       - id: content_guard
         command: agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml
       - id: surface_inventory
-        command: agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml
+        command: agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2
       - id: workflow_guard
         command: agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: drift_guard
-        command: agent-guard drift check --root .
+        command: agent-guard drift check --root . --profile recommended --schema-version v2
       - id: evidence_report_with_drift
-        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check
+        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest
+      - id: conformance_check
+        command: agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended
+      - id: evidence_pack_manifest
+        command: agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json
 """
 
 
@@ -183,22 +187,28 @@ jobs:
           agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json > .agent-guard/evidence/agent-surface-inventory.json
+          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard drift check --root . --json
+          agent-guard drift check --root . --profile recommended --schema-version v2 --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format markdown --output .agent-guard/evidence/agent-guard-report.md
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format github-annotations
+          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format github-annotations
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"

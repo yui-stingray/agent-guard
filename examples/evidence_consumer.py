@@ -144,8 +144,9 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
 
     surface_inventory = payload.get("surface_inventory")
     require(isinstance(surface_inventory, dict), "surface_inventory must be an object")
+    surface_schema = properties["surface_inventory"]["properties"]["schema_version"]
     require(
-        surface_inventory.get("schema_version") == "agent-guard.agent_surface_inventory.v1",
+        surface_inventory.get("schema_version") in surface_schema["enum"],
         "surface_inventory.schema_version mismatch",
     )
     surfaces = surface_inventory.get("surfaces")
@@ -160,6 +161,20 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
     gates = evidence_coverage.get("gates")
     require(isinstance(gates, list), "evidence_coverage.gates must be an array")
 
+    conformance = payload.get("conformance")
+    if conformance is not None:
+        require(isinstance(conformance, dict), "conformance must be an object")
+        require(conformance.get("schema_version") == "agent-guard.conformance.v1", "conformance.schema_version mismatch")
+
+    manifest = payload.get("evidence_pack_manifest")
+    if manifest is not None:
+        require(isinstance(manifest, dict), "evidence_pack_manifest must be an object")
+        require(
+            manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v1",
+            "evidence_pack_manifest.schema_version mismatch",
+        )
+        require(manifest.get("sanitized") is True, "evidence_pack_manifest.sanitized must be true")
+
     serialized = json.dumps(payload, sort_keys=True)
     for fragment in FORBIDDEN_FRAGMENTS:
         require(fragment not in serialized, f"forbidden public-evidence fragment found: {fragment}")
@@ -172,6 +187,7 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
         "surface_count": len(surfaces),
         "enabled_gate_count": evidence_coverage.get("enabled_count", 0),
         "missing_gate_count": evidence_coverage.get("missing_count", 0),
+        **({"conformance_status": conformance.get("status")} if isinstance(conformance, dict) else {}),
     }
 
 

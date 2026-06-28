@@ -18,6 +18,8 @@ SRC = REPO_ROOT / "src"
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "src" / "agent_guard" / "schemas"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 EXPECTED_SCHEMAS = {
+    "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
+    "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
     "agent-guard.result.v1.schema.json": "agent-guard.result.v1",
     "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
     "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
@@ -157,11 +159,21 @@ def test_report_schema_requires_surface_inventory_and_coverage_on_success() -> N
     assert "inventory" in required_on_success
     assert "surface_inventory" in required_on_success
     assert "evidence_coverage" in required_on_success
-    assert schema["properties"]["surface_inventory"]["properties"]["schema_version"]["const"] == (
-        "agent-guard.agent_surface_inventory.v1"
-    )
+    assert schema["properties"]["surface_inventory"]["properties"]["schema_version"]["enum"] == [
+        "agent-guard.agent_surface_inventory.v1",
+        "agent-guard.agent_surface_inventory.v2",
+    ]
     assert schema["properties"]["evidence_coverage"]["properties"]["schema_version"]["const"] == (
         "agent-guard.evidence_coverage.v1"
+    )
+
+
+def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
+    schema = load_schema("agent-guard.report_evidence.v1.schema.json")
+
+    assert schema["properties"]["conformance"]["properties"]["schema_version"]["const"] == "agent-guard.conformance.v1"
+    assert schema["properties"]["evidence_pack_manifest"]["properties"]["schema_version"]["const"] == (
+        "agent-guard.evidence_pack_manifest.v1"
     )
 
 
@@ -182,6 +194,34 @@ def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
+    validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+
+
+def test_report_schema_validates_v2_report_cli_payload(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--surface-inventory-version",
+        "v2",
+        "--conformance-profile",
+        "minimal",
+        "--evidence-pack-manifest",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+    assert payload["conformance"]["schema_version"] == "agent-guard.conformance.v1"
+    assert payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
 
 

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.conformance.v1.schema.json",
+  "title": "agent-guard conformance evidence v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profile",
+    "status",
+    "checked_count",
+    "finding_count",
+    "required_gates",
+    "required_surfaces",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "agent-guard.conformance.v1"},
+    "profile": {"type": "string", "enum": ["minimal", "recommended", "strict"]},
+    "status": {"type": "string", "enum": ["ok", "violation"]},
+    "checked_count": {"type": "integer", "minimum": 0},
+    "finding_count": {"type": "integer", "minimum": 0},
+    "required_gates": {"type": "array", "items": {"type": "string"}},
+    "required_surfaces": {"type": "array", "items": {"type": "string"}},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "severity", "requirement_id", "message", "reason"],
+        "properties": {
+          "rule_id": {"type": "string"},
+          "severity": {"type": "string"},
+          "requirement_id": {"type": "string"},
+          "message": {"type": "string"},
+          "reason": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

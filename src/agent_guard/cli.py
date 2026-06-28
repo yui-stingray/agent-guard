@@ -30,10 +30,13 @@ from .content_guard import (
     normalize_patterns,
     scan_paths,
 )
+from .conformance import build_conformance_report
 from .digest_guard import load_digest_policy, scan_digests
 from .drift_guard import build_policy_spec_drift_report
+from .evidence_pack import build_evidence_pack_manifest
 from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
+from .profiles import PROFILE_NAMES
 from .report import render_github_annotations_report, render_markdown_evidence_report
 from .surface_inventory import collect_agent_surface_inventory
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
@@ -270,13 +273,32 @@ def build_parser() -> argparse.ArgumentParser:
     surface_inventory = surface_sub.add_parser("inventory", help="emit repo-local agent surface metadata")
     surface_inventory.add_argument("--root", default=".", help="repository root path")
     surface_inventory.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    surface_inventory.add_argument("--schema-version", choices=("v1", "v2"), default="v1", help="inventory schema version")
     surface_inventory.add_argument("--json", action="store_true", help="emit JSON")
 
     drift = top.add_parser("drift", help="small policy/spec drift guard")
     drift_sub = drift.add_subparsers(dest="command", required=True)
     drift_check = drift_sub.add_parser("check", help="verify README, workflow, and .agent-guard policy alignment")
     drift_check.add_argument("--root", default=".", help="repository root path")
+    drift_check.add_argument("--profile", choices=PROFILE_NAMES, default="recommended", help="conformance profile")
+    drift_check.add_argument("--schema-version", choices=("v1", "v2"), default="v1", help="drift schema version")
     drift_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    conformance = top.add_parser("conformance", help="profile conformance over sanitized evidence")
+    conformance_sub = conformance.add_subparsers(dest="command", required=True)
+    conformance_check = conformance_sub.add_parser("check", help="evaluate an agent-guard report against a profile")
+    conformance_check.add_argument("--root", default=".", help="repository root used for display-path scrubbing")
+    conformance_check.add_argument("--evidence", required=True, help="agent-guard report JSON path")
+    conformance_check.add_argument("--profile", choices=PROFILE_NAMES, default="recommended", help="conformance profile")
+    conformance_check.add_argument("--json", action="store_true", help="emit JSON")
+
+    evidence_pack = top.add_parser("evidence-pack", help="review evidence pack manifest")
+    evidence_pack_sub = evidence_pack.add_subparsers(dest="command", required=True)
+    evidence_pack_manifest = evidence_pack_sub.add_parser("manifest", help="emit a sanitized evidence pack manifest")
+    evidence_pack_manifest.add_argument("--root", default=".", help="repository root used for display-path scrubbing")
+    evidence_pack_manifest.add_argument("--report", required=True, help="agent-guard report JSON path")
+    evidence_pack_manifest.add_argument("--artifact", action="append", default=[], help="optional repo-relative artifact path")
+    evidence_pack_manifest.add_argument("--json", action="store_true", help="emit JSON")
 
     report = top.add_parser("report", help="emit sanitized evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
@@ -295,6 +317,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--drift-check",
         action="store_true",
         help="include policy/spec drift evidence for README, workflow, and guard policy alignment",
+    )
+    report.add_argument("--drift-profile", choices=PROFILE_NAMES, default="recommended", help="profile for --drift-check")
+    report.add_argument("--drift-schema-version", choices=("v1", "v2"), default="v1", help="drift evidence schema version")
+    report.add_argument(
+        "--surface-inventory-version",
+        choices=("v1", "v2"),
+        default="v1",
+        help="surface inventory schema version embedded in the report",
+    )
+    report.add_argument("--conformance-profile", choices=PROFILE_NAMES, default="", help="embed conformance evidence")
+    report.add_argument(
+        "--evidence-pack-manifest",
+        action="store_true",
+        help="embed a sanitized evidence pack manifest for PR review",
     )
     report.add_argument(
         "--format",
@@ -363,7 +399,11 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
         policy = load_context_policy(Path(args.context_policy).resolve())
-        inventory = collect_agent_surface_inventory(root=root, context_policy=policy)
+        inventory = collect_agent_surface_inventory(
+            root=root,
+            context_policy=policy,
+            schema_version=args.schema_version,
+        )
     except Exception as exc:
         payload = result_payload(
             scanner="surface",
@@ -404,7 +444,27 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
 
 def run_drift_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    report = build_policy_spec_drift_report(root=root)
+    try:
+        report = build_policy_spec_drift_report(
+            root=root,
+            profile=args.profile,
+            schema_version=args.schema_version,
+        )
+    except Exception as exc:
+        payload = result_payload(
+            scanner="drift",
+            status="error",
+            exit_code=2,
+            policy_arg=".agent-guard/workflow-policy.yaml",
+            root=root,
+            error=str(exc),
+            extra={"command": "check"},
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        return 2
     findings = report.get("findings", [])
     finding_items = findings if isinstance(findings, list) else []
     exit_code = 0 if report.get("status") == "ok" else 1
@@ -433,6 +493,113 @@ def run_drift_check(args: argparse.Namespace) -> int:
                 f"{finding.get('file', '-')} {finding.get('reason', '-')}"
             )
     return exit_code
+
+
+def load_json_file(path: Path) -> dict[str, object]:
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError(f"JSON file must contain an object: {path}")
+    return loaded
+
+
+def run_conformance_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    evidence_path = Path(args.evidence).resolve()
+    try:
+        payload = load_json_file(evidence_path)
+        conformance = build_conformance_report(
+            profile=args.profile,
+            evidence_coverage=payload.get("evidence_coverage", {}) if isinstance(payload, dict) else {},
+            surface_inventory=payload.get("surface_inventory", {}) if isinstance(payload, dict) else {},
+        )
+    except Exception as exc:
+        result = result_payload(
+            scanner="conformance",
+            status="error",
+            exit_code=2,
+            policy_arg=args.evidence,
+            root=root,
+            error=str(exc),
+            extra={"command": "check"},
+        )
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"ERROR: {result.get('error', 'unknown error')}")
+        return 2
+
+    findings = conformance.get("findings", [])
+    finding_items = findings if isinstance(findings, list) else []
+    exit_code = 0 if conformance.get("status") == "ok" else 1
+    result = result_payload(
+        scanner="conformance",
+        status="ok" if exit_code == 0 else "violation",
+        exit_code=exit_code,
+        policy_arg=args.evidence,
+        root=root,
+        findings=finding_items,
+        scanned_count=int(conformance.get("checked_count", 0)),
+        scanned_unit="requirements",
+        summary_extra={
+            "profile": conformance.get("profile", args.profile),
+            "conformance_finding_count": int(conformance.get("finding_count", 0)),
+        },
+        extra={"command": "check", "conformance": conformance},
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    elif exit_code == 0:
+        print(f"conformance: OK ({conformance.get('profile', args.profile)})")
+    else:
+        print(f"conformance: NG ({conformance.get('finding_count', 0)} findings)")
+        for item in finding_items:
+            finding = item if isinstance(item, dict) else {}
+            print(f"- {finding.get('severity', 'medium')} {finding.get('rule_id', '-')} {finding.get('requirement_id', '-')}")
+    return exit_code
+
+
+def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    report_path = Path(args.report).resolve()
+    try:
+        payload = load_json_file(report_path)
+        manifest = build_evidence_pack_manifest(
+            report_payload=payload,
+            artifact_paths=list(args.artifact or []),
+            root=root,
+        )
+    except Exception as exc:
+        result = result_payload(
+            scanner="evidence-pack",
+            status="error",
+            exit_code=2,
+            policy_arg=args.report,
+            root=root,
+            error=str(exc),
+            extra={"command": "manifest"},
+        )
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"ERROR: {result.get('error', 'unknown error')}")
+        return 2
+
+    result = result_payload(
+        scanner="evidence-pack",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.report,
+        root=root,
+        findings=[],
+        scanned_count=len(manifest.get("gates", [])) if isinstance(manifest.get("gates"), list) else 0,
+        scanned_unit="gates",
+        extra={"command": "manifest", "evidence_pack_manifest": manifest},
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    else:
+        print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+    return 0
 
 
 def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None:
@@ -1082,6 +1249,7 @@ def run_report(args: argparse.Namespace) -> int:
     digest_policy_arg = str(args.digest_policy).strip()
     workflow_policy_arg = str(args.workflow_policy).strip()
     safe_context_policy_path = safe_policy_path(args.context_policy, root)
+    surface_inventory_version = args.surface_inventory_version
     scope = report_scope(
         path_enabled=bool(path_policy_arg),
         content_enabled=bool(content_policy_arg),
@@ -1095,7 +1263,11 @@ def run_report(args: argparse.Namespace) -> int:
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         inventory = collect_context_inventory(root=root, policy=policy)
-        surface_inventory = collect_agent_surface_inventory(root=root, context_policy=policy)
+        surface_inventory = collect_agent_surface_inventory(
+            root=root,
+            context_policy=policy,
+            schema_version=surface_inventory_version,
+        )
         path_report = build_path_report(root=root, policy_arg=path_policy_arg) if path_policy_arg else None
         content_report = (
             build_content_report(root=root, policy_arg=content_policy_arg, scan_dir_arg=content_scan_dir_arg)
@@ -1152,7 +1324,11 @@ def run_report(args: argparse.Namespace) -> int:
             }
         drift_report: dict[str, object] | None = None
         if args.drift_check:
-            drift_report = build_policy_spec_drift_report(root=root)
+            drift_report = build_policy_spec_drift_report(
+                root=root,
+                profile=args.drift_profile,
+                schema_version=args.drift_schema_version,
+            )
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -1272,6 +1448,16 @@ def run_report(args: argparse.Namespace) -> int:
         workflow_report=workflow_report,
         drift_report=drift_report,
     )
+    conformance_report: dict[str, object] | None = None
+    if args.conformance_profile:
+        conformance_report = build_conformance_report(
+            profile=args.conformance_profile,
+            evidence_coverage=evidence_coverage,
+            surface_inventory=surface_inventory,
+        )
+        if int(conformance_report.get("finding_count", 0)) > 0:
+            exit_code = 1
+    evidence_pack_manifest: dict[str, object] | None = None
     payload = result_payload(
         scanner="context",
         status="ok" if exit_code == 0 else "violation",
@@ -1296,6 +1482,14 @@ def run_report(args: argparse.Namespace) -> int:
             "coverage_enabled_count": evidence_coverage["enabled_count"],
             "coverage_missing_count": evidence_coverage["missing_count"],
             "coverage_failing_count": evidence_coverage["failing_count"],
+            **(
+                {
+                    "conformance_checked_count": conformance_report["checked_count"],
+                    "conformance_finding_count": conformance_report["finding_count"],
+                }
+                if conformance_report
+                else {}
+            ),
             **(
                 {
                     "path_checked_count": path_report["checked_count"],
@@ -1373,6 +1567,7 @@ def run_report(args: argparse.Namespace) -> int:
             "inventory": inventory.to_dict(),
             "surface_inventory": surface_inventory,
             "evidence_coverage": evidence_coverage,
+            **({"conformance": conformance_report} if conformance_report else {}),
             **({"path": path_report} if path_report else {}),
             **({"content": content_report} if content_report else {}),
             **({"api": api_report} if api_report else {}),
@@ -1382,6 +1577,14 @@ def run_report(args: argparse.Namespace) -> int:
             **({"policy_spec_drift": drift_report} if drift_report else {}),
         },
     )
+    if args.evidence_pack_manifest:
+        artifact_paths = [str(args.output)] if str(args.output).strip() else None
+        evidence_pack_manifest = build_evidence_pack_manifest(
+            report_payload=payload,
+            artifact_paths=artifact_paths,
+            root=root,
+        )
+        payload["evidence_pack_manifest"] = evidence_pack_manifest
     emit_report_output(render_report_output(payload, args.format), args.output)
     return exit_code
 
@@ -1552,6 +1755,10 @@ def main() -> int:
         return run_surface_inventory(args)
     if args.scanner == "drift" and args.command == "check":
         return run_drift_check(args)
+    if args.scanner == "conformance" and args.command == "check":
+        return run_conformance_check(args)
+    if args.scanner == "evidence-pack" and args.command == "manifest":
+        return run_evidence_pack_manifest(args)
 
     parser.error("unknown command")
     return 2

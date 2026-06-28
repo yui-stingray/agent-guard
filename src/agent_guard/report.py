@@ -122,6 +122,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     drift = as_mapping(payload.get("policy_spec_drift"))
+    conformance = as_mapping(payload.get("conformance"))
     findings = as_sequence(payload.get("findings"))
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
@@ -130,6 +131,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
     drift_findings = as_sequence(drift.get("findings"))
+    conformance_findings = as_sequence(conformance.get("findings"))
 
     lines: list[str] = []
     if payload.get("status") == "error":
@@ -250,6 +252,17 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
             )
         )
 
+    for item in conformance_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard conformance: {rule_id}",
+                message=f"conformance finding: {finding.get('reason', '-')}",
+            )
+        )
+
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -267,6 +280,8 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     drift = as_mapping(payload.get("policy_spec_drift"))
+    conformance = as_mapping(payload.get("conformance"))
+    evidence_pack_manifest = as_mapping(payload.get("evidence_pack_manifest"))
     inventory = as_mapping(payload.get("inventory"))
     surface_inventory = as_mapping(payload.get("surface_inventory"))
     evidence_coverage = as_mapping(payload.get("evidence_coverage"))
@@ -283,6 +298,8 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
     drift_findings = as_sequence(drift.get("findings"))
+    conformance_findings = as_sequence(conformance.get("findings"))
+    manifest_gates = as_sequence(evidence_pack_manifest.get("gates"))
 
     overview_rows: list[tuple[object, object]] = [
         ("Tool", f"{tool.get('name', 'agent-guard')} {tool.get('version', 'unknown')}"),
@@ -309,6 +326,10 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         overview_rows.append(("Workflow policy", workflow_policy.get("path", "-")))
     if drift:
         overview_rows.append(("Policy/spec drift", drift.get("status", "-")))
+    if conformance:
+        overview_rows.append(("Conformance profile", conformance.get("profile", "-")))
+    if evidence_pack_manifest:
+        overview_rows.append(("Evidence pack manifest", evidence_pack_manifest.get("schema_version", "-")))
 
     lines: list[str] = [
         "# Agent Guard Evidence Report",
@@ -393,6 +414,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             [
                 ("Policy/spec drift checks", drift.get("checked_count", 0)),
                 ("Policy/spec drift findings", drift.get("finding_count", 0)),
+            ]
+        )
+    if conformance:
+        summary_rows.extend(
+            [
+                ("Conformance checks", conformance.get("checked_count", 0)),
+                ("Conformance findings", conformance.get("finding_count", 0)),
             ]
         )
 
@@ -628,6 +656,54 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             )
         else:
             lines.append("No policy/spec drift was detected.")
+
+    if conformance:
+        lines.extend(["", "## Conformance Evidence", ""])
+        if conformance_findings:
+            conformance_rows = []
+            for item in conformance_findings:
+                finding = as_mapping(item)
+                conformance_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("requirement_id", "-"),
+                        finding.get("reason", "-"),
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Severity", "Rule", "Requirement", "Reason"),
+                    conformance_rows,
+                )
+            )
+        else:
+            lines.append(f"Profile `{conformance.get('profile', '-')}` passed.")
+
+    if evidence_pack_manifest:
+        lines.extend(["", "## Evidence Pack Manifest", ""])
+        manifest_summary = as_mapping(evidence_pack_manifest.get("summary"))
+        manifest_rows = [
+            ("Manifest schema", evidence_pack_manifest.get("schema_version", "-")),
+            ("Sanitized", evidence_pack_manifest.get("sanitized", "-")),
+            ("Enabled gates", manifest_summary.get("enabled_gate_count", 0)),
+            ("Missing gates", manifest_summary.get("missing_gate_count", 0)),
+            ("Failing gates", manifest_summary.get("failing_gate_count", 0)),
+        ]
+        lines.extend(markdown_table(("Field", "Value"), manifest_rows))
+        if manifest_gates:
+            lines.extend(["", "Manifest gates:"])
+            gate_rows = []
+            for item in manifest_gates:
+                gate = as_mapping(item)
+                gate_rows.append(
+                    (
+                        gate.get("gate", "-"),
+                        gate.get("status", "-"),
+                        gate.get("finding_count", 0),
+                    )
+                )
+            lines.extend(markdown_table(("Gate", "Status", "Findings"), gate_rows))
 
     lines.extend(["", "## Context Files", ""])
     if context_files:

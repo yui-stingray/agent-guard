@@ -42,13 +42,14 @@ CI recipe with the actual workflow and `.agent-guard` policies.
 ```bash
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 ```
 
 The inventories are metadata only. Review repository-relative paths, agent
-context kinds, policy files, workflow references, line counts, file sizes, and
-permission-boundary status. They should not emit raw instructions, raw workflow
-commands, snippets, matched text, secrets, or local paths.
+context kinds, policy files, workflow references, documented guard-command
+metadata, evidence artifact references, line counts, file sizes, and
+permission-boundary status. They should not emit raw instructions, raw
+workflow commands, snippets, matched text, secrets, or local paths.
 
 ## 4. Pin Agent Context Files
 
@@ -69,9 +70,11 @@ Create an evidence directory and write a sanitized report:
 ```bash
 mkdir -p .agent-guard/evidence
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
-agent-guard drift check --root . --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown --output .agent-guard/evidence/agent-guard-report.md
+agent-guard drift check --root . --profile recommended --schema-version v2 --json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format markdown --output .agent-guard/evidence/agent-guard-report.md
+agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
 ```
 
 Keep generated evidence out of source control unless it is a deliberately
@@ -88,7 +91,9 @@ sanitized sample. In CI, upload it as a build artifact instead.
 Start with the `scanner`, `status`, `finding_count`, and `findings` fields.
 For report output, also check `inventory`, `surface_inventory`,
 `evidence_coverage`, `context_lock`, `digest`, `workflow`, and
-`policy_spec_drift` sections when those gates are enabled.
+`policy_spec_drift` sections when those gates are enabled. If conformance and
+evidence-pack output are enabled, review the `conformance` and
+`evidence_pack_manifest` sections as the short handoff summary.
 
 Common first fixes:
 

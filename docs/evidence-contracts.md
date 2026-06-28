@@ -19,6 +19,10 @@ Installed wheels package these JSON Schema resources under
 - `agent-guard.report_evidence.v1.schema.json`: the sanitized report payload
   used by Markdown, JSON, and GitHub annotation output. Successful and
   violation reports include agent surface inventory and evidence coverage.
+- `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
+  `recommended`, and `strict` adoption levels.
+- `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
+  report artifacts and evidence counts for pull request review.
 
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
@@ -48,10 +52,12 @@ Example commands:
 ```bash
 agent-guard init --root . --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
-agent-guard drift check --root . --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard drift check --root . --profile recommended --schema-version v2 --json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
 python examples/evidence_consumer.py .agent-guard/evidence/agent-guard-report.json
 ```
 
@@ -71,9 +77,14 @@ The JSON report is a compact statement of what `agent-guard` checked:
   and records whether approval, permission, network, destructive-action,
   local-verification, and sensitive-material handling boundaries are present.
 - `surface_inventory` lists agent context files, `.agent-guard` policy files,
-  workflow files, and agent-guard workflow references as metadata only.
+  workflow files, agent-guard workflow references, documented guard commands,
+  and evidence artifact references as metadata only when v2 is requested.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
+- Optional `conformance` records whether enabled evidence satisfies the chosen
+  `minimal`, `recommended`, or `strict` profile.
+- Optional `evidence_pack_manifest` records the sanitized artifact manifest for
+  reviewer handoff.
 - `context_lock` records whether discovered context files are covered by digest
   policy, without emitting hash values.
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize

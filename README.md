@@ -5,9 +5,10 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.6` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.7` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
-review evidence commands for init, surface inventory, and policy/spec drift.
+review evidence commands for init, surface inventory, policy/spec drift,
+profile conformance, and evidence-pack manifests.
 
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
@@ -115,6 +116,7 @@ Redacted agent context inventory:
 ```bash
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-lock.yaml
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 ```
@@ -129,6 +131,9 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
 ```
 
 Path-name guard:
@@ -148,6 +153,7 @@ Workflow drift guard:
 ```bash
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
 agent-guard drift check --root .
+agent-guard drift check --root . --profile recommended --schema-version v2
 ```
 
 JSON mode is stable and intended for CI/wrappers:
@@ -156,11 +162,11 @@ JSON mode is stable and intended for CI/wrappers:
 agent-guard api check --root . --policy examples/architecture_policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
-agent-guard drift check --root . --json
+agent-guard drift check --root . --profile recommended --schema-version v2 --json
 ```
 
 JSON output uses a shared result envelope across scanners:
@@ -168,7 +174,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.6"},
+  "tool": {"name": "agent-guard", "version": "0.1.7"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -202,6 +208,11 @@ agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --ch
 agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
+agent-guard drift check --root . --profile recommended --schema-version v2 --json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
 ```
 
 Recommended split:
@@ -219,6 +230,12 @@ Recommended split:
   configured text surfaces.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
+- `surface inventory v2`: records documented guard commands and evidence
+  artifact references as metadata without emitting raw workflow commands.
+- `conformance`: checks sanitized report evidence against `minimal`,
+  `recommended`, or `strict` adoption profiles.
+- `evidence-pack manifest`: summarizes the public-safe report artifacts that a
+  maintainer should inspect in a pull request.
 
 Keep explicit git-history checks in the repository workflow for material that
 must never have been tracked, such as bypass corpora and private artifacts.
@@ -244,7 +261,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.6"]
+        additional_dependencies: ["yui-agent-guard==0.1.7"]
         args:
           - path
           - check
@@ -260,7 +277,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.6"]
+        additional_dependencies: ["yui-agent-guard==0.1.7"]
         args:
           - context
           - check
@@ -276,7 +293,7 @@ repos:
         entry: agent-guard
         language: python
         language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.6"]
+        additional_dependencies: ["yui-agent-guard==0.1.7"]
         args:
           - content
           - check
@@ -406,6 +423,7 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
 It runs the context check, redacted context inventory, agent surface inventory,
@@ -413,11 +431,16 @@ and evidence coverage summary, then emits scanner status, counts,
 repository-relative context file paths, permission-boundary status, and finding
 anchors limited to severity, rule id, file, and line. Surface inventory lists
 agent context files, `.agent-guard` policy files, workflow files, and
-agent-guard workflow references as metadata only; it does not emit raw
+agent-guard workflow references as metadata only; v2 also records documented
+guard commands and evidence artifact references without emitting raw
 instructions or raw workflow commands. Evidence coverage records which gates
 were enabled, missing, clean, or failing without making missing optional gates a
-failure. With `--path-policy`, it emits path-name evidence limited to severity,
-rule id, and repository-relative path. With `--content-policy`, it emits
+failure. With `--conformance-profile <minimal|recommended|strict>`, it checks
+the sanitized report evidence against a named adoption profile. With
+`--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
+for pull request review. With `--path-policy`, it emits path-name evidence
+limited to severity, rule id, and repository-relative path. With
+`--content-policy`, it emits
 registered-mode content evidence limited to severity, rule id,
 repository-relative file, and line. With `--api-policy`, it emits API evidence
 limited to repository-relative file, line, and controlled category. The report
@@ -441,7 +464,8 @@ repository-relative path, status, and check id. It does not emit context text or
 hash values.
 
 The Markdown headings for these review sections include `Evidence Coverage`,
-`Agent Surface Inventory`, and `Context Lock Coverage Evidence`.
+`Agent Surface Inventory`, `Conformance Evidence`, `Evidence Pack Manifest`,
+and `Context Lock Coverage Evidence`.
 
 Report output omits raw context contents, snippets, matched text, raw regex
 patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
@@ -485,6 +509,10 @@ files from the source tree:
 - `agent-guard.report_evidence.v1.schema.json`: sanitized report evidence
   payload for Markdown, JSON, and GitHub annotation rendering, including
   surface inventory and evidence coverage on success/violation payloads.
+- `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
+  `recommended`, and `strict` adoption levels.
+- `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
+  artifact manifest for reviewer handoff.
 
 For `context check`, it returns:
 - exit `0` on clean

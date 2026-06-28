@@ -37,10 +37,14 @@ workflow_checks:
       - id: workflow_guard_self
         command: python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: surface_inventory_self
-        command: python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml
+        command: python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2
       - id: drift_guard_self
-        command: python -m agent_guard.cli drift check --root .
+        command: python -m agent_guard.cli drift check --root . --profile recommended --schema-version v2
       - id: evidence_report_self
-        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check
+        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest
       - id: evidence_report_json_artifact_self
-        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
+        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
+      - id: conformance_self
+        command: python -m agent_guard.cli conformance check --root . --evidence .agent-guard/evidence/agent-guard-evidence-report.json --profile recommended
+      - id: evidence_pack_manifest_self
+        command: python -m agent_guard.cli evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-evidence-report.json
