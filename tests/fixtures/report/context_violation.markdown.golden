@@ -16,8 +16,32 @@
 | Context files scanned | 1 |
 | Unsafe context findings | 1 |
 | Inventory evidence records | 5 |
+| Agent surfaces inventoried | 1 |
+| Evidence gates enabled | 2 |
+| Evidence gates missing | 7 |
+| Evidence gates failing | 1 |
 | Permission boundaries present | 3 |
 | Permission boundaries missing | 3 |
+
+## Evidence Coverage
+
+| Gate | Status | Checked | Findings | Policy |
+| --- | --- | --- | --- | --- |
+| context | violation | 1 | 1 | context_policy.yaml |
+| surface_inventory | ok | 1 | 0 | context_policy.yaml |
+| path | missing | 0 | 0 | - |
+| content | missing | 0 | 0 | - |
+| api | missing | 0 | 0 | - |
+| context_lock | missing | 0 | 0 | - |
+| digest | missing | 0 | 0 | - |
+| workflow | missing | 0 | 0 | - |
+| policy_spec_drift | missing | 0 | 0 | - |
+
+## Agent Surface Inventory
+
+| Surface | Kind | Path | Status | Scanner | Command |
+| --- | --- | --- | --- | --- | --- |
+| agent_context | agents_md | AGENTS.md | scanned | - | - |
 
 ## Context Check Findings
 

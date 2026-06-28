@@ -8,6 +8,8 @@ driven.
 Consider the next patch release when at least one of these changes lands:
 
 - a CLI behavior change that downstream CI users need from PyPI;
+- a new deterministic evidence surface such as init, surface inventory, or
+  policy/spec drift checks;
 - a packaged JSON Schema change or new packaged schema;
 - a report payload compatibility fix;
 - a workflow, packaging, or wheel-contract fix that affects installed users;
@@ -23,7 +25,7 @@ Before tagging, verify:
 
 - full test suite passes on the supported Python versions;
 - self-dogfood `path`, `context`, `context lock`, `digest`, `content`,
-  `workflow`, and `report` gates pass;
+  `workflow`, `surface inventory`, `drift`, and `report` gates pass;
 - packaged schemas are present in the wheel;
 - wheel contract check passes from a clean install;
 - GitHub Actions CI is green on the release commit;

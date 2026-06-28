@@ -150,6 +150,21 @@ def test_report_schema_accepts_context_lock_covered_evidence() -> None:
     assert context_lock["properties"]["covered"]["type"] == "array"
 
 
+def test_report_schema_requires_surface_inventory_and_coverage_on_success() -> None:
+    schema = load_schema("agent-guard.report_evidence.v1.schema.json")
+    required_on_success = schema["allOf"][0]["then"]["required"]
+
+    assert "inventory" in required_on_success
+    assert "surface_inventory" in required_on_success
+    assert "evidence_coverage" in required_on_success
+    assert schema["properties"]["surface_inventory"]["properties"]["schema_version"]["const"] == (
+        "agent-guard.agent_surface_inventory.v1"
+    )
+    assert schema["properties"]["evidence_coverage"]["properties"]["schema_version"]["const"] == (
+        "agent-guard.evidence_coverage.v1"
+    )
+
+
 def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")

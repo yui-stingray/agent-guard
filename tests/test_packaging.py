@@ -54,6 +54,7 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
     assert "## CI gate recipe" in readme
     assert "agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json" in readme
     assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in readme
+    assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json" in readme
     assert (
         "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml "
         "--check --digest-policy .agent-guard/context-digest-policy.yaml --json"
@@ -66,6 +67,7 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
         in readme
     )
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in readme
+    assert "agent-guard drift check --root . --json" in readme
 
 
 def test_readme_documents_agent_policy_companion_boundary() -> None:
@@ -94,6 +96,8 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "agent-guard.context_inventory.v1.schema.json" in readme
     assert "agent-guard.context_lock_coverage.v1.schema.json" in readme
     assert "Context Lock Coverage Evidence" in readme
+    assert "Evidence Coverage" in readme
+    assert "Agent Surface Inventory" in readme
     assert "does not emit context text" in readme
     assert "hash values" in readme
     assert "SARIF is intentionally" in readme
@@ -120,13 +124,18 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "python3 -m venv .venv" in quickstart
     assert ".agent-guard/context-policy.yaml" in quickstart
     assert "agent-guard context inventory --root ." in quickstart
+    assert "agent-guard surface inventory --root ." in quickstart
+    assert "agent-guard init --root . --json" in quickstart
     assert "agent-guard context lock --root ." in quickstart
     assert ".agent-guard/context-digest-policy.yaml" in quickstart
     assert "agent-guard report --root ." in quickstart
+    assert "--drift-check" in quickstart
     assert "LLM reviewer" in quickstart
     assert "MoA orchestrator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
     assert "status=0" in actions
+    assert "agent-guard surface inventory --root ." in actions
+    assert "agent-guard drift check --root ." in actions
     assert 'exit "$status"' in actions
     assert "if: always()" in actions
     assert "--format github-annotations" in actions
@@ -219,7 +228,7 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
         root=REPO_ROOT,
         policy=load_workflow_policy(SELF_WORKFLOW_POLICY),
     )
-    assert workflow_checked == 15
+    assert workflow_checked == 17
     assert workflow_findings == []
 
 

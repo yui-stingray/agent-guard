@@ -95,6 +95,8 @@ def main() -> int:
                 assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
                 if filename == "agent-guard.report_evidence.v1.schema.json":
                     assert schema["properties"]["report"]["properties"]["schema_version"]["const"] == schema_version
+                    assert "surface_inventory" in schema["allOf"][0]["then"]["required"]
+                    assert "evidence_coverage" in schema["allOf"][0]["then"]["required"]
                 else:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """
@@ -144,6 +146,23 @@ def main() -> int:
         context_policy.write_text("{}\n", encoding="utf-8")
         agent_context = "Use project tests before reporting success.\n"
         (repo / "AGENTS.md").write_text(agent_context, encoding="utf-8")
+        init_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "init",
+                "--root",
+                str(repo / "init-preview"),
+                "--json",
+            ],
+            cwd=temp,
+        )
+        init_payload = json.loads(init_cli.stdout)
+        assert init_payload["schema_version"] == "agent-guard.init_plan.v1"
+        assert init_payload["mode"] == "print"
+        assert not (repo / "init-preview" / ".agent-guard").exists()
+
         context_cli = run(
             [
                 str(python),
@@ -225,6 +244,75 @@ def main() -> int:
         assert workflow_payload["scanner"] == "workflow"
         assert workflow_payload["finding_count"] == 0
 
+        surface_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "surface",
+                "inventory",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+                "--json",
+            ],
+            cwd=temp,
+        )
+        surface_payload = json.loads(surface_cli.stdout)
+        assert surface_payload["status"] == "ok"
+        assert surface_payload["scanner"] == "surface"
+        assert surface_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+
+        (repo / "README.md").write_text(
+            "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
+            "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+            "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml\n"
+            "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
+            "agent-guard drift check --root .\n",
+            encoding="utf-8",
+        )
+        drift_policy_dir = repo / ".agent-guard"
+        drift_policy_dir.mkdir(exist_ok=True)
+        for source, destination in (
+            (context_policy, drift_policy_dir / "context-policy.yaml"),
+            (policy, drift_policy_dir / "path-policy.yaml"),
+        ):
+            destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        (drift_policy_dir / "content-policy.yaml").write_text(
+            "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+            encoding="utf-8",
+        )
+        (drift_policy_dir / "workflow-policy.yaml").write_text(
+            "schema_version: agent-guard.workflow_policy.v1\n"
+            "required_files:\n"
+            "  - id: context_policy\n"
+            "    path: .agent-guard/context-policy.yaml\n"
+            "  - id: path_policy\n"
+            "    path: .agent-guard/path-policy.yaml\n"
+            "  - id: content_policy\n"
+            "    path: .agent-guard/content-policy.yaml\n"
+            "  - id: workflow_policy\n"
+            "    path: .agent-guard/workflow-policy.yaml\n",
+            encoding="utf-8",
+        )
+        drift_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "drift",
+                "check",
+                "--root",
+                str(repo),
+                "--json",
+            ],
+            cwd=temp,
+        )
+        drift_payload = json.loads(drift_cli.stdout)
+        assert drift_payload["status"] == "ok"
+        assert drift_payload["scanner"] == "drift"
+
         report_cli = run(
             [
                 str(python),
@@ -239,6 +327,7 @@ def main() -> int:
                 str(digest_policy),
                 "--workflow-policy",
                 str(workflow_policy),
+                "--drift-check",
             ],
             cwd=temp,
         )
@@ -250,6 +339,7 @@ def main() -> int:
         assert "| Workflow policy | workflow-policy.yaml |" in report_cli.stdout
         assert "| Workflow checks | 4 |" in report_cli.stdout
         assert "| Workflow drift findings | 0 |" in report_cli.stdout
+        assert "| Policy/spec drift findings | 0 |" in report_cli.stdout
         assert agent_context_sha256 not in report_cli.stdout
         assert str(temp) not in report_cli.stdout
 
@@ -268,6 +358,7 @@ def main() -> int:
                 str(digest_policy),
                 "--workflow-policy",
                 str(workflow_policy),
+                "--drift-check",
                 "--format",
                 "json",
                 "--output",
@@ -280,6 +371,9 @@ def main() -> int:
         assert report_payload["schema_version"] == "agent-guard.result.v1"
         assert report_payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
         assert report_payload["report"]["format"] == "json"
+        assert report_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+        assert report_payload["evidence_coverage"]["schema_version"] == "agent-guard.evidence_coverage.v1"
+        assert report_payload["policy_spec_drift"]["schema_version"] == "agent-guard.policy_spec_drift.v1"
         assert report_payload["context_lock"]["covered"] == [
             {
                 "path": "AGENTS.md",

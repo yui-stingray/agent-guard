@@ -31,8 +31,11 @@ from .content_guard import (
     scan_paths,
 )
 from .digest_guard import load_digest_policy, scan_digests
+from .drift_guard import build_policy_spec_drift_report
+from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .report import render_github_annotations_report, render_markdown_evidence_report
+from .surface_inventory import collect_agent_surface_inventory
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
@@ -194,6 +197,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="static repository guardrails for agent-touched repos")
     top = parser.add_subparsers(dest="scanner", required=True)
 
+    init = top.add_parser("init", help="print or write review-first starter guard files")
+    init.add_argument("--root", default=".", help="repository root path")
+    init.add_argument("--print", action="store_true", help="print the planned starter files without writing")
+    init.add_argument("--write", action="store_true", help="write starter files; refuses existing files unless --force")
+    init.add_argument("--force", action="store_true", help="overwrite existing starter files when used with --write")
+    init.add_argument("--json", action="store_true", help="emit JSON")
+
     api = top.add_parser("api", help="URL-based API surface guard")
     api_sub = api.add_subparsers(dest="command", required=True)
     api_check = api_sub.add_parser("check", help="scan a repository and fail on forbidden API usage")
@@ -255,6 +265,19 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_check.add_argument("--policy", required=True, help="YAML policy path")
     workflow_check.add_argument("--json", action="store_true", help="emit JSON")
 
+    surface = top.add_parser("surface", help="agent-facing repository surface inventory")
+    surface_sub = surface.add_subparsers(dest="command", required=True)
+    surface_inventory = surface_sub.add_parser("inventory", help="emit repo-local agent surface metadata")
+    surface_inventory.add_argument("--root", default=".", help="repository root path")
+    surface_inventory.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    surface_inventory.add_argument("--json", action="store_true", help="emit JSON")
+
+    drift = top.add_parser("drift", help="small policy/spec drift guard")
+    drift_sub = drift.add_subparsers(dest="command", required=True)
+    drift_check = drift_sub.add_parser("check", help="verify README, workflow, and .agent-guard policy alignment")
+    drift_check.add_argument("--root", default=".", help="repository root path")
+    drift_check.add_argument("--json", action="store_true", help="emit JSON")
+
     report = top.add_parser("report", help="emit sanitized evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
@@ -268,6 +291,11 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--api-policy", default="", help="optional API YAML policy path for API surface evidence")
     report.add_argument("--digest-policy", default="", help="optional digest YAML policy path for drift evidence")
     report.add_argument("--workflow-policy", default="", help="optional workflow YAML policy path for drift evidence")
+    report.add_argument(
+        "--drift-check",
+        action="store_true",
+        help="include policy/spec drift evidence for README, workflow, and guard policy alignment",
+    )
     report.add_argument(
         "--format",
         choices=("markdown", "json", "github-annotations"),
@@ -296,6 +324,115 @@ def emit_report_output(rendered: str, output_path: str) -> None:
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(rendered, encoding="utf-8")
+
+
+def output_json_or_text(*, payload: dict[str, object], text: str, emit_json: bool) -> None:
+    if emit_json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        print(text, end="" if text.endswith("\n") else "\n")
+
+
+def run_init(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        if args.print and args.write:
+            raise ValueError("init --print cannot be combined with --write")
+        if args.write:
+            plan, exit_code = write_init_plan(root=root, force=bool(args.force))
+            text = render_init_plan_text(plan, include_content=False)
+        else:
+            plan = build_init_plan(root=root, force=bool(args.force))
+            exit_code = 0
+            text = render_init_plan_text(plan, include_content=True)
+    except Exception as exc:
+        payload = {
+            "schema_version": "agent-guard.init_plan.v1",
+            "mode": "write" if args.write else "print",
+            "status": "error",
+            "error": scrub_error_message(str(exc), root=root, policy_arg=".agent-guard/init"),
+        }
+        output_json_or_text(payload=payload, text=f"ERROR: {payload['error']}\n", emit_json=bool(args.json))
+        return 2
+
+    output_json_or_text(payload=plan, text=text, emit_json=bool(args.json))
+    return exit_code
+
+
+def run_surface_inventory(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        policy = load_context_policy(Path(args.context_policy).resolve())
+        inventory = collect_agent_surface_inventory(root=root, context_policy=policy)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="surface",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=str(exc),
+            extra={"command": "inventory"},
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        return 2
+
+    surface_count = int(inventory.get("summary", {}).get("surface_count", 0)) if isinstance(
+        inventory.get("summary"), dict
+    ) else 0
+    payload = result_payload(
+        scanner="surface",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.context_policy,
+        root=root,
+        findings=[],
+        scanned_count=surface_count,
+        scanned_unit="surfaces",
+        summary_extra={"surface_count": surface_count},
+        extra={"command": "inventory", "surface_inventory": inventory},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"surface-inventory: OK ({surface_count} surfaces)")
+    return 0
+
+
+def run_drift_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    report = build_policy_spec_drift_report(root=root)
+    findings = report.get("findings", [])
+    finding_items = findings if isinstance(findings, list) else []
+    exit_code = 0 if report.get("status") == "ok" else 1
+    payload = result_payload(
+        scanner="drift",
+        status="ok" if exit_code == 0 else "violation",
+        exit_code=exit_code,
+        policy_arg=".agent-guard/workflow-policy.yaml",
+        root=root,
+        findings=finding_items,
+        scanned_count=int(report.get("checked_count", 0)),
+        scanned_unit="checks",
+        summary_extra={"drift_finding_count": int(report.get("finding_count", 0))},
+        extra={"command": "check", "policy_spec_drift": report},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    elif exit_code == 0:
+        print(f"drift-guard: OK ({report.get('checked_count', 0)} checks)")
+    else:
+        print(f"drift-guard: NG ({report.get('finding_count', 0)} findings)")
+        for item in finding_items:
+            finding = item if isinstance(item, dict) else {}
+            print(
+                f"- {finding.get('severity', 'medium')} {finding.get('rule_id', '-')} "
+                f"{finding.get('file', '-')} {finding.get('reason', '-')}"
+            )
+    return exit_code
 
 
 def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None:
@@ -688,6 +825,7 @@ def report_scope(
     api_enabled: bool,
     digest_enabled: bool,
     workflow_enabled: bool,
+    drift_enabled: bool = False,
 ) -> str:
     parts = ["context"]
     if path_enabled:
@@ -700,7 +838,123 @@ def report_scope(
         parts.append("digest")
     if workflow_enabled:
         parts.append("workflow")
+    if drift_enabled:
+        parts.append("drift")
     return "+".join(parts)
+
+
+def gate_entry(
+    *,
+    gate: str,
+    status: str,
+    checked_count: int = 0,
+    finding_count: int = 0,
+    policy_path: str = "",
+) -> dict[str, object]:
+    entry: dict[str, object] = {
+        "gate": gate,
+        "status": status,
+        "checked_count": checked_count,
+        "finding_count": finding_count,
+    }
+    if policy_path:
+        entry["policy"] = {"path": policy_path}
+    return entry
+
+
+def report_status(value: object) -> str:
+    if isinstance(value, dict):
+        return str(value.get("status", "missing"))
+    return "missing"
+
+
+def report_checked_count(value: object) -> int:
+    if isinstance(value, dict):
+        return int(value.get("checked_count", 0))
+    return 0
+
+
+def report_finding_count(value: object) -> int:
+    if isinstance(value, dict):
+        return int(value.get("finding_count", 0))
+    return 0
+
+
+def report_policy_path(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    policy = value.get("policy", {})
+    if not isinstance(policy, dict):
+        return ""
+    return str(policy.get("path", ""))
+
+
+def build_evidence_coverage(
+    *,
+    context_policy_path: str,
+    scanned_files: int,
+    context_finding_count: int,
+    inventory_surface_count: int,
+    path_report: dict[str, object] | None,
+    content_report: dict[str, object] | None,
+    api_report: dict[str, object] | None,
+    context_lock_report: dict[str, object] | None,
+    digest_report: dict[str, object] | None,
+    workflow_report: dict[str, object] | None,
+    drift_report: dict[str, object] | None,
+) -> dict[str, object]:
+    gates = [
+        gate_entry(
+            gate="context",
+            status="violation" if context_finding_count else "ok",
+            checked_count=scanned_files,
+            finding_count=context_finding_count,
+            policy_path=context_policy_path,
+        ),
+        gate_entry(
+            gate="surface_inventory",
+            status="ok",
+            checked_count=inventory_surface_count,
+            finding_count=0,
+            policy_path=context_policy_path,
+        ),
+    ]
+    optional_reports = (
+        ("path", path_report),
+        ("content", content_report),
+        ("api", api_report),
+        ("context_lock", context_lock_report),
+        ("digest", digest_report),
+        ("workflow", workflow_report),
+        ("policy_spec_drift", drift_report),
+    )
+    for gate, report in optional_reports:
+        if report is None:
+            gates.append(gate_entry(gate=gate, status="missing"))
+            continue
+        gates.append(
+            gate_entry(
+                gate=gate,
+                status=report_status(report),
+                checked_count=report_checked_count(report),
+                finding_count=report_finding_count(report),
+                policy_path=report_policy_path(report),
+            )
+        )
+
+    enabled = [item for item in gates if item.get("status") != "missing"]
+    failing = [
+        item for item in enabled if item.get("status") not in {"ok", "missing"}
+    ]
+    missing = [item for item in gates if item.get("status") == "missing"]
+    return {
+        "schema_version": "agent-guard.evidence_coverage.v1",
+        "gate_count": len(gates),
+        "enabled_count": len(enabled),
+        "missing_count": len(missing),
+        "failing_count": len(failing),
+        "gates": gates,
+    }
 
 
 def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
@@ -834,12 +1088,14 @@ def run_report(args: argparse.Namespace) -> int:
         api_enabled=bool(api_policy_arg),
         digest_enabled=bool(digest_policy_arg),
         workflow_enabled=bool(workflow_policy_arg),
+        drift_enabled=bool(args.drift_check),
     )
 
     try:
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         inventory = collect_context_inventory(root=root, policy=policy)
+        surface_inventory = collect_agent_surface_inventory(root=root, context_policy=policy)
         path_report = build_path_report(root=root, policy_arg=path_policy_arg) if path_policy_arg else None
         content_report = (
             build_content_report(root=root, policy_arg=content_policy_arg, scan_dir_arg=content_scan_dir_arg)
@@ -894,6 +1150,9 @@ def run_report(args: argparse.Namespace) -> int:
                     for item in workflow_findings
                 ],
             }
+        drift_report: dict[str, object] | None = None
+        if args.drift_check:
+            drift_report = build_policy_spec_drift_report(root=root)
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -915,11 +1174,11 @@ def run_report(args: argparse.Namespace) -> int:
                 if path
             ],
             extra={
-                "command": "report",
-                "report": {
-                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
-                    "format": args.format,
-                    "scope": scope,
+            "command": "report",
+            "report": {
+                "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                "format": args.format,
+                "scope": scope,
                     "sanitized": True,
                 },
                 **(
@@ -958,6 +1217,16 @@ def run_report(args: argparse.Namespace) -> int:
                     if workflow_policy_arg
                     else {}
                 ),
+                **(
+                    {
+                        "policy_spec_drift": {
+                            "schema_version": "agent-guard.policy_spec_drift.v1",
+                            "status": "error",
+                        }
+                    }
+                    if args.drift_check
+                    else {}
+                ),
             },
         )
         emit_report_output(render_report_output(payload, args.format), args.output)
@@ -971,6 +1240,7 @@ def run_report(args: argparse.Namespace) -> int:
         int(context_lock_report["finding_count"]) if context_lock_report else 0
     )
     workflow_finding_count = int(workflow_report["finding_count"]) if workflow_report else 0
+    drift_finding_count = int(drift_report["finding_count"]) if drift_report else 0
     exit_code = (
         0
         if not findings
@@ -980,7 +1250,27 @@ def run_report(args: argparse.Namespace) -> int:
         and context_lock_finding_count == 0
         and digest_finding_count == 0
         and workflow_finding_count == 0
+        and drift_finding_count == 0
         else 1
+    )
+    surface_summary = surface_inventory.get("summary", {})
+    inventory_surface_count = (
+        int(surface_summary.get("surface_count", 0))
+        if isinstance(surface_summary, dict)
+        else 0
+    )
+    evidence_coverage = build_evidence_coverage(
+        context_policy_path=safe_context_policy_path,
+        scanned_files=scanned_files,
+        context_finding_count=len(findings),
+        inventory_surface_count=inventory_surface_count,
+        path_report=path_report,
+        content_report=content_report,
+        api_report=api_report,
+        context_lock_report=context_lock_report,
+        digest_report=digest_report,
+        workflow_report=workflow_report,
+        drift_report=drift_report,
     )
     payload = result_payload(
         scanner="context",
@@ -1002,6 +1292,10 @@ def run_report(args: argparse.Namespace) -> int:
         summary_extra={
             "context_file_count": len(inventory.context_files),
             "evidence_count": inventory.evidence_count,
+            "surface_count": inventory_surface_count,
+            "coverage_enabled_count": evidence_coverage["enabled_count"],
+            "coverage_missing_count": evidence_coverage["missing_count"],
+            "coverage_failing_count": evidence_coverage["failing_count"],
             **(
                 {
                     "path_checked_count": path_report["checked_count"],
@@ -1051,6 +1345,14 @@ def run_report(args: argparse.Namespace) -> int:
                 if workflow_report
                 else {}
             ),
+            **(
+                {
+                    "drift_checked_count": drift_report["checked_count"],
+                    "drift_finding_count": drift_report["finding_count"],
+                }
+                if drift_report
+                else {}
+            ),
         },
         extra={
             "command": "report",
@@ -1063,17 +1365,21 @@ def run_report(args: argparse.Namespace) -> int:
                     api_enabled=api_report is not None,
                     digest_enabled=digest_report is not None,
                     workflow_enabled=workflow_report is not None,
+                    drift_enabled=drift_report is not None,
                 ),
                 "sanitized": True,
             },
             "scanned_files": scanned_files,
             "inventory": inventory.to_dict(),
+            "surface_inventory": surface_inventory,
+            "evidence_coverage": evidence_coverage,
             **({"path": path_report} if path_report else {}),
             **({"content": content_report} if content_report else {}),
             **({"api": api_report} if api_report else {}),
             **({"context_lock": context_lock_report} if context_lock_report else {}),
             **({"digest": digest_report} if digest_report else {}),
             **({"workflow": workflow_report} if workflow_report else {}),
+            **({"policy_spec_drift": drift_report} if drift_report else {}),
         },
     )
     emit_report_output(render_report_output(payload, args.format), args.output)
@@ -1222,6 +1528,8 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.scanner == "init":
+        return run_init(args)
     if args.scanner == "api" and args.command == "check":
         return run_api_check(args)
     if args.scanner == "content" and args.command == "check":
@@ -1240,6 +1548,10 @@ def main() -> int:
         return run_digest_check(args)
     if args.scanner == "workflow" and args.command == "check":
         return run_workflow_check(args)
+    if args.scanner == "surface" and args.command == "inventory":
+        return run_surface_inventory(args)
+    if args.scanner == "drift" and args.command == "check":
+        return run_drift_check(args)
 
     parser.error("unknown command")
     return 2

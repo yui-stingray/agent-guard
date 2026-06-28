@@ -27,7 +27,7 @@
     },
     "scanner": {
       "type": "string",
-      "enum": ["api", "content", "context", "path", "digest", "workflow"]
+      "enum": ["api", "content", "context", "path", "digest", "workflow", "surface", "drift"]
     },
     "status": {
       "type": "string",

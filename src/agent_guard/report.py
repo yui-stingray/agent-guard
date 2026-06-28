@@ -121,6 +121,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
+    drift = as_mapping(payload.get("policy_spec_drift"))
     findings = as_sequence(payload.get("findings"))
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
@@ -128,6 +129,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
+    drift_findings = as_sequence(drift.get("findings"))
 
     lines: list[str] = []
     if payload.get("status") == "error":
@@ -236,6 +238,18 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
             )
         )
 
+    for item in drift_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard drift: {rule_id}",
+                message=f"policy/spec drift: {finding.get('reason', '-')}",
+                file=finding.get("file", ""),
+            )
+        )
+
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -252,8 +266,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
+    drift = as_mapping(payload.get("policy_spec_drift"))
     inventory = as_mapping(payload.get("inventory"))
+    surface_inventory = as_mapping(payload.get("surface_inventory"))
+    evidence_coverage = as_mapping(payload.get("evidence_coverage"))
     context_files = as_sequence(inventory.get("context_files"))
+    surfaces = as_sequence(surface_inventory.get("surfaces"))
+    coverage_gates = as_sequence(evidence_coverage.get("gates"))
     boundaries = as_sequence(inventory.get("permission_boundaries"))
     findings = as_sequence(payload.get("findings"))
     path_findings = as_sequence(path.get("findings"))
@@ -263,6 +282,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
+    drift_findings = as_sequence(drift.get("findings"))
 
     overview_rows: list[tuple[object, object]] = [
         ("Tool", f"{tool.get('name', 'agent-guard')} {tool.get('version', 'unknown')}"),
@@ -287,6 +307,8 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     if workflow:
         workflow_policy = as_mapping(workflow.get("policy"))
         overview_rows.append(("Workflow policy", workflow_policy.get("path", "-")))
+    if drift:
+        overview_rows.append(("Policy/spec drift", drift.get("status", "-")))
 
     lines: list[str] = [
         "# Agent Guard Evidence Report",
@@ -321,6 +343,10 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         ("Context files scanned", summary.get("scanned_count", 0)),
         ("Unsafe context findings", summary.get("finding_count", 0)),
         ("Inventory evidence records", summary.get("evidence_count", 0)),
+        ("Agent surfaces inventoried", summary.get("surface_count", 0)),
+        ("Evidence gates enabled", summary.get("coverage_enabled_count", 0)),
+        ("Evidence gates missing", summary.get("coverage_missing_count", 0)),
+        ("Evidence gates failing", summary.get("coverage_failing_count", 0)),
         ("Permission boundaries present", present_boundaries),
         ("Permission boundaries missing", missing_boundaries),
     ]
@@ -362,6 +388,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 ("Workflow drift findings", workflow.get("finding_count", 0)),
             ]
         )
+    if drift:
+        summary_rows.extend(
+            [
+                ("Policy/spec drift checks", drift.get("checked_count", 0)),
+                ("Policy/spec drift findings", drift.get("finding_count", 0)),
+            ]
+        )
 
     lines.extend(
         [
@@ -369,6 +402,55 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             "",
             *markdown_table(("Metric", "Value"), summary_rows),
             "",
+        ]
+    )
+
+    if coverage_gates:
+        lines.extend(["## Evidence Coverage", ""])
+        coverage_rows = []
+        for item in coverage_gates:
+            gate = as_mapping(item)
+            policy = as_mapping(gate.get("policy"))
+            coverage_rows.append(
+                (
+                    gate.get("gate", "-"),
+                    gate.get("status", "-"),
+                    gate.get("checked_count", 0),
+                    gate.get("finding_count", 0),
+                    policy.get("path", "-"),
+                )
+            )
+        lines.extend(
+            markdown_table(("Gate", "Status", "Checked", "Findings", "Policy"), coverage_rows)
+        )
+        lines.append("")
+
+    if surfaces:
+        lines.extend(["## Agent Surface Inventory", ""])
+        surface_rows = []
+        for item in surfaces:
+            surface = as_mapping(item)
+            command = as_mapping(surface.get("command"))
+            surface_rows.append(
+                (
+                    surface.get("surface", "-"),
+                    surface.get("kind", "-"),
+                    surface.get("path", "-"),
+                    surface.get("status", "-"),
+                    command.get("scanner", "-"),
+                    command.get("command", "-"),
+                )
+            )
+        lines.extend(
+            markdown_table(
+                ("Surface", "Kind", "Path", "Status", "Scanner", "Command"),
+                surface_rows,
+            )
+        )
+        lines.append("")
+
+    lines.extend(
+        [
             "## Context Check Findings",
             "",
         ]
@@ -522,6 +604,30 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             )
         else:
             lines.append("No workflow drift was detected.")
+
+    if drift:
+        lines.extend(["", "## Policy/Spec Drift Evidence", ""])
+        if drift_findings:
+            drift_rows = []
+            for item in drift_findings:
+                finding = as_mapping(item)
+                drift_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        finding.get("file", "-"),
+                        finding.get("reason", "-"),
+                        finding.get("requirement_id", "-"),
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Severity", "Rule", "File", "Reason", "Requirement"),
+                    drift_rows,
+                )
+            )
+        else:
+            lines.append("No policy/spec drift was detected.")
 
     lines.extend(["", "## Context Files", ""])
     if context_files:

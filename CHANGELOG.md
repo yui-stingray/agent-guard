@@ -4,6 +4,22 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.6 - 2026-06-28
+
+- Added review-first `agent-guard init` for printing or writing starter
+  `.agent-guard` policies and a CI evidence workflow without overwriting
+  existing files by default.
+- Added `agent-guard surface inventory` to enumerate agent context files,
+  `.agent-guard` policy files, workflow files, and agent-guard workflow
+  references as sanitized repository-relative metadata.
+- Added `agent-guard drift check` plus optional `agent-guard report
+  --drift-check` evidence for README recommended guard commands,
+  workflow-policy declarations, and required guard policy files.
+- Added report `surface_inventory` and `evidence_coverage` payloads so
+  downstream consumers can see enabled, missing, clean, and failing gates.
+- Updated CI self-dogfood, public evidence docs, and the downstream evidence
+  consumer to validate the expanded deterministic evidence contract.
+
 ## 0.1.5 - 2026-06-27
 
 - Added packaged JSON Schema resources for the shared result envelope, context

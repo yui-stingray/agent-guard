@@ -26,11 +26,30 @@ jobs:
         run: python -m pip install yui-agent-guard
       - name: Generate evidence
         run: |
+          set +e
           status=0
           mkdir -p .agent-guard/evidence
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md || status=$?
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json || status=$?
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format github-annotations || status=$?
+          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json > .agent-guard/evidence/agent-surface-inventory.json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard drift check --root . --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format github-annotations
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"
       - name: Upload evidence
         if: always()
@@ -49,7 +68,8 @@ supply-chain policy.
 Use the Markdown artifact for a short human review and the JSON artifact for
 automation or downstream conformance checks. The JSON report follows
 `agent-guard.report_evidence.v1` inside the shared `agent-guard.result.v1`
-envelope.
+envelope and includes `surface_inventory` plus `evidence_coverage` on
+success/violation payloads.
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,
@@ -60,7 +80,8 @@ snippets, hash values, workflow run bodies, secrets, or absolute local paths.
 
 The report command exits `1` when any enabled static gate finds drift or a
 violation. That should fail the workflow. Prefer fixing the policy, context
-file, digest pin, or workflow drift instead of bypassing the job.
+file, digest pin, workflow drift, or README/policy drift instead of bypassing
+the job.
 
 The workflow snippet keeps generating all evidence surfaces after the first
 non-zero report result, then exits with the captured failure status. The upload

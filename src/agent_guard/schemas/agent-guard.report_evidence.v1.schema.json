@@ -24,7 +24,7 @@
         }
       },
       "then": {
-        "required": ["inventory"]
+        "required": ["inventory", "surface_inventory", "evidence_coverage"]
       }
     }
   ],
@@ -88,6 +88,53 @@
       },
       "additionalProperties": true
     },
+    "surface_inventory": {
+      "type": "object",
+      "required": ["schema_version", "summary", "surfaces"],
+      "properties": {
+        "schema_version": {"const": "agent-guard.agent_surface_inventory.v1"},
+        "summary": {"type": "object"},
+        "surfaces": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": true}
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_coverage": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "gate_count",
+        "enabled_count",
+        "missing_count",
+        "failing_count",
+        "gates"
+      ],
+      "properties": {
+        "schema_version": {"const": "agent-guard.evidence_coverage.v1"},
+        "gate_count": {"type": "integer", "minimum": 0},
+        "enabled_count": {"type": "integer", "minimum": 0},
+        "missing_count": {"type": "integer", "minimum": 0},
+        "failing_count": {"type": "integer", "minimum": 0},
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["gate", "status", "checked_count", "finding_count"],
+            "properties": {
+              "gate": {"type": "string"},
+              "status": {"type": "string", "enum": ["ok", "violation", "missing", "error"]},
+              "checked_count": {"type": "integer", "minimum": 0},
+              "finding_count": {"type": "integer", "minimum": 0},
+              "policy": {"type": "object"}
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "context_lock": {
       "type": "object",
       "required": ["policy", "status", "checked_count", "covered_count", "covered", "finding_count", "findings"],
@@ -117,6 +164,7 @@
     },
     "digest": {"type": "object"},
     "workflow": {"type": "object"},
+    "policy_spec_drift": {"type": "object"},
     "path": {"type": "object"},
     "content": {"type": "object"},
     "api": {"type": "object"},

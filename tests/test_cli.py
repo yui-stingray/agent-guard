@@ -69,6 +69,284 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "agent-guard.init_plan.v1"
+    assert payload["mode"] == "print"
+    files = payload["files"]
+    assert [item["path"] for item in files] == [
+        ".agent-guard/context-policy.yaml",
+        ".agent-guard/path-policy.yaml",
+        ".agent-guard/content-policy.yaml",
+        ".agent-guard/workflow-policy.yaml",
+        ".github/workflows/agent-guard.yml",
+    ]
+    assert all(item["status"] == "create" for item in files)
+    contents = {item["path"]: item["content"] for item in files}
+    workflow = contents[".github/workflows/agent-guard.yml"]
+    workflow_policy = contents[".agent-guard/workflow-policy.yaml"]
+    assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in workflow
+    assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json" in workflow
+    assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
+    assert "agent-guard drift check --root . --json" in workflow
+    assert "--drift-check --format json --output .agent-guard/evidence/agent-guard-report.json" in workflow
+    assert "workflow_checks:" in workflow_policy
+    assert "command: agent-guard drift check --root ." in workflow_policy
+    assert (
+        "command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml "
+        "--content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check"
+        in workflow_policy
+    )
+    assert not (tmp_path / ".agent-guard").exists()
+    serialized = json.dumps(payload, sort_keys=True)
+    assert str(tmp_path) not in serialized
+
+
+def test_init_cli_written_workflow_policy_checks_generated_workflow(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="workflow",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_unit="checks",
+    )
+
+
+def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace("          agent-guard drift check --root . --json\n", ""),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="workflow",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_unit="checks",
+    )
+    assert payload["findings"][0]["requirement_id"] == "drift_guard"
+
+
+def test_init_cli_workflow_policy_detects_report_without_drift_check(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace(" --drift-check", ""),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="workflow",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_unit="checks",
+    )
+    assert payload["findings"][0]["requirement_id"] == "evidence_report_with_drift"
+
+
+def test_init_cli_write_refuses_existing_files(tmp_path: Path) -> None:
+    write(tmp_path / ".agent-guard" / "context-policy.yaml", "existing\n")
+
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "write"
+    assert payload["status"] == "blocked"
+    statuses = {item["path"]: item["status"] for item in payload["files"]}
+    assert statuses[".agent-guard/context-policy.yaml"] == "exists"
+    assert (tmp_path / ".agent-guard" / "context-policy.yaml").read_text(encoding="utf-8") == "existing\n"
+
+
+def test_init_cli_rejects_print_and_write_together(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--print", "--write", "--json")
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "agent-guard.init_plan.v1"
+    assert payload["status"] == "error"
+    assert payload["error"] == "init --print cannot be combined with --write"
+    assert not (tmp_path / ".agent-guard").exists()
+
+
+def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    raw_context = "Require approval before shell writes. fixture marker surface\n"
+    raw_command = "python -m agent_guard.cli report --root . --context-policy context_policy.yaml --format json"
+    write(tmp_path / "AGENTS.md", raw_context)
+    write(tmp_path / ".agent-guard" / "workflow-policy.yaml", "schema_version: agent-guard.workflow_policy.v1\n")
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "name: ci\n"
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        f"      - run: {raw_command}\n",
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="surface",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_unit="surfaces",
+    )
+    inventory = payload["surface_inventory"]
+    assert inventory["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+    surfaces = inventory["surfaces"]
+    assert {"surface": "agent_context", "path": "AGENTS.md", "kind": "agents_md", "status": "scanned", "size_bytes": len(raw_context.encode("utf-8")), "line_count": 1} in surfaces
+    workflow_refs = [item for item in surfaces if item["surface"] == "workflow_reference"]
+    assert workflow_refs == [
+        {
+            "surface": "workflow_reference",
+            "path": ".github/workflows/ci.yml",
+            "kind": "agent_guard_command",
+            "status": "referenced",
+            "job_id": "test",
+            "step_index": 1,
+            "command": {"scanner": "report", "command": ""},
+        }
+    ]
+    assert raw_context.strip() not in result.stdout
+    assert raw_command not in result.stdout
+    assert "fixture marker surface" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_drift_cli_json_checks_readme_policy_and_workflow_alignment(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
+        "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml\n"
+        "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
+        "agent-guard drift check --root .\n",
+        encoding="utf-8",
+    )
+    for name in ("context-policy.yaml", "path-policy.yaml", "content-policy.yaml"):
+        write(tmp_path / ".agent-guard" / name, "{}\n")
+    write(
+        tmp_path / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n"
+        "  - id: path_policy\n"
+        "    path: .agent-guard/path-policy.yaml\n"
+        "  - id: content_policy\n"
+        "    path: .agent-guard/content-policy.yaml\n"
+        "  - id: workflow_policy\n"
+        "    path: .agent-guard/workflow-policy.yaml\n",
+    )
+
+    result = run_cli("drift", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="drift",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_unit="checks",
+    )
+    assert payload["policy_spec_drift"]["status"] == "ok"
+    assert payload["policy_spec_drift"]["finding_count"] == 0
+
+
+def test_drift_cli_json_reports_missing_readme_command(tmp_path: Path) -> None:
+    write(tmp_path / "README.md", "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n")
+    for name in ("context-policy.yaml", "path-policy.yaml", "content-policy.yaml"):
+        write(tmp_path / ".agent-guard" / name, "{}\n")
+    write(
+        tmp_path / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n",
+    )
+
+    result = run_cli("drift", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(payload, scanner="drift", status="violation", exit_code=1, finding_count=7)
+    reasons = {item["reason"] for item in payload["findings"]}
+    assert "missing_readme_guard_command" in reasons
+    assert "missing_required_file_entry" in reasons
+    assert str(tmp_path) not in result.stdout
+
+
 def assert_shared_envelope(
     payload: dict[str, object],
     *,

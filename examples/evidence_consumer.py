@@ -142,6 +142,24 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
     require(report.get("format") in report_properties["format"]["enum"], "report.format is not allowed")
     require(report.get("sanitized") is True, "report.sanitized must be true")
 
+    surface_inventory = payload.get("surface_inventory")
+    require(isinstance(surface_inventory, dict), "surface_inventory must be an object")
+    require(
+        surface_inventory.get("schema_version") == "agent-guard.agent_surface_inventory.v1",
+        "surface_inventory.schema_version mismatch",
+    )
+    surfaces = surface_inventory.get("surfaces")
+    require(isinstance(surfaces, list), "surface_inventory.surfaces must be an array")
+
+    evidence_coverage = payload.get("evidence_coverage")
+    require(isinstance(evidence_coverage, dict), "evidence_coverage must be an object")
+    require(
+        evidence_coverage.get("schema_version") == "agent-guard.evidence_coverage.v1",
+        "evidence_coverage.schema_version mismatch",
+    )
+    gates = evidence_coverage.get("gates")
+    require(isinstance(gates, list), "evidence_coverage.gates must be an array")
+
     serialized = json.dumps(payload, sort_keys=True)
     for fragment in FORBIDDEN_FRAGMENTS:
         require(fragment not in serialized, f"forbidden public-evidence fragment found: {fragment}")
@@ -151,6 +169,9 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
         "report_schema_version": report["schema_version"],
         "status": payload["status"],
         "finding_count": payload["finding_count"],
+        "surface_count": len(surfaces),
+        "enabled_gate_count": evidence_coverage.get("enabled_count", 0),
+        "missing_gate_count": evidence_coverage.get("missing_count", 0),
     }
 
 

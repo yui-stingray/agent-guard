@@ -1,153 +1,736 @@
 {
-  "schema_version": "agent-guard.result.v1",
-  "tool": {
-    "name": "agent-guard",
-    "version": "0.1.5"
-  },
-  "scanner": "context",
-  "status": "ok",
-  "exit_code": 0,
-  "policy": {
-    "path": ".agent-guard/context-policy.yaml"
-  },
-  "summary": {
+  "api": {
+    "checked_count": 53,
     "finding_count": 0,
-    "scanned_count": 1,
-    "scanned_unit": "files",
-    "context_file_count": 1,
-    "evidence_count": 6
+    "findings": [],
+    "policy": {
+      "path": "examples/architecture_policy.yaml"
+    },
+    "status": "ok"
   },
+  "command": "report",
+  "content": {
+    "checked_count": 22,
+    "finding_count": 0,
+    "findings": [],
+    "mode": "registered",
+    "policy": {
+      "path": ".agent-guard/content-policy.yaml"
+    },
+    "scan_dir": ".",
+    "status": "ok"
+  },
+  "context_lock": {
+    "checked_count": 1,
+    "covered": [
+      {
+        "check_id": "root_agents_md",
+        "kind": "agents_md",
+        "path": "AGENTS.md",
+        "status": "covered"
+      }
+    ],
+    "covered_count": 1,
+    "finding_count": 0,
+    "findings": [],
+    "policy": {
+      "path": ".agent-guard/context-digest-policy.yaml"
+    },
+    "status": "ok"
+  },
+  "digest": {
+    "checked_count": 5,
+    "finding_count": 0,
+    "findings": [],
+    "policy": {
+      "path": ".agent-guard/context-digest-policy.yaml"
+    },
+    "status": "ok"
+  },
+  "evidence_coverage": {
+    "enabled_count": 9,
+    "failing_count": 0,
+    "gate_count": 9,
+    "gates": [
+      {
+        "checked_count": 1,
+        "finding_count": 0,
+        "gate": "context",
+        "policy": {
+          "path": ".agent-guard/context-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 29,
+        "finding_count": 0,
+        "gate": "surface_inventory",
+        "policy": {
+          "path": ".agent-guard/context-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 161,
+        "finding_count": 0,
+        "gate": "path",
+        "policy": {
+          "path": ".agent-guard/path-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 22,
+        "finding_count": 0,
+        "gate": "content",
+        "policy": {
+          "path": ".agent-guard/content-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 53,
+        "finding_count": 0,
+        "gate": "api",
+        "policy": {
+          "path": "examples/architecture_policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 1,
+        "finding_count": 0,
+        "gate": "context_lock",
+        "policy": {
+          "path": ".agent-guard/context-digest-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 5,
+        "finding_count": 0,
+        "gate": "digest",
+        "policy": {
+          "path": ".agent-guard/context-digest-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 17,
+        "finding_count": 0,
+        "gate": "workflow",
+        "policy": {
+          "path": ".agent-guard/workflow-policy.yaml"
+        },
+        "status": "ok"
+      },
+      {
+        "checked_count": 30,
+        "finding_count": 0,
+        "gate": "policy_spec_drift",
+        "status": "ok"
+      }
+    ],
+    "missing_count": 0,
+    "schema_version": "agent-guard.evidence_coverage.v1"
+  },
+  "exit_code": 0,
   "finding_count": 0,
   "findings": [],
-  "command": "report",
-  "report": {
-    "schema_version": "agent-guard.report_evidence.v1",
-    "format": "json",
-    "scope": "context,digest,workflow",
-    "sanitized": true
-  },
   "inventory": {
-    "schema_version": "agent-guard.context_inventory.v1",
     "context_files": [
       {
-        "path": "AGENTS.md",
-        "kind": "agents_md",
-        "read_status": "scanned",
-        "line_count": 42,
-        "size_bytes": 1800,
         "evidence": [
           {
             "category": "approval_boundary",
-            "rule_id": "approval_boundary_mention",
-            "line": 10,
-            "evidence_id": "approval_boundary:AGENTS.md:10:approval_boundary_mention"
-          },
-          {
-            "category": "tool_permission_boundary",
-            "rule_id": "tool_permission_boundary_mention",
+            "evidence_id": "approval_boundary:AGENTS.md:14:approval_boundary_mention",
             "line": 14,
-            "evidence_id": "tool_permission_boundary:AGENTS.md:14:tool_permission_boundary_mention"
+            "rule_id": "approval_boundary_mention"
           },
           {
-            "category": "network_boundary",
-            "rule_id": "network_boundary_mention",
-            "line": 18,
-            "evidence_id": "network_boundary:AGENTS.md:18:network_boundary_mention"
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:15:approval_boundary_mention",
+            "line": 15,
+            "rule_id": "approval_boundary_mention"
           },
           {
-            "category": "secret_handling",
-            "rule_id": "secret_handling_mention",
-            "line": 22,
-            "evidence_id": "secret_handling:AGENTS.md:22:secret_handling_mention"
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:28:approval_boundary_mention",
+            "line": 28,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:30:approval_boundary_mention",
+            "line": 30,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:32:approval_boundary_mention",
+            "line": 32,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:49:approval_boundary_mention",
+            "line": 49,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:50:approval_boundary_mention",
+            "line": 50,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:51:approval_boundary_mention",
+            "line": 51,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:52:approval_boundary_mention",
+            "line": 52,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:53:approval_boundary_mention",
+            "line": 53,
+            "rule_id": "approval_boundary_mention"
+          },
+          {
+            "category": "approval_boundary",
+            "evidence_id": "approval_boundary:AGENTS.md:54:approval_boundary_mention",
+            "line": 54,
+            "rule_id": "approval_boundary_mention"
           },
           {
             "category": "destructive_action_boundary",
-            "rule_id": "destructive_action_boundary_mention",
-            "line": 26,
-            "evidence_id": "destructive_action_boundary:AGENTS.md:26:destructive_action_boundary_mention"
+            "evidence_id": "destructive_action_boundary:AGENTS.md:31:destructive_action_boundary_mention",
+            "line": 31,
+            "rule_id": "destructive_action_boundary_mention"
+          },
+          {
+            "category": "destructive_action_boundary",
+            "evidence_id": "destructive_action_boundary:AGENTS.md:38:destructive_action_boundary_mention",
+            "line": 38,
+            "rule_id": "destructive_action_boundary_mention"
           },
           {
             "category": "local_verification",
-            "rule_id": "local_verification_mention",
-            "line": 30,
-            "evidence_id": "local_verification:AGENTS.md:30:local_verification_mention"
+            "evidence_id": "local_verification:AGENTS.md:9:local_verification_mention",
+            "line": 9,
+            "rule_id": "local_verification_mention"
+          },
+          {
+            "category": "local_verification",
+            "evidence_id": "local_verification:AGENTS.md:23:local_verification_mention",
+            "line": 23,
+            "rule_id": "local_verification_mention"
+          },
+          {
+            "category": "local_verification",
+            "evidence_id": "local_verification:AGENTS.md:40:local_verification_mention",
+            "line": 40,
+            "rule_id": "local_verification_mention"
+          },
+          {
+            "category": "local_verification",
+            "evidence_id": "local_verification:AGENTS.md:41:local_verification_mention",
+            "line": 41,
+            "rule_id": "local_verification_mention"
+          },
+          {
+            "category": "local_verification",
+            "evidence_id": "local_verification:AGENTS.md:46:local_verification_mention",
+            "line": 46,
+            "rule_id": "local_verification_mention"
+          },
+          {
+            "category": "network_boundary",
+            "evidence_id": "network_boundary:AGENTS.md:32:network_boundary_mention",
+            "line": 32,
+            "rule_id": "network_boundary_mention"
+          },
+          {
+            "category": "secret_handling",
+            "evidence_id": "secret_handling:AGENTS.md:22:secret_handling_mention",
+            "line": 22,
+            "rule_id": "secret_handling_mention"
+          },
+          {
+            "category": "secret_handling",
+            "evidence_id": "secret_handling:AGENTS.md:36:secret_handling_mention",
+            "line": 36,
+            "rule_id": "secret_handling_mention"
+          },
+          {
+            "category": "secret_handling",
+            "evidence_id": "secret_handling:AGENTS.md:37:secret_handling_mention",
+            "line": 37,
+            "rule_id": "secret_handling_mention"
+          },
+          {
+            "category": "tool_permission_boundary",
+            "evidence_id": "tool_permission_boundary:AGENTS.md:32:tool_permission_boundary_mention",
+            "line": 32,
+            "rule_id": "tool_permission_boundary_mention"
           }
-        ]
+        ],
+        "kind": "agents_md",
+        "line_count": 55,
+        "path": "AGENTS.md",
+        "read_status": "scanned",
+        "size_bytes": 3044
       }
     ],
     "permission_boundaries": [
       {
         "category": "approval_boundary",
-        "status": "present",
         "evidence_ids": [
-          "approval_boundary:AGENTS.md:10:approval_boundary_mention"
-        ]
+          "approval_boundary:AGENTS.md:14:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:15:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:28:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:30:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:32:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:49:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:50:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:51:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:52:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:53:approval_boundary_mention",
+          "approval_boundary:AGENTS.md:54:approval_boundary_mention"
+        ],
+        "status": "present"
       },
       {
         "category": "tool_permission_boundary",
-        "status": "present",
         "evidence_ids": [
-          "tool_permission_boundary:AGENTS.md:14:tool_permission_boundary_mention"
-        ]
+          "tool_permission_boundary:AGENTS.md:32:tool_permission_boundary_mention"
+        ],
+        "status": "present"
       },
       {
         "category": "network_boundary",
-        "status": "present",
         "evidence_ids": [
-          "network_boundary:AGENTS.md:18:network_boundary_mention"
-        ]
+          "network_boundary:AGENTS.md:32:network_boundary_mention"
+        ],
+        "status": "present"
       },
       {
         "category": "secret_handling",
-        "status": "present",
         "evidence_ids": [
-          "secret_handling:AGENTS.md:22:secret_handling_mention"
-        ]
+          "secret_handling:AGENTS.md:22:secret_handling_mention",
+          "secret_handling:AGENTS.md:36:secret_handling_mention",
+          "secret_handling:AGENTS.md:37:secret_handling_mention"
+        ],
+        "status": "present"
       },
       {
         "category": "destructive_action_boundary",
-        "status": "present",
         "evidence_ids": [
-          "destructive_action_boundary:AGENTS.md:26:destructive_action_boundary_mention"
-        ]
+          "destructive_action_boundary:AGENTS.md:31:destructive_action_boundary_mention",
+          "destructive_action_boundary:AGENTS.md:38:destructive_action_boundary_mention"
+        ],
+        "status": "present"
       },
       {
         "category": "local_verification",
-        "status": "present",
         "evidence_ids": [
-          "local_verification:AGENTS.md:30:local_verification_mention"
-        ]
+          "local_verification:AGENTS.md:23:local_verification_mention",
+          "local_verification:AGENTS.md:40:local_verification_mention",
+          "local_verification:AGENTS.md:41:local_verification_mention",
+          "local_verification:AGENTS.md:46:local_verification_mention",
+          "local_verification:AGENTS.md:9:local_verification_mention"
+        ],
+        "status": "present"
+      }
+    ],
+    "schema_version": "agent-guard.context_inventory.v1"
+  },
+  "path": {
+    "checked_count": 161,
+    "finding_count": 0,
+    "findings": [],
+    "policy": {
+      "path": ".agent-guard/path-policy.yaml"
+    },
+    "status": "ok"
+  },
+  "policy": {
+    "path": ".agent-guard/context-policy.yaml"
+  },
+  "policy_spec_drift": {
+    "checked_count": 30,
+    "finding_count": 0,
+    "findings": [],
+    "schema_version": "agent-guard.policy_spec_drift.v1",
+    "status": "ok"
+  },
+  "report": {
+    "format": "json",
+    "sanitized": true,
+    "schema_version": "agent-guard.report_evidence.v1",
+    "scope": "context+path+content+api+digest+workflow+drift"
+  },
+  "scanned_files": 1,
+  "scanner": "context",
+  "schema_version": "agent-guard.result.v1",
+  "status": "ok",
+  "summary": {
+    "api_checked_count": 53,
+    "api_finding_count": 0,
+    "content_checked_count": 22,
+    "content_finding_count": 0,
+    "context_file_count": 1,
+    "context_lock_checked_count": 1,
+    "context_lock_covered_count": 1,
+    "context_lock_finding_count": 0,
+    "coverage_enabled_count": 9,
+    "coverage_failing_count": 0,
+    "coverage_missing_count": 0,
+    "digest_checked_count": 5,
+    "digest_finding_count": 0,
+    "drift_checked_count": 30,
+    "drift_finding_count": 0,
+    "evidence_count": 23,
+    "finding_count": 0,
+    "path_checked_count": 161,
+    "path_finding_count": 0,
+    "scanned_count": 1,
+    "scanned_unit": "files",
+    "surface_count": 29,
+    "workflow_checked_count": 17,
+    "workflow_finding_count": 0
+  },
+  "surface_inventory": {
+    "schema_version": "agent-guard.agent_surface_inventory.v1",
+    "summary": {
+      "by_surface": {
+        "agent_context": 1,
+        "policy_file": 5,
+        "workflow_file": 3,
+        "workflow_reference": 20
+      },
+      "surface_count": 29
+    },
+    "surfaces": [
+      {
+        "kind": "content_policy",
+        "path": ".agent-guard/content-policy.yaml",
+        "size_bytes": 1795,
+        "status": "present",
+        "surface": "policy_file"
+      },
+      {
+        "kind": "digest_policy",
+        "path": ".agent-guard/context-digest-policy.yaml",
+        "size_bytes": 903,
+        "status": "present",
+        "surface": "policy_file"
+      },
+      {
+        "kind": "context_policy",
+        "path": ".agent-guard/context-policy.yaml",
+        "size_bytes": 1161,
+        "status": "present",
+        "surface": "policy_file"
+      },
+      {
+        "kind": "path_policy",
+        "path": ".agent-guard/path-policy.yaml",
+        "size_bytes": 1325,
+        "status": "present",
+        "surface": "policy_file"
+      },
+      {
+        "kind": "workflow_policy",
+        "path": ".agent-guard/workflow-policy.yaml",
+        "size_bytes": 2984,
+        "status": "present",
+        "surface": "policy_file"
+      },
+      {
+        "kind": "github_actions",
+        "path": ".github/workflows/ci.yml",
+        "status": "scanned",
+        "surface": "workflow_file"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "content"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "context"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "digest"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "path"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "digest"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "workflow"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 6,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "path"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "context"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "digest"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "digest"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "content"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "workflow"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "inventory",
+          "scanner": "surface"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "drift"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "",
+          "scanner": "report"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "",
+          "scanner": "report"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "command": {
+          "command": "",
+          "scanner": "report"
+        },
+        "job_id": "test",
+        "kind": "agent_guard_command",
+        "path": ".github/workflows/ci.yml",
+        "status": "referenced",
+        "step_index": 7,
+        "surface": "workflow_reference"
+      },
+      {
+        "kind": "github_actions",
+        "path": ".github/workflows/github-release.yml",
+        "status": "scanned",
+        "surface": "workflow_file"
+      },
+      {
+        "kind": "github_actions",
+        "path": ".github/workflows/release.yml",
+        "status": "scanned",
+        "surface": "workflow_file"
+      },
+      {
+        "kind": "agents_md",
+        "line_count": 55,
+        "path": "AGENTS.md",
+        "size_bytes": 3044,
+        "status": "scanned",
+        "surface": "agent_context"
       }
     ]
   },
-  "context_lock": {
-    "policy": {
-      "path": ".agent-guard/context-digest-policy.yaml"
-    },
-    "status": "ok",
-    "checked_count": 1,
-    "covered_count": 1,
-    "covered": [
-      {
-        "path": "AGENTS.md",
-        "kind": "agents_md",
-        "status": "covered",
-        "check_id": "root_agents_md"
-      }
-    ],
-    "finding_count": 0,
-    "findings": []
-  },
-  "digest": {
-    "status": "ok",
-    "checked_count": 2,
-    "finding_count": 0,
-    "findings": []
+  "tool": {
+    "name": "agent-guard",
+    "version": "0.1.6"
   },
   "workflow": {
-    "status": "ok",
-    "checked_count": 1,
+    "checked_count": 17,
     "finding_count": 0,
-    "findings": []
+    "findings": [],
+    "policy": {
+      "path": ".agent-guard/workflow-policy.yaml"
+    },
+    "status": "ok"
   }
 }

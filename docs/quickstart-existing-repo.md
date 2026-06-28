@@ -14,36 +14,43 @@ python3 -m venv .venv
 python -m pip install yui-agent-guard
 ```
 
-## 2. Add A Minimal Context Policy
+## 2. Review Starter Guard Files
 
-Create `.agent-guard/context-policy.yaml`:
+Print the planned starter files first:
 
-```yaml
-scan:
-  include:
-    - AGENTS.md
-    - CLAUDE.md
-    - .github/copilot-instructions.md
-    - .cursor/rules/**
-    - .windsurf/rules/**
-  exclude:
-    - .git/**
-    - .venv/**
-    - node_modules/**
+```bash
+agent-guard init --root . --json
 ```
 
-Run the first check:
+The default mode writes nothing. Review the proposed `.agent-guard` policies
+and `.github/workflows/agent-guard.yml`, then write them only when they fit the
+repository:
+
+```bash
+agent-guard init --root . --write
+```
+
+Existing files are not overwritten unless `--force` is used.
+
+Before treating `agent-guard drift check` as a clean gate, document the chosen
+guard commands in the repository README. The drift gate intentionally reports
+missing README guard-command guidance so reviewers can compare the documented
+CI recipe with the actual workflow and `.agent-guard` policies.
+
+## 3. Run The First Evidence Pass
 
 ```bash
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
 ```
 
-The inventory is metadata only. Review repository-relative paths, agent context
-kinds, line counts, file sizes, and permission-boundary status. It should not
-emit raw instructions, snippets, matched text, secrets, or local paths.
+The inventories are metadata only. Review repository-relative paths, agent
+context kinds, policy files, workflow references, line counts, file sizes, and
+permission-boundary status. They should not emit raw instructions, raw workflow
+commands, snippets, matched text, secrets, or local paths.
 
-## 3. Pin Agent Context Files
+## 4. Pin Agent Context Files
 
 Generate a digest policy for the discovered context files:
 
@@ -55,20 +62,22 @@ agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --ch
 Commit the digest policy only after reviewing the context files. Regenerate it
 after intentional changes to those files.
 
-## 4. Store Review Evidence
+## 5. Store Review Evidence
 
 Create an evidence directory and write a sanitized report:
 
 ```bash
 mkdir -p .agent-guard/evidence
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md
+agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+agent-guard drift check --root . --json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown --output .agent-guard/evidence/agent-guard-report.md
 ```
 
 Keep generated evidence out of source control unless it is a deliberately
 sanitized sample. In CI, upload it as a build artifact instead.
 
-## 5. Read Failures
+## 6. Read Failures
 
 `agent-guard` uses these exit classes:
 
@@ -77,8 +86,9 @@ sanitized sample. In CI, upload it as a build artifact instead.
 - `2`: configuration or runtime error.
 
 Start with the `scanner`, `status`, `finding_count`, and `findings` fields.
-For report output, also check `inventory`, `context_lock`, `digest`, and
-`workflow` sections when those policies are enabled.
+For report output, also check `inventory`, `surface_inventory`,
+`evidence_coverage`, `context_lock`, `digest`, `workflow`, and
+`policy_spec_drift` sections when those gates are enabled.
 
 Common first fixes:
 

@@ -17,7 +17,8 @@ Installed wheels package these JSON Schema resources under
 - `agent-guard.context_lock_coverage.v1.schema.json`: hash-free evidence that
   discovered agent context files are pinned by digest policy.
 - `agent-guard.report_evidence.v1.schema.json`: the sanitized report payload
-  used by Markdown, JSON, and GitHub annotation output.
+  used by Markdown, JSON, and GitHub annotation output. Successful and
+  violation reports include agent surface inventory and evidence coverage.
 
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
@@ -29,22 +30,28 @@ fails closed on incompatible or unsanitized evidence.
 
 ## Minimal Adoption Path
 
-1. Add repo-local policies under `.agent-guard/`, starting with
+1. Run `agent-guard init --root . --json` and review the proposed starter
+   `.agent-guard` policies and evidence workflow before writing them.
+2. Add repo-local policies under `.agent-guard/`, starting with
    `context-policy.yaml` and a digest policy for safety-critical context files.
-2. Run the context inventory locally and review only repository-relative paths,
-   agent context kinds, counts, and permission-boundary status.
-3. Add `agent-guard report` to CI and store the JSON or Markdown output as a
+3. Run the context and surface inventories locally and review only
+   repository-relative paths, agent context kinds, workflow references, policy
+   files, counts, and permission-boundary status.
+4. Add `agent-guard report` to CI and store the JSON or Markdown output as a
    build artifact.
-4. Pair the static report with a runtime admission event from `agent-policy`
+5. Pair the static report with a runtime admission event from `agent-policy`
    when the repository uses an agent hook or wrapper before side effects.
-5. Review the evidence as a maintainer aid, not as a model-generated verdict.
+6. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
 Example commands:
 
 ```bash
+agent-guard init --root . --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard drift check --root . --json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format json --output .agent-guard/evidence/agent-guard-report.json
 python examples/evidence_consumer.py .agent-guard/evidence/agent-guard-report.json
 ```
 
@@ -63,13 +70,20 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - `inventory` lists discovered agent context files by repository-relative path
   and records whether approval, permission, network, destructive-action,
   local-verification, and sensitive-material handling boundaries are present.
+- `surface_inventory` lists agent context files, `.agent-guard` policy files,
+  workflow files, and agent-guard workflow references as metadata only.
+- `evidence_coverage` records which gates were enabled, missing, clean, or
+  failing without treating every missing optional gate as a failure.
 - `context_lock` records whether discovered context files are covered by digest
   policy, without emitting hash values.
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize
   additional static gates when those policies are supplied.
+- Optional `policy_spec_drift` summarizes README, workflow-policy, and
+  `.agent-guard` policy alignment when `--drift-check` is enabled.
 
 Report output omits raw context text, snippets, matched text, raw regex
-patterns, raw URLs, hash values, sensitive material, and absolute local paths.
+patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,
+sensitive material, and absolute local paths.
 
 ## SARIF Status
 

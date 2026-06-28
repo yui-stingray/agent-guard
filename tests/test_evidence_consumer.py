@@ -36,12 +36,13 @@ def test_evidence_consumer_accepts_public_sample() -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
-    assert payload == {
-        "finding_count": 0,
-        "report_schema_version": "agent-guard.report_evidence.v1",
-        "schema_version": "agent-guard.result.v1",
-        "status": "ok",
-    }
+    assert payload["finding_count"] == 0
+    assert payload["report_schema_version"] == "agent-guard.report_evidence.v1"
+    assert payload["schema_version"] == "agent-guard.result.v1"
+    assert payload["status"] == "ok"
+    assert payload["surface_count"] >= 1
+    assert payload["enabled_gate_count"] >= 2
+    assert payload["missing_gate_count"] >= 0
 
 
 def test_evidence_consumer_fails_closed_on_schema_drift(tmp_path: Path) -> None:
@@ -80,6 +81,30 @@ def test_evidence_consumer_rejects_missing_conditional_inventory(tmp_path: Path)
 
     assert result.returncode == 1
     assert "$.inventory is required" in result.stderr
+
+
+def test_evidence_consumer_rejects_missing_surface_inventory(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["surface_inventory"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.surface_inventory is required" in result.stderr
+
+
+def test_evidence_consumer_rejects_missing_evidence_coverage(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["evidence_coverage"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_coverage is required" in result.stderr
 
 
 def test_evidence_consumer_rejects_missing_report_scope(tmp_path: Path) -> None:
