@@ -37,7 +37,7 @@ from .evidence_pack import build_evidence_pack_manifest
 from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .profiles import PROFILE_NAMES
-from .report import render_github_annotations_report, render_markdown_evidence_report
+from .report import render_github_annotations_report, render_markdown_evidence_report, render_sarif_report
 from .surface_inventory import collect_agent_surface_inventory
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
@@ -353,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument(
         "--format",
-        choices=("markdown", "json", "github-annotations"),
+        choices=("markdown", "json", "github-annotations", "sarif"),
         default="markdown",
         help="report output format",
     )
@@ -367,6 +367,8 @@ def render_report_output(payload: dict[str, object], output_format: str) -> str:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
     if output_format == "github-annotations":
         return render_github_annotations_report(payload)
+    if output_format == "sarif":
+        return render_sarif_report(payload)
     return render_markdown_evidence_report(payload)
 
 
@@ -530,6 +532,7 @@ def run_conformance_check(args: argparse.Namespace) -> int:
             profile=args.profile,
             evidence_coverage=payload.get("evidence_coverage", {}) if isinstance(payload, dict) else {},
             surface_inventory=payload.get("surface_inventory", {}) if isinstance(payload, dict) else {},
+            report_payload=payload,
         )
     except Exception as exc:
         result = result_payload(
@@ -1503,15 +1506,6 @@ def run_report(args: argparse.Namespace) -> int:
         drift_report=drift_report,
     )
     conformance_report: dict[str, object] | None = None
-    if args.conformance_profile:
-        conformance_report = build_conformance_report(
-            profile=args.conformance_profile,
-            evidence_coverage=evidence_coverage,
-            surface_inventory=surface_inventory,
-        )
-        if int(conformance_report.get("finding_count", 0)) > 0:
-            exit_code = 1
-    evidence_pack_manifest: dict[str, object] | None = None
     payload = result_payload(
         scanner="context",
         status="ok" if exit_code == 0 else "violation",
@@ -1621,7 +1615,6 @@ def run_report(args: argparse.Namespace) -> int:
             "inventory": inventory.to_dict(),
             "surface_inventory": surface_inventory,
             "evidence_coverage": evidence_coverage,
-            **({"conformance": conformance_report} if conformance_report else {}),
             **({"path": path_report} if path_report else {}),
             **({"content": content_report} if content_report else {}),
             **({"api": api_report} if api_report else {}),
@@ -1631,6 +1624,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"policy_spec_drift": drift_report} if drift_report else {}),
         },
     )
+    evidence_pack_manifest: dict[str, object] | None = None
     if args.evidence_pack_manifest:
         artifact_paths = [str(args.output)] if str(args.output).strip() else None
         evidence_pack_manifest = build_evidence_pack_manifest(
@@ -1640,6 +1634,31 @@ def run_report(args: argparse.Namespace) -> int:
             root=root,
         )
         payload["evidence_pack_manifest"] = evidence_pack_manifest
+    if args.conformance_profile:
+        conformance_report = build_conformance_report(
+            profile=args.conformance_profile,
+            evidence_coverage=evidence_coverage,
+            surface_inventory=surface_inventory,
+            report_payload=payload,
+        )
+        payload["conformance"] = conformance_report
+        summary = payload.get("summary", {})
+        if isinstance(summary, dict):
+            summary["conformance_checked_count"] = conformance_report["checked_count"]
+            summary["conformance_finding_count"] = conformance_report["finding_count"]
+        if int(conformance_report.get("finding_count", 0)) > 0:
+            exit_code = 1
+            payload["exit_code"] = exit_code
+            payload["status"] = "violation"
+        if args.evidence_pack_manifest:
+            artifact_paths = [str(args.output)] if str(args.output).strip() else None
+            evidence_pack_manifest = build_evidence_pack_manifest(
+                report_payload=payload,
+                artifact_paths=artifact_paths,
+                agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
+                root=root,
+            )
+            payload["evidence_pack_manifest"] = evidence_pack_manifest
     emit_report_output(render_report_output(payload, args.format), args.output)
     return exit_code
 

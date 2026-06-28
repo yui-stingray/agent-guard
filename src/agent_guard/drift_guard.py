@@ -10,7 +10,9 @@ from pathlib import Path
 
 import yaml
 
-from .context_guard import collect_context_inventory, load_context_policy
+from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from .context_lock import check_context_digest_coverage
+from .digest_guard import load_digest_policy
 from .profiles import normalize_profile_name, profile_requirements
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
@@ -47,6 +49,34 @@ REQUIRED_AGENT_GUARD_FILES = (
     ".agent-guard/workflow-policy.yaml",
 )
 
+CONTEXT_RULE_CLASSIFICATIONS = {
+    "approval_bypass": "permission_boundary_weakened",
+    "disable_safety_tools": "permission_boundary_weakened",
+    "force_merge_without_review": "permission_boundary_weakened",
+    "policy_self_modification": "permission_boundary_weakened",
+    "sandbox_escape": "permission_boundary_weakened",
+    "permission_self_escalation": "permission_boundary_weakened",
+    "skip_verification": "verification_removed",
+    "ignore_test_failures": "verification_removed",
+    "unsafe_release_publication": "verification_removed",
+    "secret_prompt": "private_data_exposure",
+    "credential_persistence": "private_data_exposure",
+    "private_data_exfiltration": "private_data_exposure",
+    "raw_evidence_publication": "raw_evidence_publication",
+    "untrusted_instruction_priority": "untrusted_instruction_priority",
+    "unrestricted_network": "unrestricted_external_access",
+    "hidden_action": "auditability_weakened",
+    "audit_trail_removal": "auditability_weakened",
+    "user_impersonation": "auditability_weakened",
+    "destructive_command": "destructive_action_boundary_weakened",
+}
+
+CONTEXT_LOCK_CLASSIFICATIONS = {
+    "missing": "context_file_unpinned",
+    "partial": "context_file_partially_pinned",
+    "mismatch": "context_file_digest_drift",
+}
+
 
 @dataclass(frozen=True)
 class DriftFinding:
@@ -56,9 +86,12 @@ class DriftFinding:
     message: str
     reason: str
     requirement_id: str
+    classification: str = ""
+    source_rule_id: str = ""
+    line: int | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "rule_id": self.rule_id,
             "severity": self.severity,
             "file": self.file,
@@ -66,6 +99,13 @@ class DriftFinding:
             "reason": self.reason,
             "requirement_id": self.requirement_id,
         }
+        if self.classification:
+            payload["classification"] = self.classification
+        if self.source_rule_id:
+            payload["source_rule_id"] = self.source_rule_id
+        if self.line is not None:
+            payload["line"] = self.line
+        return payload
 
 
 def normalize_drift_schema_version(version: str) -> str:
@@ -145,6 +185,68 @@ def scan_context_boundary_drift(*, root: Path, profile: str) -> tuple[list[Drift
             )
         )
     return findings, checked_count
+
+
+def scan_context_instruction_drift(*, root: Path) -> tuple[list[DriftFinding], int]:
+    context_policy_path = root / ".agent-guard" / "context-policy.yaml"
+    if not context_policy_path.is_file():
+        return [], 0
+
+    policy = load_context_policy(context_policy_path)
+    context_findings, scanned_count = scan_context_files(root=root, policy=policy)
+    findings: list[DriftFinding] = []
+    for item in context_findings:
+        classification = CONTEXT_RULE_CLASSIFICATIONS.get(item.rule_id, "unsafe_context_instruction")
+        findings.append(
+            DriftFinding(
+                rule_id="context_instruction_drift",
+                severity=item.severity,
+                file=item.file,
+                message="agent context contains a classified unsafe instruction",
+                reason=classification,
+                requirement_id=item.rule_id,
+                classification=classification,
+                source_rule_id=item.rule_id,
+                line=item.line,
+            )
+        )
+    return findings, scanned_count
+
+
+def scan_context_lock_drift(*, root: Path) -> tuple[list[DriftFinding], int]:
+    context_policy_path = root / ".agent-guard" / "context-policy.yaml"
+    digest_policy_path = root / ".agent-guard" / "context-digest-policy.yaml"
+    if not context_policy_path.is_file() or not digest_policy_path.is_file():
+        return [], 0
+
+    inventory = collect_context_inventory(root=root, policy=load_context_policy(context_policy_path))
+    if not inventory.context_files:
+        return [], 0
+    coverage = check_context_digest_coverage(
+        root=root,
+        inventory=inventory,
+        digest_policy=load_digest_policy(digest_policy_path),
+    )
+    raw_findings = coverage.get("findings", [])
+    findings: list[DriftFinding] = []
+    for item in raw_findings if isinstance(raw_findings, list) else []:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status", ""))
+        classification = CONTEXT_LOCK_CLASSIFICATIONS.get(status, "context_lock_drift")
+        findings.append(
+            DriftFinding(
+                rule_id="context_lock_drift",
+                severity=str(item.get("severity", "high")),
+                file=str(item.get("path", "AGENTS.md")),
+                message="agent context digest coverage changed",
+                reason=classification,
+                requirement_id=str(item.get("check_id") or item.get("path") or "context_lock"),
+                classification=classification,
+                source_rule_id=str(item.get("rule_id", "")),
+            )
+        )
+    return findings, int(coverage.get("context_file_count", 0))
 
 
 def scan_policy_spec_drift(
@@ -245,6 +347,12 @@ def scan_policy_spec_drift(
         boundary_findings, boundary_checked = scan_context_boundary_drift(root=root, profile=profile_name)
         checked_count += boundary_checked
         findings.extend(boundary_findings)
+        context_findings, context_checked = scan_context_instruction_drift(root=root)
+        checked_count += context_checked
+        findings.extend(context_findings)
+        context_lock_findings, context_lock_checked = scan_context_lock_drift(root=root)
+        checked_count += context_lock_checked
+        findings.extend(context_lock_findings)
 
     return findings, checked_count
 

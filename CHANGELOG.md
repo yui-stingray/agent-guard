@@ -13,6 +13,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Expanded default agent-context rules for approval bypasses, verification
   skips, audit-trail removal, unsafe publication, sandbox and permission
   boundary weakening, and private-data exfiltration instructions.
+- Added deterministic context drift classifications for unsafe context
+  instructions and context-lock digest drift.
+- Added `agent-guard report --format sarif` as a snippet-free SARIF 2.1.0
+  adapter over sanitized report evidence.
+- Strengthened strict conformance to require a sanitized evidence-pack manifest
+  with a report artifact reference.
 - Updated README and quickstart docs with badges, an evidence-first adoption
   path, and a narrow public positioning note.
 

@@ -36,9 +36,10 @@ jobs:
 
 The action keeps per-scanner JSON in temporary runner storage so raw snippets do
 not appear in workflow logs. The uploadable files are the sanitized report,
-surface inventory, conformance result, and evidence-pack manifest. GitHub
-annotations are also sanitized and can be disabled with
-`github-annotations: "false"`.
+SARIF report, surface inventory, conformance result, and evidence-pack
+manifest. Markdown, SARIF, and GitHub annotations are rendered from the same
+sanitized JSON report instead of rerunning the full report scan. GitHub
+annotations can be disabled with `github-annotations: "false"`.
 
 ## Expanded Workflow Step
 
@@ -78,10 +79,33 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+          render_report() {
+            source="$1"
+            target="$2"
+            output_format="$3"
+            python - "$source" "$target" "$output_format" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from agent_guard.cli import render_report_output
+          source = Path(sys.argv[1])
+          target = sys.argv[2]
+          output_format = sys.argv[3]
+          payload = json.loads(source.read_text(encoding="utf-8"))
+          rendered = render_report_output(payload, output_format)
+          if target == "-":
+              sys.stdout.write(rendered)
+          else:
+              Path(target).write_text(rendered, encoding="utf-8")
+          PY
+          }
+          render_report .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-report.md markdown
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          render_report .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-results.sarif sarif
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
@@ -90,7 +114,7 @@ jobs:
           agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format github-annotations
+          render_report .agent-guard/evidence/agent-guard-report.json - github-annotations
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"
@@ -105,6 +129,31 @@ jobs:
 
 Pin third-party actions to commit SHAs if that is required by the repository's
 supply-chain policy.
+
+## Optional SARIF Upload
+
+If the repository uses GitHub code scanning, upload the SARIF file in a
+separate step. This requires `security-events: write`; keep the base evidence
+workflow read-only when code scanning is not used.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: yui-stingray/agent-guard@v0.1.9
+    id: agent-guard
+  - name: Upload SARIF
+    if: always()
+    uses: github/codeql-action/upload-sarif@v4
+    with:
+      sarif_file: ${{ steps.agent-guard.outputs.report-sarif }}
+      category: agent-guard
+```
+
+The SARIF file uses repository-relative paths and omits snippets, raw context
+text, raw workflow commands, hashes, secrets, and absolute local paths.
 
 ## How Maintainers Should Read It
 

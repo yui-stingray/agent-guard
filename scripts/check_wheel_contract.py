@@ -424,6 +424,37 @@ def main() -> int:
         assert agent_context_sha256 not in report_output.read_text(encoding="utf-8")
         assert str(temp) not in report_output.read_text(encoding="utf-8")
 
+        sarif_output = repo / ".agent-guard" / "evidence" / "agent-guard-results.sarif"
+        sarif_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "report",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+                "--digest-policy",
+                str(digest_policy),
+                "--workflow-policy",
+                str(workflow_policy),
+                "--drift-check",
+                "--format",
+                "sarif",
+                "--output",
+                str(sarif_output),
+            ],
+            cwd=temp,
+        )
+        assert sarif_cli.stdout == ""
+        sarif_payload = json.loads(sarif_output.read_text(encoding="utf-8"))
+        assert sarif_payload["version"] == "2.1.0"
+        assert sarif_payload["runs"][0]["tool"]["driver"]["name"] == "agent-guard"
+        assert sarif_payload["runs"][0]["results"] == []
+        assert agent_context_sha256 not in sarif_output.read_text(encoding="utf-8")
+        assert str(temp) not in sarif_output.read_text(encoding="utf-8")
+
         preset_cli = run(
             [
                 str(python),

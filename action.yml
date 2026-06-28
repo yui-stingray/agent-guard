@@ -58,6 +58,9 @@ outputs:
   report-markdown:
     description: Generated Markdown evidence report path.
     value: ${{ steps.evidence.outputs.report-markdown }}
+  report-sarif:
+    description: Generated SARIF evidence report path.
+    value: ${{ steps.evidence.outputs.report-sarif }}
   status:
     description: Captured agent-guard exit status.
     value: ${{ steps.evidence.outputs.status }}
@@ -89,6 +92,7 @@ runs:
         evidence_dir="$(policy_path "${{ inputs.evidence-dir }}")"
         report_json="${evidence_dir%/}/agent-guard-report.json"
         report_markdown="${evidence_dir%/}/agent-guard-report.md"
+        report_sarif="${evidence_dir%/}/agent-guard-results.sarif"
         mkdir -p "$evidence_dir"
         raw_parent="${RUNNER_TEMP:-/tmp}"
         mkdir -p "$raw_parent"
@@ -151,10 +155,36 @@ runs:
           report_args+=(--digest-policy "$digest_policy")
         fi
 
-        agent-guard report "${report_args[@]}" --format markdown --output "$report_markdown"
+        agent-guard report "${report_args[@]}" --format json --output "$report_json"
         record_status "$?"
 
-        agent-guard report "${report_args[@]}" --format json --output "$report_json"
+        render_report() {
+          source="$1"
+          target="$2"
+          output_format="$3"
+          python - "$source" "$target" "$output_format" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        from agent_guard.cli import render_report_output
+
+        source = Path(sys.argv[1])
+        target = sys.argv[2]
+        output_format = sys.argv[3]
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        rendered = render_report_output(payload, output_format)
+        if target == "-":
+            sys.stdout.write(rendered)
+        else:
+            Path(target).write_text(rendered, encoding="utf-8")
+        PY
+        }
+
+        render_report "$report_json" "$report_markdown" markdown
+        record_status "$?"
+
+        render_report "$report_json" "$report_sarif" sarif
         record_status "$?"
 
         agent-guard conformance check --root "$root" --evidence "$report_json" --profile recommended --json > "${evidence_dir%/}/agent-guard-conformance.json"
@@ -164,7 +194,7 @@ runs:
         record_status "$?"
 
         if [ "${{ inputs.github-annotations }}" = "true" ]; then
-          agent-guard report "${report_args[@]}" --format github-annotations
+          render_report "$report_json" "-" github-annotations
           record_status "$?"
         fi
 
@@ -172,6 +202,7 @@ runs:
           echo "evidence-dir=$evidence_dir"
           echo "report-json=$report_json"
           echo "report-markdown=$report_markdown"
+          echo "report-sarif=$report_sarif"
           echo "status=$status"
         } >> "$GITHUB_OUTPUT"
 

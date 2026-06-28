@@ -96,13 +96,25 @@ mkdir -p .agent-guard/evidence
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md
+python - .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-report.md markdown <<'PY'
+import json
+import sys
+from pathlib import Path
+from agent_guard.cli import render_report_output
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+payload = json.loads(source.read_text(encoding="utf-8"))
+target.write_text(render_report_output(payload, sys.argv[3]), encoding="utf-8")
+PY
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
 
 Keep generated evidence out of source control unless it is a deliberately
 sanitized sample. In CI, upload it as a build artifact instead.
+Render Markdown, SARIF, or GitHub annotations from the JSON report when you need
+additional surfaces; avoid rerunning `agent-guard report` just to change output
+format.
 
 `--evidence-preset recommended` expands unset report options to the current
 recommended static gate bundle: path, content, workflow, policy/spec drift v2,

@@ -104,12 +104,19 @@ Report output omits raw context text, snippets, matched text, raw regex
 patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,
 sensitive material, and absolute local paths.
 
-## SARIF Status
+## SARIF Thin Adapter
 
-SARIF is intentionally deferred until the JSON evidence contract has downstream
-usage. The current supported report surfaces are JSON, Markdown, and GitHub
-annotations. This keeps the primary contract small enough for maintainers to
-review and for wrappers to validate directly.
+`agent-guard report --format sarif` renders SARIF 2.1.0 from the same sanitized
+report evidence used by JSON, Markdown, and GitHub annotations. It is a thin
+adapter, not a separate scanner: rule ids, severity, repository-relative
+locations, messages, and fingerprints come from the existing deterministic
+payload.
+
+SARIF output intentionally omits snippets, raw context text, matched text, raw
+regex patterns, raw URLs, raw workflow commands, workflow run bodies, hash
+values, sensitive material, and absolute local paths. Uploading the SARIF file
+to GitHub code scanning is a consumer workflow choice because it requires
+additional repository permissions.
 
 ## Non-Goals
 

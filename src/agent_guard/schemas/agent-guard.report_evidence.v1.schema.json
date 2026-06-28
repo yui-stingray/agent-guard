@@ -71,7 +71,7 @@
         "schema_version": {"const": "agent-guard.report_evidence.v1"},
         "format": {
           "type": "string",
-          "enum": ["markdown", "json", "github-annotations"]
+          "enum": ["markdown", "json", "github-annotations", "sarif"]
         },
         "scope": {"type": "string"},
         "sanitized": {"const": true}

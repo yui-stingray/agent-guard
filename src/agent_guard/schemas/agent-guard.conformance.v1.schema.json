@@ -21,6 +21,8 @@
     "finding_count": {"type": "integer", "minimum": 0},
     "required_gates": {"type": "array", "items": {"type": "string"}},
     "required_surfaces": {"type": "array", "items": {"type": "string"}},
+    "required_report_sections": {"type": "array", "items": {"type": "string"}},
+    "required_artifact_roles": {"type": "array", "items": {"type": "string"}},
     "findings": {
       "type": "array",
       "items": {

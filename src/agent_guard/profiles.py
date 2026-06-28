@@ -27,6 +27,8 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
         ),
         "workflow_commands": (("context", "check"), ("surface", "inventory")),
         "boundary_categories": ("secret_handling", "local_verification"),
+        "report_sections": (),
+        "artifact_roles": (),
     },
     "recommended": {
         "gates": ("context", "surface_inventory", "path", "content", "workflow", "policy_spec_drift"),
@@ -66,6 +68,8 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             ("report", ""),
         ),
         "boundary_categories": ("approval_boundary", "secret_handling", "local_verification"),
+        "report_sections": (),
+        "artifact_roles": (),
     },
     "strict": {
         "gates": (
@@ -139,6 +143,8 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             "destructive_action_boundary",
             "local_verification",
         ),
+        "report_sections": ("evidence_pack_manifest",),
+        "artifact_roles": ("report",),
     },
 }
 

@@ -362,6 +362,7 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
@@ -423,16 +424,24 @@ escape HTML and Markdown control characters before output.
 Use `--format json` to emit the same sanitized evidence payload inside the
 shared `agent-guard.result.v1` envelope. This is the machine-readable report
 contract for wrappers, CI checks, and downstream tooling. Add `--output <path>`
-when CI should store the rendered Markdown, JSON, or GitHub annotation evidence
-as an artifact instead of writing it to stdout. SARIF is intentionally deferred
-until this JSON evidence contract has downstream usage; the current CI-friendly
-report formats are JSON and GitHub annotations.
+when CI should store the rendered Markdown, JSON, GitHub annotation, or SARIF
+evidence as an artifact instead of writing it to stdout. SARIF is a thin
+adapter over the sanitized report payload: it emits SARIF 2.1.0 rules,
+locations, severity levels, and fingerprints, but not snippets, raw context
+text, raw workflow commands, hash values, URLs, secrets, or absolute local
+paths.
 
 Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean
 reports are quiet in this format. Annotation titles and messages contain only
 controlled scanner metadata such as scanner name, rule id, category, status, or
 reason.
+
+Use `--format sarif --output .agent-guard/evidence/agent-guard-results.sarif`
+when a repository wants to upload findings to GitHub code scanning with
+`github/codeql-action/upload-sarif`. Uploading is intentionally left to the
+consumer workflow because it changes repository permissions.
+SARIF is a thin adapter and not a separate scanner.
 
 For `report`, it returns:
 - exit `0` when the report is generated and all enabled checks pass
@@ -456,7 +465,7 @@ files from the source tree:
 - `agent-guard.context_lock_coverage.v1.schema.json`: hash-free context lock
   coverage evidence, including covered context files.
 - `agent-guard.report_evidence.v1.schema.json`: sanitized report evidence
-  payload for Markdown, JSON, and GitHub annotation rendering, including
+  payload for Markdown, JSON, GitHub annotation, and SARIF rendering, including
   surface inventory and evidence coverage on success/violation payloads.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
   `recommended`, and `strict` adoption levels.
@@ -696,7 +705,7 @@ agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations>] [--output <path>]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]

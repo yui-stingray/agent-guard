@@ -5,6 +5,8 @@ Why: adopters need a deterministic pass/fail summary without LLM judgment.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from .profiles import profile_requirements, normalize_profile_name
 
 
@@ -41,16 +43,35 @@ def surface_counts(surface_inventory: dict[str, object]) -> dict[str, int]:
     return counts
 
 
+def artifact_roles(report_payload: Mapping[str, object]) -> set[str]:
+    manifest = report_payload.get("evidence_pack_manifest", {})
+    if not isinstance(manifest, Mapping):
+        return set()
+    artifacts = manifest.get("artifacts", [])
+    if not isinstance(artifacts, list):
+        return set()
+    roles: set[str] = set()
+    for item in artifacts:
+        if isinstance(item, Mapping):
+            role = str(item.get("role", "")).strip()
+            if role:
+                roles.add(role)
+    return roles
+
+
 def build_conformance_report(
     *,
     profile: str,
     evidence_coverage: dict[str, object],
     surface_inventory: dict[str, object],
+    report_payload: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     profile_name = normalize_profile_name(profile)
     requirements = profile_requirements(profile_name)
     gates = evidence_gate_map(evidence_coverage)
     surfaces = surface_counts(surface_inventory)
+    payload = report_payload or {}
+    roles = artifact_roles(payload)
     findings: list[dict[str, object]] = []
     checked_count = 0
 
@@ -96,6 +117,47 @@ def build_conformance_report(
             }
         )
 
+    for section in requirements["report_sections"]:
+        checked_count += 1
+        section_name = str(section)
+        item = payload.get(section_name)
+        if isinstance(item, Mapping):
+            if section_name == "evidence_pack_manifest" and item.get("sanitized") is not True:
+                findings.append(
+                    {
+                        "rule_id": "required_report_section_not_sanitized",
+                        "severity": "high",
+                        "requirement_id": section_name,
+                        "message": "required report section is not marked sanitized",
+                        "reason": "not_sanitized",
+                    }
+                )
+            continue
+        findings.append(
+            {
+                "rule_id": "required_report_section_missing",
+                "severity": "high",
+                "requirement_id": section_name,
+                "message": "required report section is missing",
+                "reason": "missing_required_report_section",
+            }
+        )
+
+    for role in requirements["artifact_roles"]:
+        checked_count += 1
+        role_name = str(role)
+        if role_name in roles:
+            continue
+        findings.append(
+            {
+                "rule_id": "required_artifact_role_missing",
+                "severity": "medium",
+                "requirement_id": role_name,
+                "message": "required evidence-pack artifact role is missing",
+                "reason": "missing_required_artifact_role",
+            }
+        )
+
     return {
         "schema_version": CONFORMANCE_SCHEMA_VERSION,
         "profile": profile_name,
@@ -104,5 +166,7 @@ def build_conformance_report(
         "finding_count": len(findings),
         "required_gates": list(requirements["gates"]),
         "required_surfaces": list(requirements["surfaces"]),
+        "required_report_sections": list(requirements["report_sections"]),
+        "required_artifact_roles": list(requirements["artifact_roles"]),
         "findings": findings,
     }
