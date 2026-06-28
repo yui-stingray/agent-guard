@@ -8,7 +8,42 @@
 It does not post pull request comments, call an LLM reviewer, or make merge
 decisions. Maintainers should treat the output as deterministic evidence.
 
-## Minimal Workflow Step
+## Minimal Action Workflow
+
+After `agent-guard init --root . --write` has created reviewed `.agent-guard`
+policies, the root GitHub Action runs the recommended evidence preset and
+exposes the generated report paths as action outputs:
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  agent-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.1.9
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-guard-evidence
+          path: ${{ steps.agent-guard.outputs.evidence-dir }}/
+          if-no-files-found: error
+```
+
+The action keeps per-scanner JSON in temporary runner storage so raw snippets do
+not appear in workflow logs. The uploadable files are the sanitized report,
+surface inventory, conformance result, and evidence-pack manifest. GitHub
+annotations are also sanitized and can be disabled with
+`github-annotations: "false"`.
+
+## Expanded Workflow Step
+
+Use this form when a repository wants the commands visible in workflow review
+instead of using the packaged composite action.
 
 ```yaml
 permissions:
@@ -29,16 +64,18 @@ jobs:
           set +e
           status=0
           mkdir -p .agent-guard/evidence
-          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+          raw_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/agent-guard-raw.XXXXXX")"
+          trap 'rm -rf "$raw_dir"' EXIT
+          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard drift check --root . --profile recommended --schema-version v2 --json
+          agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -47,10 +84,10 @@ jobs:
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
+          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format github-annotations

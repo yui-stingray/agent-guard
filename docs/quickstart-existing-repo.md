@@ -39,6 +39,30 @@ CI recipe with the actual workflow and `.agent-guard` policies.
 
 ## 3. Run The First Evidence Pass
 
+The shortest CI path is the packaged GitHub Action. It runs the recommended
+evidence preset and leaves artifact upload to the caller:
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  agent-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.1.9
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: agent-guard-evidence
+          path: ${{ steps.agent-guard.outputs.evidence-dir }}/
+          if-no-files-found: error
+```
+
+For a local first pass, run the same evidence surfaces directly:
+
 ```bash
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json

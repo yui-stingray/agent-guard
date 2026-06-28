@@ -1,11 +1,16 @@
 # agent-guard
 
+[![CI](https://github.com/yui-stingray/agent-guard/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/yui-stingray/agent-guard/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/yui-agent-guard.svg)](https://pypi.org/project/yui-agent-guard/)
+[![Python](https://img.shields.io/pypi/pyversions/yui-agent-guard.svg)](https://pypi.org/project/yui-agent-guard/)
+[![License](https://img.shields.io/pypi/l/yui-agent-guard.svg)](LICENSE)
+
 > Static repository guardrails for agent-touched codebases.
 >
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.8` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.9` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -68,7 +73,8 @@ For adoption in an existing repository, start with
 [`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md), then use
 [`docs/github-actions-evidence.md`](docs/github-actions-evidence.md) for CI
 artifacts and annotations. Release timing is described in
-[`docs/release-criteria.md`](docs/release-criteria.md).
+[`docs/release-criteria.md`](docs/release-criteria.md). Positioning and
+public-facing scope are summarized in [`docs/positioning.md`](docs/positioning.md).
 
 ## Install
 
@@ -86,75 +92,51 @@ Requires Python 3.11+. The only runtime dependency is `PyYAML`.
 
 ## Quick start
 
-Review-first starter files for an existing repo:
+Start by generating deterministic evidence, not by treating `agent-guard` as a
+standalone regex scanner.
+
+Preview starter policies and the evidence workflow:
 
 ```bash
 agent-guard init --root . --json
 agent-guard init --root . --write
 ```
 
-API surface guard:
+Generate a sanitized evidence report:
 
 ```bash
-agent-guard api check --root . --policy examples/architecture_policy.yaml
-```
-
-Content security guard:
-
-```bash
-agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir .
-```
-
-Agent context guard:
-
-```bash
-agent-guard context check --root . --policy .agent-guard/context-policy.yaml
-```
-
-Redacted agent context inventory:
-
-```bash
-agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --json
-agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
-agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-lock.yaml
-agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
-```
-
-Sanitized review evidence report:
-
-```bash
+mkdir -p .agent-guard/evidence
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
-agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
 
-Path-name guard:
+Use the GitHub Action after the starter `.agent-guard` policies are reviewed:
 
-```bash
-agent-guard path check --root . --policy .agent-guard/path-policy.yaml
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  agent-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: yui-stingray/agent-guard@v0.1.9
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-guard-evidence
+          path: .agent-guard/evidence/
+          if-no-files-found: error
 ```
 
-Digest guard:
+Run focused scanners when you need faster local feedback:
 
 ```bash
-agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml
-```
-
-Workflow drift guard:
-
-```bash
-agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
-agent-guard drift check --root .
-agent-guard drift check --root . --profile recommended --schema-version v2
+agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
+agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 ```
 
 JSON mode is stable and intended for CI/wrappers:
@@ -175,7 +157,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.8"},
+  "tool": {"name": "agent-guard", "version": "0.1.9"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -243,71 +225,28 @@ must never have been tracked, such as bypass corpora and private artifacts.
 `agent-guard` checks the current tree; `git log --diff-filter=A --name-only`
 checks historical contamination.
 
-## Optional pre-commit example
+## Packaged pre-commit hooks
 
 If a repository already uses
 [`pre-commit`](https://pre-commit.com/), `agent-guard` can run as an optional
 local gate before commits. This is not required for CI; it is a fast feedback
 loop for maintainers who want the same checks locally.
 
-Adapt the policy paths to files in the target repository:
+The packaged hooks assume the repository has reviewed `.agent-guard` policies.
+Use `agent-guard-evidence` first when you want the deterministic report rather
+than a single scanner:
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: local
+  - repo: https://github.com/yui-stingray/agent-guard
+    rev: v0.1.9
     hooks:
-      - id: agent-guard-path
-        name: agent-guard path check
-        entry: agent-guard
-        language: python
-        language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.8"]
-        args:
-          - path
-          - check
-          - --root
-          - .
-          - --policy
-          - .agent-guard/path-policy.yaml
-          - --json
-        pass_filenames: false
-
       - id: agent-guard-context
-        name: agent-guard context check
-        entry: agent-guard
-        language: python
-        language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.8"]
-        args:
-          - context
-          - check
-          - --root
-          - .
-          - --policy
-          - .agent-guard/context-policy.yaml
-          - --json
-        pass_filenames: false
-
+      - id: agent-guard-path
       - id: agent-guard-content
-        name: agent-guard content check
-        entry: agent-guard
-        language: python
-        language_version: python3.11
-        additional_dependencies: ["yui-agent-guard==0.1.8"]
-        args:
-          - content
-          - check
-          - --repo-root
-          - .
-          - --policy
-          - .agent-guard/content-policy.yaml
-          - --mode
-          - registered
-          - --scan-dir
-          - .
-          - --json
-        pass_filenames: false
+      - id: agent-guard-evidence
+        stages: [manual]
 ```
 
 Install and test the hooks with:
@@ -315,6 +254,7 @@ Install and test the hooks with:
 ```bash
 pre-commit install
 pre-commit run --all-files
+pre-commit run agent-guard-evidence --hook-stage manual --all-files
 ```
 
 ## Current scanners

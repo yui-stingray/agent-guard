@@ -4,7 +4,7 @@ What changed and why?
 
 ## Validation
 
-- [ ] `python -m pytest -q`
+- [ ] `python -m pytest`
 - [ ] Scanner command tested manually, if applicable
 - [ ] Documentation updated, if needed
 

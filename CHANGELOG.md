@@ -4,6 +4,18 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.9 - 2026-06-28
+
+- Added a root composite GitHub Action that generates recommended
+  `agent-guard` evidence reports and exposes artifact paths for upload.
+- Added packaged `pre-commit` hooks with an evidence-first hook before the
+  individual context, path, and content scanners.
+- Expanded default agent-context rules for approval bypasses, verification
+  skips, audit-trail removal, unsafe publication, sandbox and permission
+  boundary weakening, and private-data exfiltration instructions.
+- Updated README and quickstart docs with badges, an evidence-first adoption
+  path, and a narrow public positioning note.
+
 ## 0.1.8 - 2026-06-28
 
 - Added `agent-guard report --evidence-preset recommended` as a shorter

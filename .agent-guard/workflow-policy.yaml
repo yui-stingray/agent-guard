@@ -17,6 +17,10 @@ required_files:
     path: .agent-guard/context-digest-policy.yaml
   - id: workflow_policy
     path: .agent-guard/workflow-policy.yaml
+  - id: action_metadata
+    path: action.yml
+  - id: pre_commit_hooks
+    path: .pre-commit-hooks.yaml
 
 workflow_checks:
   - id: ci_self_dogfood
@@ -26,6 +30,8 @@ workflow_checks:
         command: python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml
       - id: context_guard_self
         command: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml
+      - id: pre_commit_manifest_self
+        command: pre-commit validate-manifest
       - id: context_lock_self
         command: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml
       - id: context_lock_coverage_self

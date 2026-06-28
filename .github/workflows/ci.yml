@@ -38,7 +38,10 @@ jobs:
         if: matrix.python-version == '3.12'
         run: python scripts/check_changelog.py
       - name: Run tests
-        run: pytest -q
+        run: pytest
+      - name: Validate pre-commit hook manifest
+        if: matrix.python-version == '3.12'
+        run: pre-commit validate-manifest
       - name: Run CLI smoke tests
         run: |
           python -m agent_guard.cli content check --repo-root . --policy examples/content_security_policy.yaml --mode registered --scan-dir . --json

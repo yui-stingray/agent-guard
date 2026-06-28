@@ -46,8 +46,8 @@ fails closed on incompatible or unsanitized evidence.
 3. Run the context and surface inventories locally and review only
    repository-relative paths, agent context kinds, workflow references, policy
    files, counts, and permission-boundary status.
-4. Add `agent-guard report` to CI and store the JSON or Markdown output as a
-   build artifact.
+4. Add the packaged GitHub Action or `agent-guard report` to CI and store the
+   JSON or Markdown output as a build artifact.
 5. Pair the static report with a runtime admission event from `agent-policy`
    when the repository uses an agent hook or wrapper before side effects. Pass
    that event only as an artifact reference; `agent-guard` does not read or

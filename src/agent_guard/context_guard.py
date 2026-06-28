@@ -67,6 +67,96 @@ DEFAULT_FORBIDDEN_PATTERNS = [
         "pattern": r"(?i)\b(hide|conceal|withhold)\b.{0,80}\b(action|change|command|from\s+(the\s+)?(user|maintainer|reviewer))\b|\bwithout\s+(telling|notifying)\s+(the\s+)?(user|maintainer|reviewer)\b",
         "message": "agent context must not instruct agents to hide actions from users or maintainers",
     },
+    {
+        "id": "disable_safety_tools",
+        "severity": "high",
+        "pattern": r"(?i)\b(disable|turn\s+off|skip|bypass)\b.{0,80}\b(agent-guard|agent-policy|safety\s+check|guardrails?|policy\s+check|evidence\s+gate)\b",
+        "message": "agent context must not instruct agents to disable repository safety tools",
+    },
+    {
+        "id": "skip_verification",
+        "severity": "medium",
+        "pattern": r"(?i)\b(never|do\s+not|don't|skip)\b.{0,80}\b(run|perform|execute)\b.{0,40}\b(tests?|pytest|lint|typecheck|build|verification|smoke\s+checks?)\b",
+        "message": "agent context should not normalize skipping verification",
+    },
+    {
+        "id": "ignore_test_failures",
+        "severity": "high",
+        "pattern": r"(?i)\b(ignore|hide|suppress|dismiss)\b.{0,80}\b(failing|failed|broken)\b.{0,40}\b(tests?|checks?|ci|lint|build)\b",
+        "message": "agent context must not instruct agents to ignore failing verification",
+    },
+    {
+        "id": "force_merge_without_review",
+        "severity": "high",
+        "pattern": r"(?i)\b(merge|land|approve)\b.{0,80}\b(without|no)\b.{0,40}\b(review|maintainer|approval)\b|\b(no|without)\b.{0,40}\b(review|maintainer|approval)\b.{0,80}\b(merge|land|approve)\b",
+        "message": "agent context must not bypass maintainer review for merges",
+    },
+    {
+        "id": "credential_persistence",
+        "severity": "high",
+        "pattern": r"(?i)\b(save|store|commit|log)\b.{0,80}\b(api[_ -]?key|token|password|secret|credential)\b",
+        "message": "agent context must not ask agents to persist plaintext credentials",
+    },
+    {
+        "id": "unrestricted_network",
+        "severity": "medium",
+        "pattern": r"(?i)\b(always|automatically|auto|without\s+approval|without\s+review)\b.{0,80}\b(allow|permit|enable)\b.{0,40}\b(network\s+access|internet\s+access|web\s+access|external\s+api|remote\s+access)\b",
+        "message": "agent context should not broadly auto-allow network access",
+    },
+    {
+        "id": "untrusted_instruction_priority",
+        "severity": "medium",
+        "pattern": r"(?i)\b(issue|comment|web\s+page|website|prompt|user\s+message|external\s+content)\b.{0,80}\b(overrides?|takes?\s+priority|supersedes?)\b.{0,80}\b(AGENTS\.md|CLAUDE\.md|policy|repository\s+instructions?)\b",
+        "message": "agent context should not let untrusted content override repository policy",
+    },
+    {
+        "id": "raw_evidence_publication",
+        "severity": "high",
+        "pattern": r"(?i)\b(publish|post|upload|share)\b.{0,80}\b(raw|full|complete)\b.{0,40}\b(logs?|transcripts?|prompts?|tool\s+output|workflow\s+output|evidence)\b",
+        "message": "agent context must not publish raw logs, prompts, or evidence",
+    },
+    {
+        "id": "policy_self_modification",
+        "severity": "high",
+        "pattern": r"(?i)\b(modify|rewrite|edit|update)\b.{0,80}\b(AGENTS\.md|CLAUDE\.md|agent\s+instructions?|policy\s+files?)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval|maintainer)\b",
+        "message": "agent context must not authorize unreviewed policy or instruction changes",
+    },
+    {
+        "id": "sandbox_escape",
+        "severity": "high",
+        "pattern": r"(?i)\b(disable|bypass|escape|ignore)\b.{0,80}\b(sandbox|container|isolation|permission\s+profile)\b",
+        "message": "agent context must not instruct agents to bypass sandbox boundaries",
+    },
+    {
+        "id": "permission_self_escalation",
+        "severity": "high",
+        "pattern": r"(?i)\b(grant|give|assume|escalate)\b.{0,80}\b(admin|root|sudo|write\s+access|maintainer\s+access|elevated\s+permissions?)\b",
+        "message": "agent context must not instruct agents to self-escalate permissions",
+    },
+    {
+        "id": "audit_trail_removal",
+        "severity": "high",
+        "pattern": r"(?i)\b(delete|remove|erase|clean)\b.{0,80}\b(audit\s+logs?|logs?|evidence|trace|history)\b.{0,80}\b(after|before)\b.{0,40}\b(review|reporting|completion|commit)\b",
+        "message": "agent context must not remove audit trails to avoid review",
+    },
+    {
+        "id": "private_data_exfiltration",
+        "severity": "high",
+        "pattern": r"(?i)\b(send|upload|post|exfiltrate|copy)\b.{0,80}\b(secrets?|tokens?|credentials?|private\s+data|local\s+paths?|environment\s+variables?)\b.{0,80}\b(to|into)\b.{0,40}\b(url|webhook|external|remote|public)\b",
+        "message": "agent context must not move private data to external destinations",
+    },
+    {
+        "id": "user_impersonation",
+        "severity": "high",
+        "pattern": r"(?i)\b(commit|push|comment|approve|merge)\b.{0,80}\b(as|on\s+behalf\s+of)\b.{0,40}\b(the\s+)?user\b.{0,80}\b(without|no)\b.{0,40}\b(approval|review|telling|consent)\b",
+        "message": "agent context must not authorize impersonating a user without approval",
+    },
+    {
+        "id": "unsafe_release_publication",
+        "severity": "high",
+        "pattern": r"(?i)\b(publish|release|deploy)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval|verification|ci|tests?)\b",
+        "message": "agent context must not authorize unreviewed publication or release",
+    },
 ]
 
 CONTEXT_INVENTORY_SCHEMA_VERSION = "agent-guard.context_inventory.v1"

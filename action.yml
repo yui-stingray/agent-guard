@@ -1,0 +1,178 @@
+name: agent-guard evidence
+description: Generate deterministic agent-guard evidence for agent-touched repositories.
+branding:
+  icon: shield
+  color: green
+inputs:
+  root:
+    description: Repository root to scan.
+    required: false
+    default: "."
+  python-version:
+    description: Python version used to install and run agent-guard.
+    required: false
+    default: "3.12"
+  package-spec:
+    description: Package spec to install before running checks.
+    required: false
+    default: "yui-agent-guard==0.1.9"
+  context-policy:
+    description: Path to the agent context policy, relative to root unless absolute.
+    required: false
+    default: ".agent-guard/context-policy.yaml"
+  path-policy:
+    description: Path to the path policy, relative to root unless absolute.
+    required: false
+    default: ".agent-guard/path-policy.yaml"
+  content-policy:
+    description: Path to the content policy, relative to root unless absolute.
+    required: false
+    default: ".agent-guard/content-policy.yaml"
+  content-scan-dir:
+    description: Directory scanned by the content guard.
+    required: false
+    default: "."
+  workflow-policy:
+    description: Path to the workflow policy, relative to root unless absolute.
+    required: false
+    default: ".agent-guard/workflow-policy.yaml"
+  digest-policy:
+    description: Optional digest policy path. It is used only when the file exists.
+    required: false
+    default: ".agent-guard/context-digest-policy.yaml"
+  evidence-dir:
+    description: Directory where JSON and Markdown evidence files are written, relative to root unless absolute.
+    required: false
+    default: ".agent-guard/evidence"
+  github-annotations:
+    description: Emit sanitized GitHub workflow annotations.
+    required: false
+    default: "true"
+outputs:
+  evidence-dir:
+    description: Directory containing generated evidence artifacts.
+    value: ${{ steps.evidence.outputs.evidence-dir }}
+  report-json:
+    description: Generated JSON evidence report path.
+    value: ${{ steps.evidence.outputs.report-json }}
+  report-markdown:
+    description: Generated Markdown evidence report path.
+    value: ${{ steps.evidence.outputs.report-markdown }}
+  status:
+    description: Captured agent-guard exit status.
+    value: ${{ steps.evidence.outputs.status }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install agent-guard
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install "${{ inputs.package-spec }}"
+    - id: evidence
+      name: Generate deterministic evidence
+      shell: bash
+      run: |
+        set +e
+        status=0
+        root="${{ inputs.root }}"
+        policy_path() {
+          case "$1" in
+            /*) printf '%s\n' "$1" ;;
+            *) printf '%s/%s\n' "${root%/}" "$1" ;;
+          esac
+        }
+
+        evidence_dir="$(policy_path "${{ inputs.evidence-dir }}")"
+        report_json="${evidence_dir%/}/agent-guard-report.json"
+        report_markdown="${evidence_dir%/}/agent-guard-report.md"
+        mkdir -p "$evidence_dir"
+        raw_parent="${RUNNER_TEMP:-/tmp}"
+        mkdir -p "$raw_parent"
+        raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
+        trap 'rm -rf "$raw_dir"' EXIT
+
+        path_exists() {
+          test -f "$1"
+        }
+
+        record_status() {
+          code="$1"
+          if [ "$code" -ne 0 ]; then
+            status="$code"
+          fi
+        }
+
+        context_policy="$(policy_path "${{ inputs.context-policy }}")"
+        path_policy="$(policy_path "${{ inputs.path-policy }}")"
+        content_policy="$(policy_path "${{ inputs.content-policy }}")"
+        content_scan_dir="${{ inputs.content-scan-dir }}"
+        workflow_policy="$(policy_path "${{ inputs.workflow-policy }}")"
+        digest_policy="$(policy_path "${{ inputs.digest-policy }}")"
+
+        agent-guard context check --root "$root" --policy "$context_policy" --json > "$raw_dir/context.json"
+        record_status "$?"
+
+        if path_exists "$path_policy"; then
+          agent-guard path check --root "$root" --policy "$path_policy" --json > "$raw_dir/path.json"
+          record_status "$?"
+        fi
+
+        if path_exists "$content_policy"; then
+          agent-guard content check --repo-root "$root" --policy "$content_policy" --mode registered --scan-dir "$content_scan_dir" --json > "$raw_dir/content.json"
+          record_status "$?"
+        fi
+
+        agent-guard surface inventory --root "$root" --context-policy "$context_policy" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
+        record_status "$?"
+
+        if path_exists "$workflow_policy"; then
+          agent-guard workflow check --root "$root" --policy "$workflow_policy" --json > "$raw_dir/workflow.json"
+          record_status "$?"
+        fi
+
+        agent-guard drift check --root "$root" --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
+        record_status "$?"
+
+        report_args=(--root "$root" --context-policy "$context_policy" --evidence-preset recommended)
+        if path_exists "$path_policy"; then
+          report_args+=(--path-policy "$path_policy")
+        fi
+        if path_exists "$content_policy"; then
+          report_args+=(--content-policy "$content_policy" --content-scan-dir "$content_scan_dir")
+        fi
+        if path_exists "$workflow_policy"; then
+          report_args+=(--workflow-policy "$workflow_policy")
+        fi
+        if path_exists "$digest_policy"; then
+          report_args+=(--digest-policy "$digest_policy")
+        fi
+
+        agent-guard report "${report_args[@]}" --format markdown --output "$report_markdown"
+        record_status "$?"
+
+        agent-guard report "${report_args[@]}" --format json --output "$report_json"
+        record_status "$?"
+
+        agent-guard conformance check --root "$root" --evidence "$report_json" --profile recommended --json > "${evidence_dir%/}/agent-guard-conformance.json"
+        record_status "$?"
+
+        agent-guard evidence-pack manifest --root "$root" --report "$report_json" --artifact "$report_json" --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"
+        record_status "$?"
+
+        if [ "${{ inputs.github-annotations }}" = "true" ]; then
+          agent-guard report "${report_args[@]}" --format github-annotations
+          record_status "$?"
+        fi
+
+        {
+          echo "evidence-dir=$evidence_dir"
+          echo "report-json=$report_json"
+          echo "report-markdown=$report_markdown"
+          echo "status=$status"
+        } >> "$GITHUB_OUTPUT"
+
+        exit "$status"
