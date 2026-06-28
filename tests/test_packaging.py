@@ -23,6 +23,9 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
 EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
+EXISTING_REPO_QUICKSTART = REPO_ROOT / "docs" / "quickstart-existing-repo.md"
+GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
+RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
 SELF_PATH_POLICY = REPO_ROOT / ".agent-guard" / "path-policy.yaml"
@@ -79,6 +82,9 @@ def test_readme_documents_report_evidence_contract() -> None:
     readme = README.read_text(encoding="utf-8")
 
     assert "docs/evidence-contracts.md" in readme
+    assert "docs/quickstart-existing-repo.md" in readme
+    assert "docs/github-actions-evidence.md" in readme
+    assert "docs/release-criteria.md" in readme
     assert "agent-guard.report_evidence.v1" in readme
     assert "agent-guard.result.v1" in readme
     assert "--format <markdown|json|github-annotations>" in readme
@@ -100,10 +106,43 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "Minimal Adoption Path" in docs
     assert "CI artifact" in docs
     assert "agent-policy" in docs
+    assert "examples/evidence_consumer.py" in docs
     assert "SARIF is intentionally deferred" in docs
     assert "LLM reviewer" in docs
     assert "model router" in docs
     assert "large governance framework" in docs
+
+
+def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
+    quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+    actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
+
+    assert "python3 -m venv .venv" in quickstart
+    assert ".agent-guard/context-policy.yaml" in quickstart
+    assert "agent-guard context inventory --root ." in quickstart
+    assert "agent-guard context lock --root ." in quickstart
+    assert ".agent-guard/context-digest-policy.yaml" in quickstart
+    assert "agent-guard report --root ." in quickstart
+    assert "LLM reviewer" in quickstart
+    assert "MoA orchestrator" in quickstart
+    assert "uses: actions/upload-artifact@v7" in actions
+    assert "status=0" in actions
+    assert 'exit "$status"' in actions
+    assert "if: always()" in actions
+    assert "--format github-annotations" in actions
+    assert "does not post pull request comments" in actions
+    assert "raw context text" in actions
+
+
+def test_release_criteria_keep_patch_releases_bounded() -> None:
+    docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+
+    assert "Patch Release Candidates" in docs
+    assert "Docs-only changes under `docs/` do not need an immediate release" in docs
+    assert "packaged JSON Schema" in docs
+    assert "wheel contract check" in docs
+    assert "LLM review" in docs
+    assert "model routing" in docs
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

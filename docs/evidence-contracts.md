@@ -23,6 +23,9 @@ The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
 is intentionally public-safe and is validated by the test suite against the
 packaged schema.
+[`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
+small downstream wrapper pattern that loads the packaged report schema and
+fails closed on incompatible or unsanitized evidence.
 
 ## Minimal Adoption Path
 
@@ -42,6 +45,7 @@ Example commands:
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+python examples/evidence_consumer.py .agent-guard/evidence/agent-guard-report.json
 ```
 
 When CI uploads evidence, pin third-party actions to versions or commit SHAs

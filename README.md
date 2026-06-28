@@ -61,6 +61,11 @@ for a small public demo that wires the two tools together.
 See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
 SARIF status, and non-goals.
+For adoption in an existing repository, start with
+[`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md), then use
+[`docs/github-actions-evidence.md`](docs/github-actions-evidence.md) for CI
+artifacts and annotations. Release timing is described in
+[`docs/release-criteria.md`](docs/release-criteria.md).
 
 ## Install
 
