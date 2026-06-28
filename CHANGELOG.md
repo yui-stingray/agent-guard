@@ -4,6 +4,18 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.8 - 2026-06-28
+
+- Added `agent-guard report --evidence-preset recommended` as a shorter
+  adoption path for the recommended static evidence bundle.
+- Added optional `--agent-policy-audit-event` artifact references for
+  evidence-pack manifests without reading or embedding runtime event bodies.
+- Tightened packaged evidence schemas around conformance profiles and evidence
+  artifact roles.
+- Updated workflow parsing to recognize GitHub Actions `parallel` step groups
+  while keeping repository CI serial until the lint toolchain accepts the new
+  syntax.
+
 ## 0.1.7 - 2026-06-28
 
 - Added profile-based conformance evidence for `minimal`, `recommended`, and

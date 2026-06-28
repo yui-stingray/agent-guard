@@ -173,7 +173,7 @@
       "required": ["schema_version", "profile", "status", "checked_count", "finding_count", "findings"],
       "properties": {
         "schema_version": {"const": "agent-guard.conformance.v1"},
-        "profile": {"type": "string"},
+        "profile": {"type": "string", "enum": ["minimal", "recommended", "strict"]},
         "status": {"type": "string", "enum": ["ok", "violation"]},
         "checked_count": {"type": "integer", "minimum": 0},
         "finding_count": {"type": "integer", "minimum": 0},
@@ -190,7 +190,29 @@
         "report": {"type": "object"},
         "summary": {"type": "object"},
         "gates": {"type": "array"},
-        "artifacts": {"type": "array"}
+        "conformance": {
+          "type": "object",
+          "required": ["schema_version", "profile", "status", "finding_count"],
+          "properties": {
+            "schema_version": {"const": "agent-guard.conformance.v1"},
+            "profile": {"type": "string", "enum": ["minimal", "recommended", "strict"]},
+            "status": {"type": "string", "enum": ["ok", "violation"]},
+            "finding_count": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": true
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "role"],
+            "properties": {
+              "path": {"type": "string"},
+              "role": {"type": "string", "enum": ["report", "agent-policy-audit-event"]}
+            },
+            "additionalProperties": true
+          }
+        }
       },
       "additionalProperties": true
     },

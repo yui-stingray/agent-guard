@@ -33,6 +33,7 @@ def build_evidence_pack_manifest(
     *,
     report_payload: dict[str, object],
     artifact_paths: list[str] | None = None,
+    agent_policy_audit_event_paths: list[str] | None = None,
     root: Path | None = None,
 ) -> dict[str, object]:
     report = report_payload.get("report", {})
@@ -60,6 +61,10 @@ def build_evidence_pack_manifest(
         safe_path = safe_artifact_path(path, root=root)
         if safe_path:
             artifacts.append({"path": safe_path, "role": "report"})
+    for path in agent_policy_audit_event_paths or []:
+        safe_path = safe_artifact_path(path, root=root)
+        if safe_path:
+            artifacts.append({"path": safe_path, "role": "agent-policy-audit-event"})
 
     return {
         "schema_version": EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION,

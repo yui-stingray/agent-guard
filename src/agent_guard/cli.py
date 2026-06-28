@@ -44,6 +44,7 @@ from .workflow_guard import load_workflow_policy, scan_workflow_policy
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
 REPORT_EVIDENCE_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
 TOOL_NAME = "agent-guard"
+RECOMMENDED_EVIDENCE_PRESET = "recommended"
 
 
 def tool_version() -> str:
@@ -298,11 +299,23 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_pack_manifest.add_argument("--root", default=".", help="repository root used for display-path scrubbing")
     evidence_pack_manifest.add_argument("--report", required=True, help="agent-guard report JSON path")
     evidence_pack_manifest.add_argument("--artifact", action="append", default=[], help="optional repo-relative artifact path")
+    evidence_pack_manifest.add_argument(
+        "--agent-policy-audit-event",
+        action="append",
+        default=[],
+        help="optional repo-relative agent-policy audit event artifact path",
+    )
     evidence_pack_manifest.add_argument("--json", action="store_true", help="emit JSON")
 
     report = top.add_parser("report", help="emit sanitized evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
     report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    report.add_argument(
+        "--evidence-preset",
+        choices=(RECOMMENDED_EVIDENCE_PRESET,),
+        default="",
+        help="expand unset report options for a named adoption preset",
+    )
     report.add_argument("--path-policy", default="", help="optional path YAML policy path for path-name evidence")
     report.add_argument("--content-policy", default="", help="optional content YAML policy path for content evidence")
     report.add_argument(
@@ -318,12 +331,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include policy/spec drift evidence for README, workflow, and guard policy alignment",
     )
-    report.add_argument("--drift-profile", choices=PROFILE_NAMES, default="recommended", help="profile for --drift-check")
-    report.add_argument("--drift-schema-version", choices=("v1", "v2"), default="v1", help="drift evidence schema version")
+    report.add_argument("--drift-profile", choices=PROFILE_NAMES, default="", help="profile for --drift-check")
+    report.add_argument("--drift-schema-version", choices=("v1", "v2"), default="", help="drift evidence schema version")
     report.add_argument(
         "--surface-inventory-version",
         choices=("v1", "v2"),
-        default="v1",
+        default="",
         help="surface inventory schema version embedded in the report",
     )
     report.add_argument("--conformance-profile", choices=PROFILE_NAMES, default="", help="embed conformance evidence")
@@ -331,6 +344,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--evidence-pack-manifest",
         action="store_true",
         help="embed a sanitized evidence pack manifest for PR review",
+    )
+    report.add_argument(
+        "--agent-policy-audit-event",
+        action="append",
+        default=[],
+        help="optional repo-relative agent-policy audit event artifact path for the embedded evidence-pack manifest",
     )
     report.add_argument(
         "--format",
@@ -566,6 +585,7 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
         manifest = build_evidence_pack_manifest(
             report_payload=payload,
             artifact_paths=list(args.artifact or []),
+            agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
             root=root,
         )
     except Exception as exc:
@@ -600,6 +620,38 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0
+
+
+def apply_report_evidence_preset(args: argparse.Namespace) -> None:
+    if args.evidence_preset != RECOMMENDED_EVIDENCE_PRESET:
+        return
+    root = Path(args.root)
+    policy_dir = root / ".agent-guard"
+    if not str(args.path_policy).strip():
+        args.path_policy = str(policy_dir / "path-policy.yaml")
+    if not str(args.content_policy).strip():
+        args.content_policy = str(policy_dir / "content-policy.yaml")
+    if not str(args.workflow_policy).strip():
+        args.workflow_policy = str(policy_dir / "workflow-policy.yaml")
+    args.drift_check = True
+    if not str(args.drift_profile).strip():
+        args.drift_profile = RECOMMENDED_EVIDENCE_PRESET
+    if not str(args.drift_schema_version).strip():
+        args.drift_schema_version = "v2"
+    if not str(args.surface_inventory_version).strip():
+        args.surface_inventory_version = "v2"
+    if not str(args.conformance_profile).strip():
+        args.conformance_profile = RECOMMENDED_EVIDENCE_PRESET
+    args.evidence_pack_manifest = True
+
+
+def apply_report_defaults(args: argparse.Namespace) -> None:
+    if not str(args.drift_profile).strip():
+        args.drift_profile = RECOMMENDED_EVIDENCE_PRESET
+    if not str(args.drift_schema_version).strip():
+        args.drift_schema_version = "v1"
+    if not str(args.surface_inventory_version).strip():
+        args.surface_inventory_version = "v1"
 
 
 def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None:
@@ -1240,6 +1292,8 @@ def build_context_lock_report(
 
 
 def run_report(args: argparse.Namespace) -> int:
+    apply_report_evidence_preset(args)
+    apply_report_defaults(args)
     root = Path(args.root).resolve()
     policy_path = Path(args.context_policy).resolve()
     path_policy_arg = str(args.path_policy).strip()
@@ -1582,6 +1636,7 @@ def run_report(args: argparse.Namespace) -> int:
         evidence_pack_manifest = build_evidence_pack_manifest(
             report_payload=payload,
             artifact_paths=artifact_paths,
+            agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
             root=root,
         )
         payload["evidence_pack_manifest"] = evidence_pack_manifest

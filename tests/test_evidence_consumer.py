@@ -57,6 +57,18 @@ def test_evidence_consumer_fails_closed_on_schema_drift(tmp_path: Path) -> None:
     assert "$.report.schema_version must equal" in result.stderr
 
 
+def test_evidence_consumer_rejects_invalid_conformance_profile(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["conformance"]["profile"] = "experimental"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.conformance.profile must be one of" in result.stderr
+
+
 def test_evidence_consumer_rejects_unsanitized_fragments(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["findings"] = [{"file": "/home/example/private.txt"}]

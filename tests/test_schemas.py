@@ -172,9 +172,18 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
     schema = load_schema("agent-guard.report_evidence.v1.schema.json")
 
     assert schema["properties"]["conformance"]["properties"]["schema_version"]["const"] == "agent-guard.conformance.v1"
+    assert schema["properties"]["conformance"]["properties"]["profile"]["enum"] == [
+        "minimal",
+        "recommended",
+        "strict",
+    ]
     assert schema["properties"]["evidence_pack_manifest"]["properties"]["schema_version"]["const"] == (
         "agent-guard.evidence_pack_manifest.v1"
     )
+    artifact_role = (
+        schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
+    )
+    assert artifact_role["enum"] == ["report", "agent-policy-audit-event"]
 
 
 def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
@@ -246,6 +255,11 @@ def test_public_sample_report_matches_schema_and_is_sanitized() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
 
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+    assert payload["conformance"]["profile"] == "recommended"
+    assert payload["conformance"]["status"] == "ok"
+    gates = {item["gate"]: item["status"] for item in payload["evidence_coverage"]["gates"]}
+    for gate in ("context", "surface_inventory", "path", "content", "workflow", "policy_spec_drift"):
+        assert gates[gate] == "ok"
     serialized = json.dumps(payload, sort_keys=True)
     forbidden_fragments = (
         "/home/",

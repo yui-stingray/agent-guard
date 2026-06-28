@@ -101,6 +101,13 @@ def main() -> int:
                     assert "evidence_coverage" in schema["allOf"][0]["then"]["required"]
                     assert "conformance" in schema["properties"]
                     assert "evidence_pack_manifest" in schema["properties"]
+                    assert schema["properties"]["conformance"]["properties"]["profile"]["enum"] == [
+                        "minimal",
+                        "recommended",
+                        "strict",
+                    ]
+                    artifact_role = schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
+                    assert "agent-policy-audit-event" in artifact_role["enum"]
                     surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
                     assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
                 else:
@@ -150,7 +157,11 @@ def main() -> int:
 
         context_policy = repo / "context-policy.yaml"
         context_policy.write_text("{}\n", encoding="utf-8")
-        agent_context = "Use project tests before reporting success.\n"
+        agent_context = (
+            "Require approval before shell writes.\n"
+            "Keep credentials redacted in public evidence.\n"
+            "Run pytest before reporting success.\n"
+        )
         (repo / "AGENTS.md").write_text(agent_context, encoding="utf-8")
         init_cli = run(
             [
@@ -295,7 +306,8 @@ def main() -> int:
             "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
             "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml\n"
             "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
-            "agent-guard drift check --root .\n",
+            "agent-guard drift check --root .\n"
+            "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
             encoding="utf-8",
         )
         drift_policy_dir = repo / ".agent-guard"
@@ -303,6 +315,7 @@ def main() -> int:
         for source, destination in (
             (context_policy, drift_policy_dir / "context-policy.yaml"),
             (policy, drift_policy_dir / "path-policy.yaml"),
+            (digest_policy, drift_policy_dir / "context-digest-policy.yaml"),
         ):
             destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         (drift_policy_dir / "content-policy.yaml").write_text(
@@ -411,6 +424,29 @@ def main() -> int:
         assert agent_context_sha256 not in report_output.read_text(encoding="utf-8")
         assert str(temp) not in report_output.read_text(encoding="utf-8")
 
+        preset_cli = run(
+            [
+                str(python),
+                "-m",
+                "agent_guard.cli",
+                "report",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(drift_policy_dir / "context-policy.yaml"),
+                "--evidence-preset",
+                "recommended",
+                "--format",
+                "json",
+            ],
+            cwd=temp,
+        )
+        preset_payload = json.loads(preset_cli.stdout)
+        assert preset_payload["report"]["scope"] == "context+path+content+workflow+drift"
+        assert preset_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+        assert preset_payload["conformance"]["profile"] == "recommended"
+        assert preset_payload["evidence_pack_manifest"]["sanitized"] is True
+
         conformance_input = repo / ".agent-guard" / "evidence" / "minimal-conformance.json"
         conformance_input.write_text(
             json.dumps(
@@ -462,6 +498,8 @@ def main() -> int:
                 str(report_output),
                 "--artifact",
                 r"C:\Users\alice\secret\agent-guard-report.json",
+                "--agent-policy-audit-event",
+                str(repo / ".agent-guard" / "evidence" / "policy-admission-event.json"),
                 "--json",
             ],
             cwd=temp,
@@ -472,6 +510,7 @@ def main() -> int:
         assert manifest_payload["evidence_pack_manifest"]["artifacts"] == [
             {"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"},
             {"path": "agent-guard-report.json", "role": "report"},
+            {"path": ".agent-guard/evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
         ]
         assert r"C:\Users\alice" not in manifest_cli.stdout
         assert str(temp) not in manifest_cli.stdout

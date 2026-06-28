@@ -109,6 +109,46 @@ jobs:
     }
 
 
+def test_scan_workflow_policy_finds_commands_inside_parallel_steps(tmp_path: Path) -> None:
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Independent guard checks
+        parallel:
+          - name: Context guard
+            run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+          - name: Surface inventory
+            run: python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
+      - name: Final report
+        run: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --format json
+""",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
+                    {"id": "surface_inventory", "command": "python -m agent_guard.cli surface inventory"},
+                    {"id": "report", "command": "python -m agent_guard.cli report"},
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert findings == []
+    assert checked_items == 3
+
+
 def test_context_lock_coverage_requirement_needs_digest_policy_option(tmp_path: Path) -> None:
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",

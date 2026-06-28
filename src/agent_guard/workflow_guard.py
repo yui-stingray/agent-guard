@@ -269,21 +269,61 @@ def collect_run_lines(workflow: dict[str, Any], *, workflow_path: str) -> list[W
         for step_index, raw_step in enumerate(raw_steps, start=1):
             if not isinstance(raw_step, dict):
                 raise ValueError(f"{workflow_path}: job {job_id} step {step_index} must be an object")
-            run = raw_step.get("run")
-            if not isinstance(run, str):
-                continue
-            step_name = str(raw_step.get("name", "")).strip()
-            for command in iter_active_shell_lines(run):
-                lines.append(
-                    WorkflowRunLine(
-                        workflow=workflow_path,
-                        job_id=job_id,
-                        job_name=job_name,
-                        step_index=step_index,
-                        step_name=step_name,
-                        command=command,
-                    )
+            lines.extend(
+                collect_step_run_lines(
+                    raw_step,
+                    workflow_path=workflow_path,
+                    job_id=job_id,
+                    job_name=job_name,
+                    step_index=step_index,
                 )
+            )
+    return lines
+
+
+def collect_step_run_lines(
+    raw_step: dict[str, Any],
+    *,
+    workflow_path: str,
+    job_id: str,
+    job_name: str,
+    step_index: int,
+) -> list[WorkflowRunLine]:
+    lines: list[WorkflowRunLine] = []
+    run = raw_step.get("run")
+    if isinstance(run, str):
+        step_name = str(raw_step.get("name", "")).strip()
+        for command in iter_active_shell_lines(run):
+            lines.append(
+                WorkflowRunLine(
+                    workflow=workflow_path,
+                    job_id=job_id,
+                    job_name=job_name,
+                    step_index=step_index,
+                    step_name=step_name,
+                    command=command,
+                )
+            )
+
+    raw_parallel = raw_step.get("parallel")
+    if raw_parallel is None:
+        return lines
+    if not isinstance(raw_parallel, list):
+        raise ValueError(f"{workflow_path}: job {job_id} step {step_index} parallel must be a list")
+    for parallel_index, raw_parallel_step in enumerate(raw_parallel, start=1):
+        if not isinstance(raw_parallel_step, dict):
+            raise ValueError(
+                f"{workflow_path}: job {job_id} step {step_index} parallel item {parallel_index} must be an object"
+            )
+        lines.extend(
+            collect_step_run_lines(
+                raw_parallel_step,
+                workflow_path=workflow_path,
+                job_id=job_id,
+                job_name=job_name,
+                step_index=step_index,
+            )
+        )
     return lines
 
 

@@ -97,9 +97,8 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
     assert "agent-guard drift check --root . --profile recommended --schema-version v2 --json" in workflow
     assert (
-        "--drift-check --drift-schema-version v2 --surface-inventory-version v2 "
-        "--conformance-profile recommended --evidence-pack-manifest --format json "
-        "--output .agent-guard/evidence/agent-guard-report.json"
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json"
         in workflow
     )
     assert "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json" in workflow
@@ -108,10 +107,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "command: agent-guard drift check --root . --profile recommended --schema-version v2" in workflow_policy
     assert (
         "command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml "
-        "--content-scan-dir . --workflow-policy .agent-guard/workflow-policy.yaml --drift-check "
-        "--drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended "
-        "--evidence-pack-manifest"
+        "--evidence-preset recommended"
         in workflow_policy
     )
     assert not (tmp_path / ".agent-guard").exists()
@@ -181,13 +177,13 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
     assert payload["findings"][0]["requirement_id"] == "drift_guard"
 
 
-def test_init_cli_workflow_policy_detects_report_without_drift_check(tmp_path: Path) -> None:
+def test_init_cli_workflow_policy_detects_report_without_recommended_preset(tmp_path: Path) -> None:
     result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
     assert result.returncode == 0
 
     workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
     workflow.write_text(
-        workflow.read_text(encoding="utf-8").replace(" --drift-check", ""),
+        workflow.read_text(encoding="utf-8").replace(" --evidence-preset recommended", ""),
         encoding="utf-8",
     )
 
@@ -499,6 +495,8 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         r"C:\Users\alice\secret\agent-guard-report.json",
         "--artifact",
         r"\\server\share\agent-guard-report.json",
+        "--agent-policy-audit-event",
+        str(tmp_path / ".agent-guard" / "evidence" / "policy-admission-event.json"),
         "--json",
     )
 
@@ -512,10 +510,178 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         {"path": "outside-report.json", "role": "report"},
         {"path": "agent-guard-report.json", "role": "report"},
         {"path": "agent-guard-report.json", "role": "report"},
+        {"path": ".agent-guard/evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
     ]
     assert str(tmp_path) not in result.stdout
     assert r"C:\Users\alice" not in result.stdout
     assert r"\\server\share" not in result.stdout
+
+
+def test_report_cli_recommended_preset_expands_adoption_bundle() -> None:
+    result = run_cli(
+        "report",
+        "--root",
+        str(ROOT),
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["report"]["scope"] == "context+path+content+workflow+drift"
+    assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+    assert payload["conformance"]["profile"] == "recommended"
+    assert payload["conformance"]["status"] == "ok"
+    assert payload["evidence_pack_manifest"]["sanitized"] is True
+    assert "api" not in payload
+    assert "digest" not in payload
+    assert "context_lock" not in payload
+    gates = {item["gate"]: item["status"] for item in payload["evidence_coverage"]["gates"]}
+    assert gates["context"] == "ok"
+    assert gates["path"] == "ok"
+    assert gates["content"] == "ok"
+    assert gates["workflow"] == "ok"
+    assert gates["policy_spec_drift"] == "ok"
+    assert gates["api"] == "missing"
+    assert gates["digest"] == "missing"
+
+
+def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    write(
+        repo / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        "Keep credentials redacted in public evidence.\n"
+        "Run pytest before reporting success.\n",
+    )
+    write(
+        repo / "README.md",
+        "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
+        "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
+        "agent-guard drift check --root .\n"
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
+    )
+    write(repo / ".agent-guard" / "context-policy.yaml", "{}\n")
+    write(
+        repo / ".agent-guard" / "path-policy.yaml",
+        "scan:\n"
+        "  include:\n"
+        "    - .\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_path_patterns: []\n"
+        "  forbidden_path_patterns: []\n",
+    )
+    write(
+        repo / ".agent-guard" / "content-policy.yaml",
+        "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+    )
+    write(
+        repo / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n"
+        "  - id: path_policy\n"
+        "    path: .agent-guard/path-policy.yaml\n"
+        "  - id: content_policy\n"
+        "    path: .agent-guard/content-policy.yaml\n"
+        "  - id: workflow_policy\n"
+        "    path: .agent-guard/workflow-policy.yaml\n",
+    )
+    write(
+        repo / ".github" / "workflows" / "ci.yml",
+        "name: ci\n"
+        "on: [push]\n"
+        "jobs:\n"
+        "  guard:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - name: Guard checks\n"
+        "        run: |\n"
+        "          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json\n"
+        "          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json\n"
+        "          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json\n"
+        "          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json\n"
+        "          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json\n"
+        "          agent-guard drift check --root . --profile recommended --schema-version v2 --json\n"
+        "          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json\n",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(repo / ".agent-guard" / "context-policy.yaml"),
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["report"]["scope"] == "context+path+content+workflow+drift"
+    assert payload["path"]["policy"]["path"] == ".agent-guard/path-policy.yaml"
+    assert payload["content"]["policy"]["path"] == ".agent-guard/content-policy.yaml"
+    assert payload["workflow"]["policy"]["path"] == ".agent-guard/workflow-policy.yaml"
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_recommended_preset_does_not_override_explicit_profiles() -> None:
+    result = run_cli(
+        "report",
+        "--root",
+        str(ROOT),
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--drift-profile",
+        "strict",
+        "--conformance-profile",
+        "strict",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["policy_spec_drift"]["profile"] == "strict"
+    assert payload["policy_spec_drift"]["schema_version"] == "agent-guard.policy_spec_drift.v2"
+    assert payload["conformance"]["profile"] == "strict"
+    assert payload["conformance"]["status"] == "violation"
+    assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+
+
+def test_report_cli_recommended_preset_does_not_override_explicit_schema_versions() -> None:
+    result = run_cli(
+        "report",
+        "--root",
+        str(ROOT),
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--drift-schema-version",
+        "v1",
+        "--surface-inventory-version",
+        "v1",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["policy_spec_drift"]["schema_version"] == "agent-guard.policy_spec_drift.v1"
+    assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+    assert payload["conformance"]["profile"] == "recommended"
 
 
 def test_drift_cli_json_reports_missing_readme_command(tmp_path: Path) -> None:
@@ -1387,6 +1553,8 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
         "--format",
         "json",
         "--evidence-pack-manifest",
+        "--agent-policy-audit-event",
+        str(tmp_path / "evidence" / "policy-admission-event.json"),
         "--output",
         str(output),
     )
@@ -1401,7 +1569,8 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     assert payload["report"]["format"] == "json"
     assert payload["report"]["sanitized"] is True
     assert payload["evidence_pack_manifest"]["artifacts"] == [
-        {"path": "evidence/agent-guard-report.json", "role": "report"}
+        {"path": "evidence/agent-guard-report.json", "role": "report"},
+        {"path": "evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
     ]
     serialized = json.dumps(payload, ensure_ascii=False)
     assert str(tmp_path) not in serialized

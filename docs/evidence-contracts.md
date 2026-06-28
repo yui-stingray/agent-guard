@@ -24,6 +24,11 @@ Installed wheels package these JSON Schema resources under
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
 
+The `v1` schemas are intended to remain stable for downstream consumers.
+Compatible tightening may add enum constraints for values already emitted by
+`agent-guard`, but raw repository content, hash values, local paths, secrets,
+and workflow bodies remain outside the contract.
+
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
 is intentionally public-safe and is validated by the test suite against the
@@ -44,7 +49,9 @@ fails closed on incompatible or unsanitized evidence.
 4. Add `agent-guard report` to CI and store the JSON or Markdown output as a
    build artifact.
 5. Pair the static report with a runtime admission event from `agent-policy`
-   when the repository uses an agent hook or wrapper before side effects.
+   when the repository uses an agent hook or wrapper before side effects. Pass
+   that event only as an artifact reference; `agent-guard` does not read or
+   embed the event body.
 6. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
 Example commands:
@@ -55,9 +62,9 @@ agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
-agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 python examples/evidence_consumer.py .agent-guard/evidence/agent-guard-report.json
 ```
 
@@ -84,7 +91,8 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
-  reviewer handoff.
+  reviewer handoff. Artifact roles are limited to `report` and
+  `agent-policy-audit-event`.
 - `context_lock` records whether discovered context files are covered by digest
   policy, without emitting hash values.
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize

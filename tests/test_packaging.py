@@ -72,8 +72,10 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
     )
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in readme
     assert "agent-guard drift check --root . --profile recommended --schema-version v2 --json" in readme
+    assert "--evidence-preset recommended" in readme
     assert "--conformance-profile recommended" in readme
     assert "--evidence-pack-manifest" in readme
+    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in readme
     assert (
         "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json "
         "--profile recommended --json"
@@ -126,6 +128,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "Minimal Adoption Path" in docs
     assert "CI artifact" in docs
     assert "agent-policy" in docs
+    assert "agent-policy-audit-event" in docs
     assert "examples/evidence_consumer.py" in docs
     assert "SARIF is intentionally deferred" in docs
     assert "LLM reviewer" in docs
@@ -145,7 +148,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard context lock --root ." in quickstart
     assert ".agent-guard/context-digest-policy.yaml" in quickstart
     assert "agent-guard report --root ." in quickstart
-    assert "--drift-check" in quickstart
+    assert "--evidence-preset recommended" in quickstart
+    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
     assert "agent-guard conformance check --root ." in quickstart
     assert "agent-guard evidence-pack manifest --root ." in quickstart
     assert "LLM reviewer" in quickstart
@@ -154,6 +158,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "status=0" in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
     assert "agent-guard drift check --root . --profile recommended --schema-version v2" in actions
+    assert "--evidence-preset recommended" in actions
+    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in actions
     assert "agent-guard conformance check --root ." in actions
     assert "agent-guard evidence-pack manifest --root ." in actions
     assert 'exit "$status"' in actions
@@ -161,6 +167,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "--format github-annotations" in actions
     assert "does not post pull request comments" in actions
     assert "raw context text" in actions
+    assert "Parallel Step Support" in actions
+    assert "actionlint" in actions
 
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:

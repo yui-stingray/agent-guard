@@ -41,19 +41,19 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-report.md
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
+          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format github-annotations
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format github-annotations
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"
@@ -77,7 +77,9 @@ automation, downstream conformance checks, or evidence-pack manifests. The JSON 
 envelope and includes `surface_inventory` plus `evidence_coverage` on
 success/violation payloads. When `--conformance-profile` and
 `--evidence-pack-manifest` are enabled, it also includes `conformance` and
-`evidence_pack_manifest` sections.
+`evidence_pack_manifest` sections. `--evidence-preset recommended` enables
+those recommended report surfaces while leaving repository-specific API and
+digest policies opt-in.
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,
@@ -98,3 +100,18 @@ step uses `if: always()` so reviewers can inspect artifacts on failing runs.
 If a repository wants pull request comments, build that as a separate reviewed
 wrapper that consumes the JSON artifact. Keep comments sanitized and avoid
 posting local diagnostics or private data.
+
+## Parallel Step Support
+
+GitHub Actions supports step-level `parallel`, `background`, `wait`,
+`wait-all`, and `cancel` syntax. Use it only for independent guard commands
+that do not write the same output file. Keep `agent-guard report`,
+`agent-guard evidence-pack manifest`, and `actions/upload-artifact` in later
+serial steps so the final evidence pack is produced after every input is
+available.
+
+If the repository runs `actionlint`, verify that the installed actionlint
+version accepts the new syntax before committing a workflow that uses
+`parallel`. Older actionlint versions can reject documented GitHub syntax. In
+that case, keep the workflow serial or split checks into separate jobs with
+`needs` for the final artifact step.
