@@ -11,6 +11,8 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 
+from .taxonomy import risk_theme_labels, risk_themes_for_finding
+
 
 def redact_text(value: str) -> str:
     """Redact common secret, URL, hash, and absolute-path shapes before Markdown rendering."""
@@ -104,6 +106,15 @@ def github_annotation(
     return f"{prefix}::{github_command_data(message)}"
 
 
+def risk_theme_message_suffix(themes: list[dict[str, str]]) -> str:
+    labels = risk_theme_labels(themes)
+    return f" (OWASP risk themes: {labels})" if labels else ""
+
+
+def risk_theme_cell(scanner: str, finding: Mapping[str, object]) -> str:
+    return risk_theme_labels(risk_themes_for_finding(scanner, finding)) or "-"
+
+
 def as_mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
@@ -149,11 +160,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("context", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard context: {rule_id}",
-                message=f"context finding: {rule_id}",
+                message=f"context finding: {rule_id}{risk_theme_message_suffix(themes)}",
                 file=finding.get("file", ""),
                 line=finding.get("line", ""),
             )
@@ -162,11 +174,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in path_findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("path", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard path: {rule_id}",
-                message=f"path guard finding: {rule_id}",
+                message=f"path guard finding: {rule_id}{risk_theme_message_suffix(themes)}",
                 file=finding.get("path", ""),
             )
         )
@@ -174,11 +187,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in content_findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("content", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard content: {rule_id}",
-                message=f"content guard finding: {rule_id}",
+                message=f"content guard finding: {rule_id}{risk_theme_message_suffix(themes)}",
                 file=finding.get("file", ""),
                 line=finding.get("line", ""),
             )
@@ -187,11 +201,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in api_findings:
         finding = as_mapping(item)
         category = finding.get("category", "forbidden_api")
+        themes = risk_themes_for_finding("api", finding)
         lines.append(
             github_annotation(
                 level="error",
                 title=f"agent-guard api: {category}",
-                message=f"api guard finding: {category}",
+                message=f"api guard finding: {category}{risk_theme_message_suffix(themes)}",
                 file=finding.get("path", ""),
                 line=finding.get("line", ""),
             )
@@ -201,11 +216,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
         status = finding.get("status", "-")
+        themes = risk_themes_for_finding("context_lock", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity"), default="error"),
                 title=f"agent-guard context lock: {rule_id}",
-                message=f"context lock coverage: {status}",
+                message=f"context lock coverage: {status}{risk_theme_message_suffix(themes)}",
                 file=finding.get("path", ""),
             )
         )
@@ -214,11 +230,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
         finding = as_mapping(item)
         check_id = finding.get("check_id", "-")
         status = finding.get("status", "-")
+        themes = risk_themes_for_finding("digest", finding)
         lines.append(
             github_annotation(
                 level="error",
                 title=f"agent-guard digest: {check_id}",
-                message=f"digest drift: {check_id} ({status})",
+                message=f"digest drift: {check_id} ({status}){risk_theme_message_suffix(themes)}",
                 file=finding.get("path", ""),
             )
         )
@@ -226,6 +243,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in workflow_findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("workflow", finding)
         workflow_id = finding.get("workflow_id", "")
         requirement_id = finding.get("requirement_id", "")
         suffix = (
@@ -237,7 +255,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard workflow: {rule_id}",
-                message=f"workflow drift: {finding.get('reason', '-')}{suffix}",
+                message=f"workflow drift: {finding.get('reason', '-')}{suffix}{risk_theme_message_suffix(themes)}",
                 file=finding.get("file", ""),
             )
         )
@@ -245,11 +263,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in drift_findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("policy_spec_drift", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard drift: {rule_id}",
-                message=f"policy/spec drift: {finding.get('reason', '-')}",
+                message=f"policy/spec drift: {finding.get('reason', '-')}{risk_theme_message_suffix(themes)}",
                 file=finding.get("file", ""),
             )
         )
@@ -257,11 +276,12 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     for item in conformance_findings:
         finding = as_mapping(item)
         rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("conformance", finding)
         lines.append(
             github_annotation(
                 level=annotation_level(finding.get("severity")),
                 title=f"agent-guard conformance: {rule_id}",
-                message=f"conformance finding: {finding.get('reason', '-')}",
+                message=f"conformance finding: {finding.get('reason', '-')}{risk_theme_message_suffix(themes)}",
             )
         )
 
@@ -312,17 +332,20 @@ def append_sarif_result(
     message: object,
     file: object = "",
     line: object = "",
+    risk_themes: list[dict[str, str]] | None = None,
 ) -> None:
     sarif_id = sarif_rule_id(scanner, rule_id)
     uri = sarif_artifact_uri(file)
     text = redact_text(str(message or f"{scanner} finding: {rule_id or 'finding'}"))
-    rules.setdefault(
+    rule = rules.setdefault(
         sarif_id,
         {
             "id": sarif_id,
             "shortDescription": {"text": redact_text(str(rule_id or "finding"))},
         },
     )
+    if risk_themes:
+        rule.setdefault("properties", {})["owasp_agentic_risk_themes"] = risk_themes
     results.append(
         {
             "ruleId": sarif_id,
@@ -378,6 +401,7 @@ def render_sarif_report(payload: Mapping[str, object]) -> str:
             message=f"context finding: {rule_id}",
             file=finding.get("file", ""),
             line=finding.get("line", ""),
+            risk_themes=risk_themes_for_finding("context", finding),
         )
 
     sections = (
@@ -411,6 +435,7 @@ def render_sarif_report(payload: Mapping[str, object]) -> str:
                 message=f"{label}: {message_suffix}",
                 file=file_value,
                 line=finding.get("line", ""),
+                risk_themes=risk_themes_for_finding(section_name, finding),
             )
 
     sarif = {
@@ -625,6 +650,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
         for item in surfaces:
             surface = as_mapping(item)
             command = as_mapping(surface.get("command"))
+            risky_patterns = as_sequence(surface.get("risky_patterns"))
             surface_rows.append(
                 (
                     surface.get("surface", "-"),
@@ -633,11 +659,12 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     surface.get("status", "-"),
                     command.get("scanner", "-"),
                     command.get("command", "-"),
+                    "; ".join(str(pattern) for pattern in risky_patterns) if risky_patterns else "-",
                 )
             )
         lines.extend(
             markdown_table(
-                ("Surface", "Kind", "Path", "Status", "Scanner", "Command"),
+                ("Surface", "Kind", "Path", "Status", "Scanner", "Command", "Risk labels"),
                 surface_rows,
             )
         )
@@ -658,11 +685,12 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 (
                     finding.get("severity", "-"),
                     finding.get("rule_id", "-"),
+                    risk_theme_cell("context", finding),
                     finding.get("file", "-"),
                     finding.get("line", "-"),
                 )
             )
-        lines.extend(markdown_table(("Severity", "Rule", "File", "Line"), finding_rows))
+        lines.extend(markdown_table(("Severity", "Rule", "OWASP risk themes", "File", "Line"), finding_rows))
     else:
         lines.append("No unsafe context findings were detected.")
 
@@ -676,10 +704,11 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("path", finding),
                         finding.get("path", "-"),
                     )
                 )
-            lines.extend(markdown_table(("Severity", "Rule", "Path"), path_rows))
+            lines.extend(markdown_table(("Severity", "Rule", "OWASP risk themes", "Path"), path_rows))
         else:
             lines.append("No path guard findings were detected.")
 
@@ -693,11 +722,12 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("content", finding),
                         finding.get("file", "-"),
                         finding.get("line", "-"),
                     )
                 )
-            lines.extend(markdown_table(("Severity", "Rule", "File", "Line"), content_rows))
+            lines.extend(markdown_table(("Severity", "Rule", "OWASP risk themes", "File", "Line"), content_rows))
         else:
             lines.append("No content guard findings were detected.")
 
@@ -712,9 +742,10 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                         finding.get("path", "-"),
                         finding.get("line", "-"),
                         finding.get("category", "-"),
+                        risk_theme_cell("api", finding),
                     )
                 )
-            lines.extend(markdown_table(("File", "Line", "Category"), api_rows))
+            lines.extend(markdown_table(("File", "Line", "Category", "OWASP risk themes"), api_rows))
         else:
             lines.append("No API guard findings were detected.")
 
@@ -728,6 +759,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("context_lock", finding),
                         finding.get("path", "-"),
                         finding.get("status", "-"),
                         finding.get("check_id", "-"),
@@ -735,7 +767,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 )
             lines.extend(
                 markdown_table(
-                    ("Severity", "Rule", "Path", "Status", "Check"),
+                    ("Severity", "Rule", "OWASP risk themes", "Path", "Status", "Check"),
                     coverage_rows,
                 )
             )
@@ -767,10 +799,11 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                         finding.get("check_id", "-"),
                         finding.get("path", "-"),
                         finding.get("status", "-"),
+                        risk_theme_cell("digest", finding),
                         finding.get("message", "-"),
                     )
                 )
-            lines.extend(markdown_table(("Check", "Path", "Status", "Message"), digest_rows))
+            lines.extend(markdown_table(("Check", "Path", "Status", "OWASP risk themes", "Message"), digest_rows))
         else:
             lines.append("No digest drift was detected.")
 
@@ -784,6 +817,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("workflow", finding),
                         finding.get("file", "-"),
                         finding.get("reason", "-"),
                         finding.get("workflow_id", "-"),
@@ -792,7 +826,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 )
             lines.extend(
                 markdown_table(
-                    ("Severity", "Rule", "File", "Reason", "Workflow", "Requirement"),
+                    ("Severity", "Rule", "OWASP risk themes", "File", "Reason", "Workflow", "Requirement"),
                     workflow_rows,
                 )
             )
@@ -809,6 +843,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("policy_spec_drift", finding),
                         finding.get("file", "-"),
                         finding.get("reason", "-"),
                         finding.get("requirement_id", "-"),
@@ -816,7 +851,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                 )
             lines.extend(
                 markdown_table(
-                    ("Severity", "Rule", "File", "Reason", "Requirement"),
+                    ("Severity", "Rule", "OWASP risk themes", "File", "Reason", "Requirement"),
                     drift_rows,
                 )
             )
@@ -833,13 +868,14 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     (
                         finding.get("severity", "-"),
                         finding.get("rule_id", "-"),
+                        risk_theme_cell("conformance", finding),
                         finding.get("requirement_id", "-"),
                         finding.get("reason", "-"),
                     )
                 )
             lines.extend(
                 markdown_table(
-                    ("Severity", "Rule", "Requirement", "Reason"),
+                    ("Severity", "Rule", "OWASP risk themes", "Requirement", "Reason"),
                     conformance_rows,
                 )
             )
@@ -902,10 +938,11 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
                     evidence.get("line", "-"),
                     evidence.get("category", "-"),
                     evidence.get("rule_id", "-"),
+                    risk_theme_cell("inventory", evidence),
                 )
             )
     if evidence_rows:
-        lines.extend(markdown_table(("File", "Line", "Category", "Rule"), evidence_rows))
+        lines.extend(markdown_table(("File", "Line", "Category", "Rule", "OWASP risk themes"), evidence_rows))
     else:
         lines.append("No inventory evidence records were detected.")
 

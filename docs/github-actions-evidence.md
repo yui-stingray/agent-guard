@@ -24,7 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.13
+        uses: yui-stingray/agent-guard@v0.1.14
+        with:
+          conformance-profile: recommended
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -45,6 +47,12 @@ annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
 `github-annotations: "false"`.
 
+Set `conformance-profile: strict` only when the repository wants risky MCP
+configuration metadata to fail conformance. Strict mode reviews static surface
+inventory labels such as unpinned package-manager commands or secret-shaped
+inline values. It does not execute MCP servers, inspect MCP tool results, or
+act as a runtime MCP tool-poisoning detector.
+
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
 
@@ -53,7 +61,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.13
+        uses: yui-stingray/agent-guard@v0.1.14
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -102,7 +110,7 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -145,7 +153,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.13
+  - uses: yui-stingray/agent-guard@v0.1.14
     id: agent-guard
   - name: Upload SARIF
     if: always()
@@ -173,8 +181,9 @@ digest policies opt-in.
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,
-line, category, status, or reason. They do not include raw context text, matched
-snippets, hash values, workflow run bodies, secrets, or absolute local paths.
+line, category, status, reason, and OWASP risk-theme labels when a deterministic
+rule maps to them. They do not include raw context text, matched snippets, hash
+values, workflow run bodies, secrets, or absolute local paths.
 
 ## Failure Policy
 

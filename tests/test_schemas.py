@@ -177,6 +177,7 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
         "recommended",
         "strict",
     ]
+    assert schema["properties"]["conformance"]["properties"]["mcp_config_checked_count"]["minimum"] == 0
     assert schema["properties"]["evidence_pack_manifest"]["properties"]["schema_version"]["const"] == (
         "agent-guard.evidence_pack_manifest.v1"
     )

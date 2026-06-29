@@ -116,6 +116,118 @@ def value_has_json_type(value: Any, schema_type: Any) -> bool:
     return True
 
 
+def require_mapping(value: Any, path: str) -> Mapping[str, Any]:
+    require(isinstance(value, Mapping), f"{path} must be an object")
+    return value
+
+
+def require_sequence(value: Any, path: str) -> Sequence[Any]:
+    require(
+        isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)),
+        f"{path} must be an array",
+    )
+    return value
+
+
+def require_int(value: Any, path: str) -> int:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{path} must be an integer")
+    require(value >= 0, f"{path} must be >= 0")
+    return value
+
+
+def validate_gate_counts(evidence_coverage: Mapping[str, Any], *, report_status: str) -> None:
+    gates = require_sequence(evidence_coverage.get("gates"), "$.evidence_coverage.gates")
+    gate_count = require_int(evidence_coverage.get("gate_count"), "$.evidence_coverage.gate_count")
+    enabled_count = require_int(evidence_coverage.get("enabled_count"), "$.evidence_coverage.enabled_count")
+    missing_count = require_int(evidence_coverage.get("missing_count"), "$.evidence_coverage.missing_count")
+    failing_count = require_int(evidence_coverage.get("failing_count"), "$.evidence_coverage.failing_count")
+
+    require(gate_count == len(gates), "$.evidence_coverage.gate_count must match gates length")
+    enabled = 0
+    missing = 0
+    failing = 0
+    names: set[str] = set()
+    for index, raw_gate in enumerate(gates):
+        gate = require_mapping(raw_gate, f"$.evidence_coverage.gates[{index}]")
+        name = str(gate.get("gate", "")).strip()
+        require(name, f"$.evidence_coverage.gates[{index}].gate is required")
+        require(name not in names, f"$.evidence_coverage.gates[{index}].gate must be unique")
+        names.add(name)
+        status = str(gate.get("status", ""))
+        require(status in {"ok", "violation", "missing", "error"}, f"$.evidence_coverage.gates[{index}].status is invalid")
+        require_int(gate.get("checked_count"), f"$.evidence_coverage.gates[{index}].checked_count")
+        require_int(gate.get("finding_count"), f"$.evidence_coverage.gates[{index}].finding_count")
+        if status == "missing":
+            missing += 1
+        else:
+            enabled += 1
+        if status not in {"ok", "missing"}:
+            failing += 1
+
+    require(enabled_count == enabled, "$.evidence_coverage.enabled_count must match gate statuses")
+    require(missing_count == missing, "$.evidence_coverage.missing_count must match gate statuses")
+    require(failing_count == failing, "$.evidence_coverage.failing_count must match gate statuses")
+    if report_status == "ok":
+        require(failing_count == 0, "$.evidence_coverage.failing_count must be 0 when report status is ok")
+
+
+def validate_surface_inventory(surface_inventory: Mapping[str, Any]) -> None:
+    surfaces = require_sequence(surface_inventory.get("surfaces"), "$.surface_inventory.surfaces")
+    summary = require_mapping(surface_inventory.get("summary"), "$.surface_inventory.summary")
+    surface_count = summary.get("surface_count")
+    if surface_count is not None:
+        require_int(surface_count, "$.surface_inventory.summary.surface_count")
+        require(surface_count == len(surfaces), "$.surface_inventory.summary.surface_count must match surfaces length")
+    for index, raw_surface in enumerate(surfaces):
+        surface = require_mapping(raw_surface, f"$.surface_inventory.surfaces[{index}]")
+        for key in ("surface", "path", "kind", "status"):
+            require(isinstance(surface.get(key), str), f"$.surface_inventory.surfaces[{index}].{key} must be a string")
+        raw_patterns = surface.get("risky_patterns")
+        if raw_patterns is not None:
+            patterns = require_sequence(raw_patterns, f"$.surface_inventory.surfaces[{index}].risky_patterns")
+            require(
+                all(isinstance(pattern, str) and pattern for pattern in patterns),
+                f"$.surface_inventory.surfaces[{index}].risky_patterns must contain non-empty strings",
+            )
+
+
+def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
+    status = str(payload.get("status", ""))
+    exit_code = payload.get("exit_code")
+    if status == "ok":
+        require(exit_code == 0, "$.exit_code must be 0 when status is ok")
+    if status == "violation":
+        require(isinstance(exit_code, int) and exit_code != 0, "$.exit_code must be non-zero when status is violation")
+    if status == "error":
+        require(isinstance(exit_code, int) and exit_code != 0, "$.exit_code must be non-zero when status is error")
+        error = payload.get("error")
+        require(isinstance(error, str) and bool(error.strip()), "$.error must be a non-empty string when status is error")
+
+    findings = require_sequence(payload.get("findings"), "$.findings")
+    finding_count = require_int(payload.get("finding_count"), "$.finding_count")
+    require(finding_count == len(findings), "$.finding_count must match findings length")
+    summary = require_mapping(payload.get("summary"), "$.summary")
+    require(summary.get("finding_count") == finding_count, "$.summary.finding_count must match finding_count")
+
+    if status == "error":
+        return
+
+    surface_inventory = require_mapping(payload.get("surface_inventory"), "$.surface_inventory")
+    validate_surface_inventory(surface_inventory)
+    evidence_coverage = require_mapping(payload.get("evidence_coverage"), "$.evidence_coverage")
+    validate_gate_counts(evidence_coverage, report_status=status)
+
+    drift = payload.get("policy_spec_drift")
+    if isinstance(drift, Mapping):
+        baseline = drift.get("baseline_trust")
+        if baseline is not None:
+            baseline_obj = require_mapping(baseline, "$.policy_spec_drift.baseline_trust")
+            require(
+                baseline_obj.get("status") in {"ok", "review_required", "unproven"},
+                "$.policy_spec_drift.baseline_trust.status is invalid",
+            )
+
+
 def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     validate_against_schema(schema, payload, path="$")
 
@@ -131,6 +243,7 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
     require(payload["status"] in properties["status"]["enum"], "status is not allowed")
     require(isinstance(payload["finding_count"], int), "finding_count must be an integer")
     require(isinstance(payload["findings"], list), "findings must be an array")
+    status = str(payload["status"])
 
     report = payload.get("report")
     require(isinstance(report, dict), "report must be an object")
@@ -142,24 +255,29 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
     require(report.get("format") in report_properties["format"]["enum"], "report.format is not allowed")
     require(report.get("sanitized") is True, "report.sanitized must be true")
 
-    surface_inventory = payload.get("surface_inventory")
-    require(isinstance(surface_inventory, dict), "surface_inventory must be an object")
-    surface_schema = properties["surface_inventory"]["properties"]["schema_version"]
-    require(
-        surface_inventory.get("schema_version") in surface_schema["enum"],
-        "surface_inventory.schema_version mismatch",
-    )
-    surfaces = surface_inventory.get("surfaces")
-    require(isinstance(surfaces, list), "surface_inventory.surfaces must be an array")
+    surfaces: Sequence[Any] = []
+    evidence_coverage: Mapping[str, Any] = {}
+    if status in {"ok", "violation"}:
+        surface_inventory = payload.get("surface_inventory")
+        require(isinstance(surface_inventory, dict), "surface_inventory must be an object")
+        surface_schema = properties["surface_inventory"]["properties"]["schema_version"]
+        require(
+            surface_inventory.get("schema_version") in surface_schema["enum"],
+            "surface_inventory.schema_version mismatch",
+        )
+        raw_surfaces = surface_inventory.get("surfaces")
+        require(isinstance(raw_surfaces, list), "surface_inventory.surfaces must be an array")
+        surfaces = raw_surfaces
 
-    evidence_coverage = payload.get("evidence_coverage")
-    require(isinstance(evidence_coverage, dict), "evidence_coverage must be an object")
-    require(
-        evidence_coverage.get("schema_version") == "agent-guard.evidence_coverage.v1",
-        "evidence_coverage.schema_version mismatch",
-    )
-    gates = evidence_coverage.get("gates")
-    require(isinstance(gates, list), "evidence_coverage.gates must be an array")
+        raw_evidence_coverage = payload.get("evidence_coverage")
+        require(isinstance(raw_evidence_coverage, dict), "evidence_coverage must be an object")
+        require(
+            raw_evidence_coverage.get("schema_version") == "agent-guard.evidence_coverage.v1",
+            "evidence_coverage.schema_version mismatch",
+        )
+        gates = raw_evidence_coverage.get("gates")
+        require(isinstance(gates, list), "evidence_coverage.gates must be an array")
+        evidence_coverage = raw_evidence_coverage
 
     conformance = payload.get("conformance")
     if conformance is not None:
@@ -174,6 +292,8 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
             "evidence_pack_manifest.schema_version mismatch",
         )
         require(manifest.get("sanitized") is True, "evidence_pack_manifest.sanitized must be true")
+
+    validate_public_report_consistency(payload)
 
     serialized = json.dumps(payload, sort_keys=True)
     for fragment in FORBIDDEN_FRAGMENTS:

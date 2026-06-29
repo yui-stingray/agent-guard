@@ -23,6 +23,7 @@
     "required_surfaces": {"type": "array", "items": {"type": "string"}},
     "required_report_sections": {"type": "array", "items": {"type": "string"}},
     "required_artifact_roles": {"type": "array", "items": {"type": "string"}},
+    "mcp_config_checked_count": {"type": "integer", "minimum": 0},
     "findings": {
       "type": "array",
       "items": {

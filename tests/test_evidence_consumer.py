@@ -45,6 +45,43 @@ def test_evidence_consumer_accepts_public_sample() -> None:
     assert payload["missing_gate_count"] >= 0
 
 
+def test_evidence_consumer_accepts_schema_valid_error_report(tmp_path: Path) -> None:
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "agent-guard.result.v1",
+                "tool": {"name": "agent-guard", "version": "0.1.14"},
+                "scanner": "context",
+                "status": "error",
+                "exit_code": 2,
+                "policy": {"path": "nonexistent"},
+                "summary": {"finding_count": 0},
+                "finding_count": 0,
+                "findings": [],
+                "command": "report",
+                "report": {
+                    "schema_version": "agent-guard.report_evidence.v1",
+                    "format": "json",
+                    "scope": "context",
+                    "sanitized": True,
+                },
+                "error": "policy file not found: nonexistent",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_consumer(report)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["finding_count"] == 0
+    assert payload["surface_count"] == 0
+    assert payload["enabled_gate_count"] == 0
+
+
 def test_evidence_consumer_fails_closed_on_schema_drift(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
@@ -182,3 +219,40 @@ def test_evidence_consumer_rejects_extra_report_property(tmp_path: Path) -> None
 
     assert result.returncode == 1
     assert "$.report has extra properties" in result.stderr
+
+
+def test_evidence_consumer_rejects_inconsistent_evidence_coverage_counts(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_coverage"]["failing_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_coverage.failing_count must match gate statuses" in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_report_with_failing_gate(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_coverage"]["gates"][0]["status"] = "violation"
+    payload["evidence_coverage"]["failing_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_coverage.failing_count must be 0 when report status is ok" in result.stderr
+
+
+def test_evidence_consumer_rejects_inconsistent_surface_count(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["surface_inventory"]["summary"]["surface_count"] += 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.surface_inventory.summary.surface_count must match surfaces length" in result.stderr

@@ -39,6 +39,7 @@ from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .profiles import PROFILE_NAMES
 from .report_render import emit_report_output, render_report_output
 from .surface_inventory import collect_agent_surface_inventory
+from .taxonomy import annotate_finding
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
@@ -1234,11 +1235,14 @@ def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
         "checked_count": len(api_scan_files),
         "finding_count": len(findings),
         "findings": [
-            {
-                "path": item.path,
-                "line": item.line,
-                "category": "forbidden_api",
-            }
+            annotate_finding(
+                "api",
+                {
+                    "path": item.path,
+                    "line": item.line,
+                    "category": "forbidden_api",
+                },
+            )
             for item in findings
         ],
     }
@@ -1267,12 +1271,15 @@ def build_content_report(*, root: Path, policy_arg: str, scan_dir_arg: str) -> d
         "checked_count": len(paths),
         "finding_count": len(findings),
         "findings": [
-            {
-                "severity": item.severity,
-                "rule_id": item.rule_id,
-                "file": item.file,
-                "line": item.line,
-            }
+            annotate_finding(
+                "content",
+                {
+                    "severity": item.severity,
+                    "rule_id": item.rule_id,
+                    "file": item.file,
+                    "line": item.line,
+                },
+            )
             for item in findings
         ],
     }
@@ -1287,11 +1294,14 @@ def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
         "checked_count": scanned_paths,
         "finding_count": len(findings),
         "findings": [
-            {
-                "severity": item.severity,
-                "rule_id": item.rule_id,
-                "path": item.path,
-            }
+            annotate_finding(
+                "path",
+                {
+                    "severity": item.severity,
+                    "rule_id": item.rule_id,
+                    "path": item.path,
+                },
+            )
             for item in findings
         ],
     }
@@ -1328,8 +1338,27 @@ def build_context_lock_report(
         "covered_count": coverage["covered_count"],
         "covered": coverage.get("covered", []),
         "finding_count": coverage["finding_count"],
-        "findings": coverage["findings"],
+        "findings": [
+            annotate_finding("context_lock", item)
+            for item in coverage["findings"]
+            if isinstance(item, dict)
+        ],
     }
+
+
+def annotate_report_findings(scanner: str, report: dict[str, object] | None) -> dict[str, object] | None:
+    if report is None:
+        return None
+    findings = report.get("findings")
+    if not isinstance(findings, list):
+        return report
+    report["findings"] = [
+        annotate_finding(scanner, item)
+        for item in findings
+        if isinstance(item, dict)
+    ]
+    report["finding_count"] = len(report["findings"])
+    return report
 
 
 def run_report(args: argparse.Namespace) -> int:
@@ -1387,12 +1416,15 @@ def run_report(args: argparse.Namespace) -> int:
                 "checked_count": checked_files,
                 "finding_count": len(digest_findings),
                 "findings": [
-                    {
-                        "check_id": item.check_id,
-                        "path": item.path,
-                        "status": "missing" if item.actual_sha256 is None else "mismatch",
-                        "message": item.message,
-                    }
+                    annotate_finding(
+                        "digest",
+                        {
+                            "check_id": item.check_id,
+                            "path": item.path,
+                            "status": "missing" if item.actual_sha256 is None else "mismatch",
+                            "message": item.message,
+                        },
+                    )
                     for item in digest_findings
                 ],
             }
@@ -1406,14 +1438,17 @@ def run_report(args: argparse.Namespace) -> int:
                 "checked_count": checked_items,
                 "finding_count": len(workflow_findings),
                 "findings": [
-                    {
-                        "severity": item.severity,
-                        "rule_id": item.rule_id,
-                        "file": item.file,
-                        "reason": item.reason,
-                        "workflow_id": item.workflow_id or "",
-                        "requirement_id": item.requirement_id or "",
-                    }
+                    annotate_finding(
+                        "workflow",
+                        {
+                            "severity": item.severity,
+                            "rule_id": item.rule_id,
+                            "file": item.file,
+                            "reason": item.reason,
+                            "workflow_id": item.workflow_id or "",
+                            "requirement_id": item.requirement_id or "",
+                        },
+                    )
                     for item in workflow_findings
                 ],
             }
@@ -1425,6 +1460,7 @@ def run_report(args: argparse.Namespace) -> int:
                 schema_version=args.drift_schema_version,
                 base_ref=args.drift_base_ref,
             )
+            annotate_report_findings("policy_spec_drift", drift_report)
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -1552,12 +1588,15 @@ def run_report(args: argparse.Namespace) -> int:
         policy_arg=args.context_policy,
         root=root,
         findings=[
-            {
-                "file": item.file,
-                "line": item.line,
-                "rule_id": item.rule_id,
-                "severity": item.severity,
-            }
+            annotate_finding(
+                "context",
+                {
+                    "file": item.file,
+                    "line": item.line,
+                    "rule_id": item.rule_id,
+                    "severity": item.severity,
+                },
+            )
             for item in findings
         ],
         scanned_count=scanned_files,
@@ -1680,6 +1719,7 @@ def run_report(args: argparse.Namespace) -> int:
             surface_inventory=surface_inventory,
             report_payload=payload,
         )
+        annotate_report_findings("conformance", conformance_report)
         payload["conformance"] = conformance_report
         summary = payload.get("summary", {})
         if isinstance(summary, dict):

@@ -52,6 +52,10 @@ inputs:
     description: Emit sanitized GitHub workflow annotations.
     required: false
     default: "true"
+  conformance-profile:
+    description: Conformance profile embedded in the report and checked after rendering.
+    required: false
+    default: "recommended"
 outputs:
   evidence-dir:
     description: Directory containing generated evidence artifacts.
@@ -173,6 +177,8 @@ runs:
           report_args+=(--drift-base-ref "$base_ref")
         fi
 
+        report_args+=(--conformance-profile "${{ inputs.conformance-profile }}")
+
         agent-guard report "${report_args[@]}" --format json --output "$report_json"
         record_status "$?"
 
@@ -182,7 +188,7 @@ runs:
         agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif"
         record_status "$?"
 
-        agent-guard conformance check --root "$root" --evidence "$report_json" --profile recommended --json > "${evidence_dir%/}/agent-guard-conformance.json"
+        agent-guard conformance check --root "$root" --evidence "$report_json" --profile "${{ inputs.conformance-profile }}" --json > "${evidence_dir%/}/agent-guard-conformance.json"
         record_status "$?"
 
         agent-guard evidence-pack manifest --root "$root" --report "$report_json" --artifact "$report_json" --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"

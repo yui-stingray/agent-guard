@@ -62,6 +62,13 @@ def test_package_version_matches_pyproject() -> None:
     assert agent_guard.__version__ == pyproject_version()
 
 
+def test_execution_notes_are_not_packaged() -> None:
+    with PYPROJECT.open("rb") as fh:
+        pyproject = tomllib.load(fh)
+
+    assert "/execution-notes.md" in pyproject["tool"]["hatch"]["build"]["exclude"]
+
+
 def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
@@ -144,6 +151,9 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "URL/API endpoint references" in readme
     assert "MCP configuration metadata" in readme
     assert "env values" in readme
+    assert "owasp_agentic_risk_themes" in readme
+    assert "not runtime vulnerability detection" in readme
+    assert "MCP runtime security validator" in readme
 
 
 def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
@@ -163,6 +173,9 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "Raw per-scanner JSON" in docs
     assert "Do not" in docs
     assert "upload raw scanner JSON as a public artifact" in docs
+    assert "owasp_agentic_risk_themes" in docs
+    assert "runtime prompt/tool poisoning detection" in docs
+    assert "MCP security validation" in docs
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
@@ -189,8 +202,12 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "MCP server names" in quickstart
     assert "MCP runtime" in quickstart
     assert "MCP tool-poisoning detector" in quickstart
+    assert "--conformance-profile strict" in quickstart
+    assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
     assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
+    assert "conformance-profile: recommended" in actions
+    assert "conformance-profile: strict" in actions
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
     assert "status=0" in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
@@ -208,6 +225,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     )
     assert "does not post pull request comments" in actions
     assert "raw context text" in actions
+    assert "OWASP risk-theme labels" in actions
     assert "raw snippets" in actions
     assert "workflow logs" in actions
     assert "Raw" in actions
@@ -245,6 +263,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["runs"]["using"] == "composite"
     assert action["inputs"]["package-spec"]["default"] == ""
     assert action["inputs"]["base-ref"]["default"] == ""
+    assert action["inputs"]["conformance-profile"]["default"] == "recommended"
     evidence_step = next(step for step in action["runs"]["steps"] if step.get("id") == "evidence")
     assert evidence_step["env"]["AGENT_GUARD_BASE_REF"] == "${{ inputs.base-ref }}"
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
@@ -254,10 +273,12 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'python -m pip install "${{ inputs.package-spec }}"' in action_text
     action_script = action_evidence_script()
     assert "--evidence-preset recommended" in action_script
+    assert 'report_args+=(--conformance-profile "${{ inputs.conformance-profile }}")' in action_script
     assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
     assert 'report_args+=(--drift-base-ref "$base_ref")' in action_script
     assert "agent-guard conformance check" in action_script
+    assert 'agent-guard conformance check --root "$root" --evidence "$report_json" --profile "${{ inputs.conformance-profile }}" --json' in action_script
     assert "agent-guard evidence-pack manifest" in action_script
     assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
     assert "render_report_output" not in action_script

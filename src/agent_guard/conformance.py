@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .profiles import profile_requirements, normalize_profile_name
+from .taxonomy import annotate_finding
 
 
 CONFORMANCE_SCHEMA_VERSION = "agent-guard.conformance.v1"
@@ -57,6 +58,43 @@ def artifact_roles(report_payload: Mapping[str, object]) -> set[str]:
             if role:
                 roles.add(role)
     return roles
+
+
+def mcp_risk_severity(pattern: str) -> str:
+    return "high" if pattern == "secret_shaped_inline_value" else "medium"
+
+
+def strict_mcp_risk_findings(surface_inventory: dict[str, object]) -> tuple[list[dict[str, object]], int]:
+    surfaces = surface_inventory.get("surfaces", [])
+    if not isinstance(surfaces, list):
+        return [], 0
+    findings: list[dict[str, object]] = []
+    checked_count = 0
+    for item in surfaces:
+        if not isinstance(item, Mapping) or item.get("surface") != "mcp_server_reference":
+            continue
+        checked_count += 1
+        raw_patterns = item.get("risky_patterns", [])
+        if not isinstance(raw_patterns, list):
+            continue
+        patterns = sorted(value.strip() for value in raw_patterns if isinstance(value, str) and value.strip())
+        for pattern in patterns:
+            findings.append(
+                annotate_finding(
+                    "conformance",
+                    {
+                        "rule_id": "mcp_config_risky_pattern",
+                        "severity": mcp_risk_severity(pattern),
+                        "requirement_id": "mcp_config_risky_patterns",
+                        "message": "strict profile requires review of risky MCP configuration metadata",
+                        "reason": pattern,
+                        "surface": "mcp_server_reference",
+                        "path": str(item.get("path", "")),
+                        "server_name": str(item.get("server_name", "")),
+                    },
+                )
+            )
+    return findings, checked_count
 
 
 def build_conformance_report(
@@ -158,6 +196,12 @@ def build_conformance_report(
             }
         )
 
+    mcp_checked_count = 0
+    if profile_name == "strict":
+        mcp_findings, mcp_checked_count = strict_mcp_risk_findings(surface_inventory)
+        checked_count += mcp_checked_count
+        findings.extend(mcp_findings)
+
     return {
         "schema_version": CONFORMANCE_SCHEMA_VERSION,
         "profile": profile_name,
@@ -168,5 +212,6 @@ def build_conformance_report(
         "required_surfaces": list(requirements["surfaces"]),
         "required_report_sections": list(requirements["report_sections"]),
         "required_artifact_roles": list(requirements["artifact_roles"]),
+        "mcp_config_checked_count": mcp_checked_count,
         "findings": findings,
     }

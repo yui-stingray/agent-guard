@@ -22,7 +22,9 @@ Installed wheels package these JSON Schema resources under
   used by Markdown, JSON, and GitHub annotation output. Successful and
   violation reports include agent surface inventory and evidence coverage.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
-  `recommended`, and `strict` adoption levels.
+  `recommended`, and `strict` adoption levels. The `strict` profile can fail
+  on deterministic MCP configuration risk metadata emitted by the v2 surface
+  inventory.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
 
@@ -50,6 +52,11 @@ Depending on the scanner and policy, raw JSON may include snippets, matched
 URLs, configured regex patterns, policy details, or other diagnostics. Do not
 upload raw scanner JSON as a public artifact unless a maintainer has reviewed
 that exact output.
+
+OWASP Agentic Top 10 labels in public artifacts are static risk-theme
+crosswalks attached to deterministic findings. They are not vulnerability
+proofs, runtime prompt/tool poisoning detection, MCP security validation, or
+compliance claims.
 
 ## Minimal Adoption Path
 
@@ -107,10 +114,14 @@ The JSON report is a compact statement of what `agent-guard` checked:
   env values; they keep only server names, transports, command basenames,
   package-manager pin status, remote hosts, env var names, filesystem-root
   presence, and deterministic risk labels.
+- Findings and surface risk labels can include `owasp_agentic_risk_themes` to
+  show which OWASP Agentic Top 10 risk themes the static evidence is relevant
+  to.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
-  `minimal`, `recommended`, or `strict` profile.
+  `minimal`, `recommended`, or `strict` profile. In `strict`, risky MCP
+  configuration metadata is treated as a deterministic conformance finding.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
   `agent-policy-audit-event`.
@@ -153,6 +164,8 @@ additional repository permissions.
 - a model router, MoA orchestrator, or model-quality scorer;
 - a broad replacement for dedicated credential scanners;
 - an agent execution log UI;
+- a runtime prompt-injection, MCP tool-poisoning, or memory-poisoning detector;
+- an MCP server security validator or compliance attestation tool;
 - a large governance framework or semantic proof system.
 
 Those layers can consume `agent-guard` evidence, but they should not move into

@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.13` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.14` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -121,7 +121,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.13
+      - uses: yui-stingray/agent-guard@v0.1.14
+        with:
+          conformance-profile: recommended
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -157,7 +159,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.13"},
+  "tool": {"name": "agent-guard", "version": "0.1.14"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -251,7 +253,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.13
+    rev: v0.1.14
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -399,7 +401,11 @@ guard commands, evidence artifact references, agent skills/profiles/commands/
 hooks, and MCP configuration metadata. MCP metadata is limited to server name,
 transport, command basename, package-manager pin status, remote host, env var
 names, filesystem-root presence, and deterministic risk labels; it does not
-emit raw args, env values, instruction bodies, or hook bodies. Evidence
+emit raw args, env values, instruction bodies, or hook bodies. Findings and
+surface risk labels may also include `owasp_agentic_risk_themes`, a static
+crosswalk to OWASP Agentic Top 10 risk themes. These labels are review context
+for deterministic evidence; they are not runtime vulnerability detection,
+security compliance, or proof that a category is exploitable. Evidence
 coverage records which gates were enabled, missing, clean, or failing without
 making missing optional gates a failure. With `--evidence-preset recommended`,
 unset report options expand to
@@ -408,7 +414,11 @@ policy/spec drift v2, surface inventory v2, recommended conformance, and an
 embedded evidence-pack manifest. The preset intentionally does not enable API
 or digest evidence because those policies are repository-specific. With
 `--conformance-profile <minimal|recommended|strict>`, it checks
-the sanitized report evidence against a named adoption profile. With
+the sanitized report evidence against a named adoption profile. The `strict`
+profile also fails when v2 surface inventory records risky MCP configuration
+metadata, such as unpinned package-manager commands or secret-shaped inline
+values; it still does not execute MCP servers, inspect tool results, or act as
+an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without
@@ -467,13 +477,17 @@ Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean
 reports are quiet in this format. Annotation titles and messages contain only
 controlled scanner metadata such as scanner name, rule id, category, status, or
-reason.
+reason, plus OWASP risk-theme labels when a deterministic rule maps to them.
 
 Use `--format sarif --output .agent-guard/evidence/agent-guard-results.sarif`
 when a repository wants to upload findings to GitHub code scanning with
 `github/codeql-action/upload-sarif`. Uploading is intentionally left to the
 consumer workflow because it changes repository permissions.
 SARIF is a thin adapter and not a separate scanner.
+
+`agent-guard` does not detect runtime prompt injection, MCP tool poisoning, or
+agent memory poisoning. It emits static repository evidence that can help a
+maintainer decide where those runtime controls may be needed.
 
 For `report`, it returns:
 - exit `0` when the report is generated and all enabled checks pass
@@ -775,7 +789,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.13"
+version = "0.1.14"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -783,14 +797,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.13-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.1.14-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.13
-gh attestation verify dist-verify/yui_agent_guard-0.1.13.tar.gz \
+  --source-ref refs/tags/v0.1.14
+gh attestation verify dist-verify/yui_agent_guard-0.1.14.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.13
+  --source-ref refs/tags/v0.1.14
 ```
 
 ## License

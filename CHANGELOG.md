@@ -4,6 +4,23 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.14 - 2026-06-29
+
+- Strengthened the downstream evidence consumer example so it fails closed on
+  inconsistent report status, finding counts, evidence coverage, and surface
+  inventory counts.
+- Added `owasp_agentic_risk_themes` metadata to deterministic sanitized report
+  findings, rendered Markdown, GitHub annotations, and SARIF rule properties as
+  a review crosswalk to OWASP Agentic Top 10 risk themes.
+- Added strict conformance findings for risky MCP configuration metadata from
+  surface inventory v2, while keeping MCP server execution and runtime
+  poisoning detection out of scope.
+- Added a composite Action `conformance-profile` input so adopters can stay on
+  the recommended profile or opt into strict MCP configuration review.
+- Updated packaged schemas, public evidence docs, and README examples without
+  adding LLM review, issue triage, generic secret scanning, agent execution UI,
+  or broad governance behavior.
+
 ## 0.1.13 - 2026-06-29
 
 - Corrected the release provenance verification example so it downloads both

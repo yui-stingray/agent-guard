@@ -177,6 +177,7 @@
         "status": {"type": "string", "enum": ["ok", "violation"]},
         "checked_count": {"type": "integer", "minimum": 0},
         "finding_count": {"type": "integer", "minimum": 0},
+        "mcp_config_checked_count": {"type": "integer", "minimum": 0},
         "findings": {"type": "array"}
       },
       "additionalProperties": true

@@ -1,1 +1,1 @@
-::error file=AGENTS.md,line=1,title=agent-guard context%3A approval_bypass::context finding: approval_bypass
+::error file=AGENTS.md,line=1,title=agent-guard context%3A approval_bypass::context finding: approval_bypass (OWASP risk themes: ASI01 Agent Goal Hijack; ASI09 Human-Agent Trust Exploitation)

@@ -39,15 +39,15 @@
 
 ## Agent Surface Inventory
 
-| Surface | Kind | Path | Status | Scanner | Command |
-| --- | --- | --- | --- | --- | --- |
-| agent_context | agents_md | AGENTS.md | scanned | - | - |
+| Surface | Kind | Path | Status | Scanner | Command | Risk labels |
+| --- | --- | --- | --- | --- | --- | --- |
+| agent_context | agents_md | AGENTS.md | scanned | - | - | - |
 
 ## Context Check Findings
 
-| Severity | Rule | File | Line |
-| --- | --- | --- | --- |
-| high | approval_bypass | AGENTS.md | 1 |
+| Severity | Rule | OWASP risk themes | File | Line |
+| --- | --- | --- | --- | --- |
+| high | approval_bypass | ASI01 Agent Goal Hijack; ASI09 Human-Agent Trust Exploitation | AGENTS.md | 1 |
 
 ## Context Files
 
@@ -57,13 +57,13 @@
 
 ## Evidence Records
 
-| File | Line | Category | Rule |
-| --- | --- | --- | --- |
-| AGENTS.md | 1 | approval_boundary | approval_boundary_mention |
-| AGENTS.md | 2 | approval_boundary | approval_boundary_mention |
-| AGENTS.md | 3 | local_verification | local_verification_mention |
-| AGENTS.md | 1 | tool_permission_boundary | tool_permission_boundary_mention |
-| AGENTS.md | 2 | tool_permission_boundary | tool_permission_boundary_mention |
+| File | Line | Category | Rule | OWASP risk themes |
+| --- | --- | --- | --- | --- |
+| AGENTS.md | 1 | approval_boundary | approval_boundary_mention | ASI09 Human-Agent Trust Exploitation |
+| AGENTS.md | 2 | approval_boundary | approval_boundary_mention | ASI09 Human-Agent Trust Exploitation |
+| AGENTS.md | 3 | local_verification | local_verification_mention | ASI08 Cascading Failures |
+| AGENTS.md | 1 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse &amp; Exploitation |
+| AGENTS.md | 2 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse &amp; Exploitation |
 
 ## Permission Boundary Evidence
 
