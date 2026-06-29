@@ -35,6 +35,7 @@ POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 PRE_COMMIT_HOOKS = REPO_ROOT / ".pre-commit-hooks.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
 SELF_PATH_POLICY = REPO_ROOT / ".agent-guard" / "path-policy.yaml"
@@ -349,6 +350,36 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
         "--format github-annotations"
         in self_dogfood
     )
+
+
+def test_release_workflow_attests_built_distributions() -> None:
+    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    build_job = workflow["jobs"]["build"]
+
+    assert build_job["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+        "attestations": "write",
+        "artifact-metadata": "write",
+    }
+
+    steps = build_job["steps"]
+    named_steps = {step.get("name", step.get("uses")): index for index, step in enumerate(steps)}
+    attest_step = steps[named_steps["Generate provenance attestations for release distributions"]]
+    assert attest_step["uses"] == "actions/attest@v4"
+    assert attest_step["with"]["subject-path"] == "dist/*"
+    assert "github.event_name == 'push'" in attest_step["if"]
+    assert "inputs.publish" in attest_step["if"]
+    assert named_steps["Verify wheel public contract"] < named_steps["Generate provenance attestations for release distributions"]
+    assert named_steps["Generate provenance attestations for release distributions"] < named_steps["actions/upload-artifact@v7"]
+
+    readme = README.read_text(encoding="utf-8")
+    release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+    assert "gh attestation verify" in readme
+    assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
+    assert f"--source-ref refs/tags/v{pyproject_version()}" in readme
+    assert "proof of code correctness" in readme
+    assert "prove code correctness" in release_criteria
 
 
 def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path: Path) -> None:

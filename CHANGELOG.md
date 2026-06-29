@@ -4,6 +4,18 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.12 - 2026-06-29
+
+- Added GitHub artifact attestations for release workflow `dist/*` outputs so
+  published wheel and sdist files can be verified against release workflow
+  provenance.
+- Documented release provenance verification and its limits: attestation
+  verification proves artifact identity and build provenance, not code
+  correctness, maintainer approval, or absence of vulnerabilities.
+- Kept the change in the release pipeline and documentation only; no generic
+  reviewer, issue triage, secret scanner, runtime UI, or governance framework
+  behavior was added.
+
 ## 0.1.11 - 2026-06-29
 
 - Added optional `--base-ref` / `--drift-base-ref` policy/spec drift evidence

@@ -42,6 +42,11 @@ jobs:
     name: build sdist + wheel
     needs: validate-release-request
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -65,6 +70,11 @@ jobs:
         run: python -m twine check dist/*
       - name: Verify wheel public contract
         run: python scripts/check_wheel_contract.py
+      - name: Generate provenance attestations for release distributions
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
       - uses: actions/upload-artifact@v7
         with:
           name: dist

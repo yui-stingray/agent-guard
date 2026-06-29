@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.11` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.12` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.11
+      - uses: yui-stingray/agent-guard@v0.1.12
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -157,7 +157,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.11"},
+  "tool": {"name": "agent-guard", "version": "0.1.12"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -251,7 +251,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.11
+    rev: v0.1.12
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -756,6 +756,29 @@ token is required once the PyPI project environment is configured. Manual
 `workflow_dispatch` with `publish=false` is a build-only dry run; it skips the
 publish job. Manual `publish=true` must be run against a `v*` tag ref; running
 it from a branch fails before build.
+
+The release build also creates GitHub artifact attestations for the generated
+`dist/*` wheel and sdist before upload to the publish job. PyPI Trusted
+Publishing and the PyPA publish action provide PyPI-side distribution
+attestations for the uploaded files. These attestations are provenance and
+integrity evidence for a specific artifact and workflow identity; they are not
+proof of code correctness, dependency safety, maintainer approval, or absence
+of secrets.
+
+To verify the GitHub provenance for a downloaded release artifact, install the
+GitHub CLI and check the tag, repository, and signer workflow explicitly:
+
+```bash
+python -m pip download --no-deps "yui-agent-guard==0.1.12" -d dist-verify
+gh attestation verify dist-verify/yui_agent_guard-0.1.12-py3-none-any.whl \
+  --repo yui-stingray/agent-guard \
+  --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
+  --source-ref refs/tags/v0.1.12
+gh attestation verify dist-verify/yui_agent_guard-0.1.12.tar.gz \
+  --repo yui-stingray/agent-guard \
+  --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
+  --source-ref refs/tags/v0.1.12
+```
 
 ## License
 

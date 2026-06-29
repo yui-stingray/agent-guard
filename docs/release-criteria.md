@@ -31,9 +31,25 @@ Before tagging, verify:
 - GitHub Actions CI is green on the release commit;
 - no generated private evidence, local paths, credentials, or private fixtures
   are tracked.
+- the release workflow creates provenance attestations for the built wheel and
+  sdist, and verification examples name the expected tag, repository, and
+  signer workflow explicitly.
 
 The release workflow remains tag-driven. Do not publish from an unreviewed
 branch.
+
+## Release Provenance
+
+Release distributions are built in the tag-triggered release workflow, checked
+with `twine` and the wheel contract script, then attested as `dist/*` artifacts
+before the publish job downloads them. PyPI upload uses Trusted Publishing, and
+the PyPA publish action uploads PyPI-compatible distribution attestations for
+the same files.
+
+Treat this as provenance and integrity evidence only. A successful attestation
+verification proves that an artifact matches a signed statement from the named
+GitHub workflow identity and tag. It does not prove code correctness,
+maintainer approval, dependency safety, branch protection, or secret absence.
 
 ## Non-Goals For Releases
 
