@@ -53,6 +53,11 @@ def action_evidence_script() -> str:
     raise AssertionError("action evidence step missing")
 
 
+def action_run_scripts() -> list[str]:
+    action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
+    return [str(step["run"]) for step in action["runs"]["steps"] if isinstance(step, dict) and "run" in step]
+
+
 def pyproject_version() -> str:
     with PYPROJECT.open("rb") as fh:
         return tomllib.load(fh)["project"]["version"]
@@ -62,10 +67,12 @@ def test_package_version_matches_pyproject() -> None:
     assert agent_guard.__version__ == pyproject_version()
 
 
-def test_execution_notes_are_not_packaged() -> None:
+def test_execution_notes_are_not_tracked_or_packaged() -> None:
     with PYPROJECT.open("rb") as fh:
         pyproject = tomllib.load(fh)
 
+    assert not (REPO_ROOT / "execution-notes.md").exists()
+    assert "execution-notes.md" in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "/execution-notes.md" in pyproject["tool"]["hatch"]["build"]["exclude"]
 
 
@@ -266,19 +273,27 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["inputs"]["conformance-profile"]["default"] == "recommended"
     evidence_step = next(step for step in action["runs"]["steps"] if step.get("id") == "evidence")
     assert evidence_step["env"]["AGENT_GUARD_BASE_REF"] == "${{ inputs.base-ref }}"
+    assert evidence_step["env"]["AGENT_GUARD_ROOT"] == "${{ inputs.root }}"
+    assert evidence_step["env"]["AGENT_GUARD_CONFORMANCE_PROFILE"] == "${{ inputs.conformance-profile }}"
+    assert evidence_step["env"]["AGENT_GUARD_GITHUB_ANNOTATIONS"] == "${{ inputs.github-annotations }}"
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
     assert action["outputs"]["report-sarif"]["value"] == "${{ steps.evidence.outputs.report-sarif }}"
     action_text = ACTION_METADATA.read_text(encoding="utf-8")
     assert 'python -m pip install "$GITHUB_ACTION_PATH"' in action_text
-    assert 'python -m pip install "${{ inputs.package-spec }}"' in action_text
+    assert 'python -m pip install "$AGENT_GUARD_PACKAGE_SPEC"' in action_text
+    assert all("${{ inputs." not in script for script in action_run_scripts())
     action_script = action_evidence_script()
     assert "--evidence-preset recommended" in action_script
-    assert 'report_args+=(--conformance-profile "${{ inputs.conformance-profile }}")' in action_script
+    assert 'report_args+=(--conformance-profile "$conformance_profile")' in action_script
     assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
+    assert 'root="${AGENT_GUARD_ROOT:-.}"' in action_script
+    assert "minimal|recommended|strict" in action_script
+    assert "validate_no_control_chars" in action_script
+    assert "write_output" in action_script
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
     assert 'report_args+=(--drift-base-ref "$base_ref")' in action_script
     assert "agent-guard conformance check" in action_script
-    assert 'agent-guard conformance check --root "$root" --evidence "$report_json" --profile "${{ inputs.conformance-profile }}" --json' in action_script
+    assert 'agent-guard conformance check --root "$root" --evidence "$report_json" --profile "$conformance_profile" --json' in action_script
     assert "agent-guard evidence-pack manifest" in action_script
     assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
     assert "render_report_output" not in action_script
@@ -294,11 +309,12 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     ]
     assert 'agent-guard report "${report_args[@]}" --format github-annotations' not in action_script
     assert 'policy_path()' in action_script
-    assert 'context_policy="$(policy_path "${{ inputs.context-policy }}")"' in action_script
-    assert 'path_policy="$(policy_path "${{ inputs.path-policy }}")"' in action_script
-    assert 'content_policy="$(policy_path "${{ inputs.content-policy }}")"' in action_script
-    assert 'workflow_policy="$(policy_path "${{ inputs.workflow-policy }}")"' in action_script
-    assert 'digest_policy="$(policy_path "${{ inputs.digest-policy }}")"' in action_script
+    assert 'context_policy="$(policy_path "$AGENT_GUARD_CONTEXT_POLICY")"' in action_script
+    assert 'path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"' in action_script
+    assert 'content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"' in action_script
+    assert 'workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"' in action_script
+    assert 'digest_policy="$(policy_path "$AGENT_GUARD_DIGEST_POLICY")"' in action_script
+    assert "${{ inputs." not in action_script
     assert "pull request comment" not in ACTION_METADATA.read_text(encoding="utf-8").lower()
     raw_scanner_lines = [
         line.strip()
@@ -320,6 +336,8 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert all('> "$raw_dir/' in line for line in raw_scanner_lines)
     assert '> "${evidence_dir%/}/agent-guard-conformance.json"' in action_script
     assert '> "${evidence_dir%/}/agent-guard-evidence-pack.json"' in action_script
+    assert 'echo "report-json=$report_json"' not in action_script
+    assert 'write_output "report-json" "$report_json"' in action_script
 
     hooks = yaml.safe_load(PRE_COMMIT_HOOKS.read_text(encoding="utf-8"))
     hook_ids = [item["id"] for item in hooks]
@@ -445,25 +463,28 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     env["PIP_NO_INDEX"] = "1"
 
     def render_action_script(*, github_annotations: str) -> str:
-        script = action_evidence_script()
-        replacements = {
-            "${{ inputs.root }}": consumer.name,
-            "${{ inputs.evidence-dir }}": ".agent-guard/evidence",
-            "${{ inputs.context-policy }}": ".agent-guard/context-policy.yaml",
-            "${{ inputs.path-policy }}": ".agent-guard/path-policy.yaml",
-            "${{ inputs.content-policy }}": ".agent-guard/content-policy.yaml",
-            "${{ inputs.content-scan-dir }}": ".",
-            "${{ inputs.workflow-policy }}": ".agent-guard/workflow-policy.yaml",
-            "${{ inputs.digest-policy }}": ".agent-guard/context-digest-policy.yaml",
-            "${{ inputs.github-annotations }}": github_annotations,
-        }
-        for needle, value in replacements.items():
-            script = script.replace(needle, value)
-        return script
+        return action_evidence_script()
 
-    def run_action(*, github_annotations: str, base_ref: str = "") -> subprocess.CompletedProcess[str]:
+    def run_action(
+        *,
+        github_annotations: str,
+        base_ref: str = "",
+        root: str | None = None,
+        evidence_dir: str = ".agent-guard/evidence",
+        conformance_profile: str = "recommended",
+    ) -> subprocess.CompletedProcess[str]:
         action_env = env.copy()
         action_env["AGENT_GUARD_BASE_REF"] = base_ref
+        action_env["AGENT_GUARD_ROOT"] = root or consumer.name
+        action_env["AGENT_GUARD_CONTEXT_POLICY"] = ".agent-guard/context-policy.yaml"
+        action_env["AGENT_GUARD_PATH_POLICY"] = ".agent-guard/path-policy.yaml"
+        action_env["AGENT_GUARD_CONTENT_POLICY"] = ".agent-guard/content-policy.yaml"
+        action_env["AGENT_GUARD_CONTENT_SCAN_DIR"] = "."
+        action_env["AGENT_GUARD_WORKFLOW_POLICY"] = ".agent-guard/workflow-policy.yaml"
+        action_env["AGENT_GUARD_DIGEST_POLICY"] = ".agent-guard/context-digest-policy.yaml"
+        action_env["AGENT_GUARD_EVIDENCE_DIR"] = evidence_dir
+        action_env["AGENT_GUARD_GITHUB_ANNOTATIONS"] = github_annotations
+        action_env["AGENT_GUARD_CONFORMANCE_PROFILE"] = conformance_profile
         return subprocess.run(
             ["bash", "-c", render_action_script(github_annotations=github_annotations)],
             cwd=tmp_path,
@@ -480,9 +501,58 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     assert "Please paste" not in combined_output
     assert "/home/alice/private" not in combined_output
     assert (consumer / ".agent-guard" / "evidence" / "agent-guard-report.json").is_file()
-    assert "report-json=consumer/.agent-guard/evidence/agent-guard-report.json" in output_file.read_text(
-        encoding="utf-8"
+    output_text = output_file.read_text(encoding="utf-8")
+    assert "report-json<<" in output_text
+    assert "consumer/.agent-guard/evidence/agent-guard-report.json" in output_text
+    assert "report-json=consumer/.agent-guard/evidence/agent-guard-report.json" not in output_text
+
+    root_marker = tmp_path / "root-injection-marker"
+    malicious_root = f"$(touch {root_marker})"
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-root.txt")
+    malicious_root_result = run_action(github_annotations="false", root=malicious_root)
+    assert malicious_root_result.returncode == 1
+    malicious_root_output = f"{malicious_root_result.stdout}\n{malicious_root_result.stderr}"
+    assert not root_marker.exists()
+    assert malicious_root not in malicious_root_output
+    assert str(tmp_path) not in malicious_root_output
+
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-evidence-dir.txt")
+    injected_output = "safe\nreport-json=injected"
+    injected_output_result = run_action(github_annotations="false", evidence_dir=injected_output)
+    assert injected_output_result.returncode == 2
+    injected_output_text = f"{injected_output_result.stdout}\n{injected_output_result.stderr}"
+    assert "report-json=injected" not in injected_output_text
+    injected_output_file = tmp_path / "github-output-evidence-dir.txt"
+    injected_output_file_text = injected_output_file.read_text(encoding="utf-8") if injected_output_file.exists() else ""
+    assert "report-json=injected" not in injected_output_file_text
+
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-conformance-profile.txt")
+    injected_annotation = "recommended\n::error::injected"
+    injected_annotation_result = run_action(
+        github_annotations="false",
+        conformance_profile=injected_annotation,
     )
+    assert injected_annotation_result.returncode == 2
+    injected_annotation_text = f"{injected_annotation_result.stdout}\n{injected_annotation_result.stderr}"
+    assert "::error::injected" not in injected_annotation_text
+    injected_annotation_file = tmp_path / "github-output-conformance-profile.txt"
+    injected_annotation_file_text = (
+        injected_annotation_file.read_text(encoding="utf-8") if injected_annotation_file.exists() else ""
+    )
+    assert "::error::injected" not in injected_annotation_file_text
+
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-invalid-conformance-profile.txt")
+    printable_invalid_profile = "invalid-profile::notice::injected"
+    invalid_profile_result = run_action(
+        github_annotations="false",
+        conformance_profile=printable_invalid_profile,
+    )
+    assert invalid_profile_result.returncode == 2
+    invalid_profile_text = f"{invalid_profile_result.stdout}\n{invalid_profile_result.stderr}"
+    assert printable_invalid_profile not in invalid_profile_text
+    invalid_profile_file = tmp_path / "github-output-invalid-conformance-profile.txt"
+    invalid_profile_file_text = invalid_profile_file.read_text(encoding="utf-8") if invalid_profile_file.exists() else ""
+    assert printable_invalid_profile not in invalid_profile_file_text
 
     marker = tmp_path / "base-ref-injection-marker"
     malicious_base_ref = f"$(touch {marker})"

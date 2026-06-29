@@ -71,7 +71,28 @@ def strict_mcp_risk_findings(surface_inventory: dict[str, object]) -> tuple[list
     findings: list[dict[str, object]] = []
     checked_count = 0
     for item in surfaces:
-        if not isinstance(item, Mapping) or item.get("surface") != "mcp_server_reference":
+        if not isinstance(item, Mapping):
+            continue
+        surface = str(item.get("surface", ""))
+        if surface == "mcp_config":
+            checked_count += 1
+            if item.get("status") == "parse_error":
+                findings.append(
+                    annotate_finding(
+                        "conformance",
+                        {
+                            "rule_id": "mcp_config_risky_pattern",
+                            "severity": "medium",
+                            "requirement_id": "mcp_config_risky_patterns",
+                            "message": "strict profile requires parseable MCP configuration metadata",
+                            "reason": "parse_error",
+                            "surface": "mcp_config",
+                            "path": str(item.get("path", "")),
+                        },
+                    )
+                )
+            continue
+        if surface != "mcp_server_reference":
             continue
         checked_count += 1
         raw_patterns = item.get("risky_patterns", [])

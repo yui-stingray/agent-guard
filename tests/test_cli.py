@@ -1051,6 +1051,71 @@ def test_conformance_cli_strict_flags_mcp_risky_patterns(tmp_path: Path) -> None
     assert str(tmp_path) not in strict.stdout
 
 
+def test_conformance_cli_strict_flags_mcp_config_parse_errors(tmp_path: Path) -> None:
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "evidence_coverage": {
+                    "gates": [
+                        {"gate": gate, "status": "ok", "checked_count": 1, "finding_count": 0}
+                        for gate in (
+                            "context",
+                            "surface_inventory",
+                            "path",
+                            "content",
+                            "context_lock",
+                            "digest",
+                            "workflow",
+                            "policy_spec_drift",
+                        )
+                    ]
+                },
+                "surface_inventory": {
+                    "summary": {
+                        "by_surface": {
+                            "agent_context": 1,
+                            "policy_file": 5,
+                            "workflow_file": 1,
+                            "workflow_reference": 8,
+                            "documented_guard_command": 4,
+                            "evidence_artifact_reference": 1,
+                            "mcp_config": 1,
+                        }
+                    },
+                    "surfaces": [
+                        {
+                            "surface": "mcp_config",
+                            "path": ".mcp.json",
+                            "kind": "mcp_config",
+                            "status": "parse_error",
+                        }
+                    ],
+                },
+                "evidence_pack_manifest": {
+                    "schema_version": "agent-guard.evidence_pack_manifest.v1",
+                    "sanitized": True,
+                    "artifacts": [{"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    strict = run_cli("conformance", "check", "--evidence", str(report), "--profile", "strict", "--json")
+
+    assert strict.returncode == 1
+    payload = json.loads(strict.stdout)
+    finding = payload["conformance"]["findings"][0]
+    assert finding["rule_id"] == "mcp_config_risky_pattern"
+    assert finding["reason"] == "parse_error"
+    assert finding["surface"] == "mcp_config"
+    assert finding["owasp_agentic_risk_themes"] == [
+        {"id": "ASI04", "name": "Agentic Supply Chain Vulnerabilities"}
+    ]
+    assert str(tmp_path) not in strict.stdout
+
+
 def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     report = tmp_path / "report.json"
     report.write_text(

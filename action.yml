@@ -80,10 +80,29 @@ runs:
         python-version: ${{ inputs.python-version }}
     - name: Install agent-guard
       shell: bash
+      env:
+        AGENT_GUARD_PACKAGE_SPEC: ${{ inputs.package-spec }}
       run: |
+        validate_no_control_chars() {
+          input_name="$1"
+          input_value="$2"
+          AGENT_GUARD_VALIDATE_VALUE="$input_value" python - "$input_name" <<'PY'
+        import os
+        import sys
+
+        name = sys.argv[1]
+        value = os.environ.get("AGENT_GUARD_VALIDATE_VALUE", "")
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            print(f"::error::{name} must not contain control characters")
+            raise SystemExit(2)
+        PY
+        }
+
+        validate_no_control_chars "package-spec" "$AGENT_GUARD_PACKAGE_SPEC" || exit 2
+
         python -m pip install --upgrade pip
-        if [ -n "${{ inputs.package-spec }}" ]; then
-          python -m pip install "${{ inputs.package-spec }}"
+        if [ -n "$AGENT_GUARD_PACKAGE_SPEC" ]; then
+          python -m pip install "$AGENT_GUARD_PACKAGE_SPEC"
         else
           python -m pip install "$GITHUB_ACTION_PATH"
         fi
@@ -92,10 +111,80 @@ runs:
       shell: bash
       env:
         AGENT_GUARD_BASE_REF: ${{ inputs.base-ref }}
+        AGENT_GUARD_ROOT: ${{ inputs.root }}
+        AGENT_GUARD_CONTEXT_POLICY: ${{ inputs.context-policy }}
+        AGENT_GUARD_PATH_POLICY: ${{ inputs.path-policy }}
+        AGENT_GUARD_CONTENT_POLICY: ${{ inputs.content-policy }}
+        AGENT_GUARD_CONTENT_SCAN_DIR: ${{ inputs.content-scan-dir }}
+        AGENT_GUARD_WORKFLOW_POLICY: ${{ inputs.workflow-policy }}
+        AGENT_GUARD_DIGEST_POLICY: ${{ inputs.digest-policy }}
+        AGENT_GUARD_EVIDENCE_DIR: ${{ inputs.evidence-dir }}
+        AGENT_GUARD_GITHUB_ANNOTATIONS: ${{ inputs.github-annotations }}
+        AGENT_GUARD_CONFORMANCE_PROFILE: ${{ inputs.conformance-profile }}
       run: |
         set +e
         status=0
-        root="${{ inputs.root }}"
+        root="${AGENT_GUARD_ROOT:-.}"
+        conformance_profile="${AGENT_GUARD_CONFORMANCE_PROFILE:-recommended}"
+        github_annotations="${AGENT_GUARD_GITHUB_ANNOTATIONS:-true}"
+
+        validate_no_control_chars() {
+          input_name="$1"
+          input_value="$2"
+          AGENT_GUARD_VALIDATE_VALUE="$input_value" python - "$input_name" <<'PY'
+        import os
+        import sys
+
+        name = sys.argv[1]
+        value = os.environ.get("AGENT_GUARD_VALIDATE_VALUE", "")
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            print(f"::error::{name} must not contain control characters")
+            raise SystemExit(2)
+        PY
+        }
+
+        write_output() {
+          output_name="$1"
+          output_value="$2"
+          delimiter="agent_guard_${output_name}_$$_EOF"
+          if [ "$output_value" = "$delimiter" ]; then
+            delimiter="${delimiter}_ALT"
+          fi
+          {
+            echo "${output_name}<<${delimiter}"
+            printf '%s\n' "$output_value"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+        }
+
+        validate_no_control_chars "conformance-profile" "$conformance_profile" || exit 2
+        validate_no_control_chars "github-annotations" "$github_annotations" || exit 2
+        validate_no_control_chars "root" "$root" || exit 2
+        validate_no_control_chars "context-policy" "$AGENT_GUARD_CONTEXT_POLICY" || exit 2
+        validate_no_control_chars "path-policy" "$AGENT_GUARD_PATH_POLICY" || exit 2
+        validate_no_control_chars "content-policy" "$AGENT_GUARD_CONTENT_POLICY" || exit 2
+        validate_no_control_chars "content-scan-dir" "$AGENT_GUARD_CONTENT_SCAN_DIR" || exit 2
+        validate_no_control_chars "workflow-policy" "$AGENT_GUARD_WORKFLOW_POLICY" || exit 2
+        validate_no_control_chars "digest-policy" "$AGENT_GUARD_DIGEST_POLICY" || exit 2
+        validate_no_control_chars "evidence-dir" "$AGENT_GUARD_EVIDENCE_DIR" || exit 2
+        validate_no_control_chars "base-ref" "$AGENT_GUARD_BASE_REF" || exit 2
+
+        case "$conformance_profile" in
+          minimal|recommended|strict) ;;
+          *)
+            echo "::error::conformance-profile must be minimal, recommended, or strict"
+            exit 2
+            ;;
+        esac
+
+        case "$github_annotations" in
+          true|false) ;;
+          *)
+            echo "::error::github-annotations must be true or false"
+            exit 2
+            ;;
+        esac
+
         policy_path() {
           case "$1" in
             /*) printf '%s\n' "$1" ;;
@@ -103,7 +192,7 @@ runs:
           esac
         }
 
-        evidence_dir="$(policy_path "${{ inputs.evidence-dir }}")"
+        evidence_dir="$(policy_path "$AGENT_GUARD_EVIDENCE_DIR")"
         report_json="${evidence_dir%/}/agent-guard-report.json"
         report_markdown="${evidence_dir%/}/agent-guard-report.md"
         report_sarif="${evidence_dir%/}/agent-guard-results.sarif"
@@ -124,12 +213,12 @@ runs:
           fi
         }
 
-        context_policy="$(policy_path "${{ inputs.context-policy }}")"
-        path_policy="$(policy_path "${{ inputs.path-policy }}")"
-        content_policy="$(policy_path "${{ inputs.content-policy }}")"
-        content_scan_dir="${{ inputs.content-scan-dir }}"
-        workflow_policy="$(policy_path "${{ inputs.workflow-policy }}")"
-        digest_policy="$(policy_path "${{ inputs.digest-policy }}")"
+        context_policy="$(policy_path "$AGENT_GUARD_CONTEXT_POLICY")"
+        path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"
+        content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"
+        content_scan_dir="$AGENT_GUARD_CONTENT_SCAN_DIR"
+        workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"
+        digest_policy="$(policy_path "$AGENT_GUARD_DIGEST_POLICY")"
         base_ref="${AGENT_GUARD_BASE_REF:-}"
 
         agent-guard context check --root "$root" --policy "$context_policy" --json > "$raw_dir/context.json"
@@ -177,7 +266,7 @@ runs:
           report_args+=(--drift-base-ref "$base_ref")
         fi
 
-        report_args+=(--conformance-profile "${{ inputs.conformance-profile }}")
+        report_args+=(--conformance-profile "$conformance_profile")
 
         agent-guard report "${report_args[@]}" --format json --output "$report_json"
         record_status "$?"
@@ -188,23 +277,23 @@ runs:
         agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif"
         record_status "$?"
 
-        agent-guard conformance check --root "$root" --evidence "$report_json" --profile "${{ inputs.conformance-profile }}" --json > "${evidence_dir%/}/agent-guard-conformance.json"
+        agent-guard conformance check --root "$root" --evidence "$report_json" --profile "$conformance_profile" --json > "${evidence_dir%/}/agent-guard-conformance.json"
         record_status "$?"
 
         agent-guard evidence-pack manifest --root "$root" --report "$report_json" --artifact "$report_json" --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"
         record_status "$?"
 
-        if [ "${{ inputs.github-annotations }}" = "true" ]; then
+        if [ "$github_annotations" = "true" ]; then
           agent-guard render-report --root "$root" --input "$report_json" --format github-annotations
           record_status "$?"
         fi
 
         {
-          echo "evidence-dir=$evidence_dir"
-          echo "report-json=$report_json"
-          echo "report-markdown=$report_markdown"
-          echo "report-sarif=$report_sarif"
-          echo "status=$status"
-        } >> "$GITHUB_OUTPUT"
+          write_output "evidence-dir" "$evidence_dir"
+          write_output "report-json" "$report_json"
+          write_output "report-markdown" "$report_markdown"
+          write_output "report-sarif" "$report_sarif"
+          write_output "status" "$status"
+        }
 
         exit "$status"

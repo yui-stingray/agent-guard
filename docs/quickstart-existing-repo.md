@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.14
+        uses: yui-stingray/agent-guard@v0.1.15
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -124,9 +124,10 @@ manifest. It does not enable API or digest policies automatically; add those
 options only when the repository has reviewed policy files for them.
 
 Use `--conformance-profile strict` only after reviewing v2 surface inventory
-output and deciding that risky MCP configuration metadata should fail CI.
-Strict mode is still static evidence over repository configuration; it does
-not execute MCP servers, inspect MCP tool results, or act as an MCP runtime security validator.
+output and deciding that malformed MCP config files or risky MCP configuration
+metadata should fail CI. Strict mode is still static evidence over repository
+configuration; it does not execute MCP servers, inspect MCP tool results, or
+act as an MCP runtime security validator.
 
 For pull requests that can change guard policy or workflow files, fetch the
 base branch in CI and add `--base-ref <ref>` to `drift check` or

@@ -23,8 +23,8 @@ Installed wheels package these JSON Schema resources under
   violation reports include agent surface inventory and evidence coverage.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
   `recommended`, and `strict` adoption levels. The `strict` profile can fail
-  on deterministic MCP configuration risk metadata emitted by the v2 surface
-  inventory.
+  on deterministic malformed MCP config or risk metadata emitted by the v2
+  surface inventory.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
 
@@ -120,8 +120,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
-  `minimal`, `recommended`, or `strict` profile. In `strict`, risky MCP
-  configuration metadata is treated as a deterministic conformance finding.
+  `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
+  config files and risky MCP configuration metadata are treated as
+  deterministic conformance findings.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
   `agent-policy-audit-event`.

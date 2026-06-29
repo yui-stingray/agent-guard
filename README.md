@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.14` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.15` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.14
+      - uses: yui-stingray/agent-guard@v0.1.15
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -159,7 +159,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.14"},
+  "tool": {"name": "agent-guard", "version": "0.1.15"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -253,7 +253,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.14
+    rev: v0.1.15
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -415,10 +415,10 @@ embedded evidence-pack manifest. The preset intentionally does not enable API
 or digest evidence because those policies are repository-specific. With
 `--conformance-profile <minimal|recommended|strict>`, it checks
 the sanitized report evidence against a named adoption profile. The `strict`
-profile also fails when v2 surface inventory records risky MCP configuration
-metadata, such as unpinned package-manager commands or secret-shaped inline
-values; it still does not execute MCP servers, inspect tool results, or act as
-an MCP runtime security validator. With
+profile also fails when v2 surface inventory records malformed MCP config files
+or risky MCP configuration metadata, such as unpinned package-manager commands
+or secret-shaped inline values; it still does not execute MCP servers, inspect
+tool results, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without
@@ -789,7 +789,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.14"
+version = "0.1.15"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -797,14 +797,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.14-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.1.15-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.14
-gh attestation verify dist-verify/yui_agent_guard-0.1.14.tar.gz \
+  --source-ref refs/tags/v0.1.15
+gh attestation verify dist-verify/yui_agent_guard-0.1.15.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.14
+  --source-ref refs/tags/v0.1.15
 ```
 
 ## License

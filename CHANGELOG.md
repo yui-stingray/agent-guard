@@ -4,6 +4,19 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.15 - 2026-06-29
+
+- Hardened the public composite Action by moving user-supplied inputs out of
+  generated shell scripts and into quoted environment variables, with
+  allowlist validation for conformance profile and annotation options,
+  control-character rejection for shell/path inputs, and safe multiline output
+  records.
+- Made strict conformance fail on malformed MCP config files surfaced by v2
+  inventory, while keeping MCP server execution and runtime validation out of
+  scope.
+- Removed stale release-candidate execution notes from the public repository and
+  kept local execution notes ignored and excluded from package artifacts.
+
 ## 0.1.14 - 2026-06-29
 
 - Strengthened the downstream evidence consumer example so it fails closed on

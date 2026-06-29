@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.14
+        uses: yui-stingray/agent-guard@v0.1.15
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -47,11 +47,12 @@ annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
 `github-annotations: "false"`.
 
-Set `conformance-profile: strict` only when the repository wants risky MCP
-configuration metadata to fail conformance. Strict mode reviews static surface
-inventory labels such as unpinned package-manager commands or secret-shaped
-inline values. It does not execute MCP servers, inspect MCP tool results, or
-act as a runtime MCP tool-poisoning detector.
+Set `conformance-profile: strict` only when the repository wants malformed MCP
+config files or risky MCP configuration metadata to fail conformance. Strict
+mode reviews static surface inventory labels such as parse errors, unpinned
+package-manager commands, or secret-shaped inline values. It does not execute
+MCP servers, inspect MCP tool results, or act as a runtime MCP tool-poisoning
+detector.
 
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
@@ -61,7 +62,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.14
+        uses: yui-stingray/agent-guard@v0.1.15
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -153,7 +154,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.14
+  - uses: yui-stingray/agent-guard@v0.1.15
     id: agent-guard
   - name: Upload SARIF
     if: always()

@@ -51,7 +51,7 @@ def test_evidence_consumer_accepts_schema_valid_error_report(tmp_path: Path) -> 
         json.dumps(
             {
                 "schema_version": "agent-guard.result.v1",
-                "tool": {"name": "agent-guard", "version": "0.1.14"},
+                "tool": {"name": "agent-guard", "version": "0.1.15"},
                 "scanner": "context",
                 "status": "error",
                 "exit_code": 2,

@@ -7,3 +7,4 @@ dist/
 .venv312/
 .venv-py312/
 .agent-guard/evidence/
+execution-notes.md
