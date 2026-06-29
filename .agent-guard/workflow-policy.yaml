@@ -40,6 +40,8 @@ workflow_checks:
         command: python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml
       - id: content_guard_self
         command: python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir .
+      - id: mcp_config_guard_self
+        command: python -m agent_guard.cli mcp check --root .
       - id: workflow_guard_self
         command: python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: surface_inventory_self

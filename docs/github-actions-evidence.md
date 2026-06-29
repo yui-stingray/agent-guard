@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.15
+        uses: yui-stingray/agent-guard@v0.1.16
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -47,12 +47,12 @@ annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
 `github-annotations: "false"`.
 
-Set `conformance-profile: strict` only when the repository wants malformed MCP
-config files or risky MCP configuration metadata to fail conformance. Strict
-mode reviews static surface inventory labels such as parse errors, unpinned
-package-manager commands, or secret-shaped inline values. It does not execute
-MCP servers, inspect MCP tool results, or act as a runtime MCP tool-poisoning
-detector.
+The recommended report preset includes static MCP configuration evidence and
+fails on malformed committed MCP config files or deterministic risky MCP
+configuration metadata. Set `conformance-profile: strict` only when the
+repository also wants those v2 surface inventory labels to appear as conformance
+findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
+as a runtime MCP tool-poisoning detector.
 
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
@@ -62,7 +62,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.15
+        uses: yui-stingray/agent-guard@v0.1.16
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -103,6 +103,9 @@ jobs:
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard mcp check --root . --json > "$raw_dir/mcp.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
@@ -154,7 +157,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.15
+  - uses: yui-stingray/agent-guard@v0.1.16
     id: agent-guard
   - name: Upload SARIF
     if: always()
@@ -177,8 +180,8 @@ envelope and includes `surface_inventory` plus `evidence_coverage` on
 success/violation payloads. When `--conformance-profile` and
 `--evidence-pack-manifest` are enabled, it also includes `conformance` and
 `evidence_pack_manifest` sections. `--evidence-preset recommended` enables
-those recommended report surfaces while leaving repository-specific API and
-digest policies opt-in.
+those recommended report surfaces plus static MCP configuration evidence while
+leaving repository-specific API and digest policies opt-in.
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,

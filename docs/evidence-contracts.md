@@ -22,7 +22,8 @@ Installed wheels package these JSON Schema resources under
   used by Markdown, JSON, and GitHub annotation output. Successful and
   violation reports include agent surface inventory and evidence coverage.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
-  `recommended`, and `strict` adoption levels. The `strict` profile can fail
+  `recommended`, and `strict` adoption levels. The `recommended` profile
+  requires the first-class `mcp_config` gate; the `strict` profile can also fail
   on deterministic malformed MCP config or risk metadata emitted by the v2
   surface inventory.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
@@ -47,11 +48,11 @@ Public-safe claims apply to `agent-guard report`, `agent-guard render-report`,
 GitHub annotations, SARIF rendered from a report, conformance output, and
 evidence-pack manifests. Raw per-scanner JSON from commands such as
 `agent-guard api check --json`, `content check --json`, `context check --json`,
-or `workflow check --json` is intended for local automation and CI internals.
-Depending on the scanner and policy, raw JSON may include snippets, matched
-URLs, configured regex patterns, policy details, or other diagnostics. Do not
-upload raw scanner JSON as a public artifact unless a maintainer has reviewed
-that exact output.
+`mcp check --json`, or `workflow check --json` is intended for local automation
+and CI internals. Depending on the scanner and policy, raw JSON may include
+snippets, matched URLs, configured regex patterns, policy details, server
+metadata, or other diagnostics. Do not upload raw scanner JSON as a public artifact
+unless a maintainer has reviewed that exact output.
 
 OWASP Agentic Top 10 labels in public artifacts are static risk-theme
 crosswalks attached to deterministic findings. They are not vulnerability
@@ -83,6 +84,7 @@ agent-guard init --root . --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
+agent-guard mcp check --root . --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -119,9 +121,12 @@ The JSON report is a compact statement of what `agent-guard` checked:
   to.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
+- Optional `mcp_config` records whether committed MCP configuration metadata had
+  parse errors or deterministic risk labels. It omits raw args, env values,
+  secrets, instruction bodies, and local absolute paths.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
-  config files and risky MCP configuration metadata are treated as
+  config files and risky MCP configuration metadata are additionally treated as
   deterministic conformance findings.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and

@@ -17,4 +17,4 @@ checks:
     sha256: "5ce2a9a402bbaeff028afa458376a7f199e99a96089434aa969466a8034553d8"
   - id: workflow_policy
     path: .agent-guard/workflow-policy.yaml
-    sha256: "ea1278a2bb99e3145e2390a69fa5c8d24432e66162378eb57e249d1caf2f8dd9"
+    sha256: "dc16406da83b53ce023aca4f2b227f4deeb7665e7725d96f758413ba7613eb1a"

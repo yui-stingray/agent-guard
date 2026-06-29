@@ -234,6 +234,9 @@ runs:
           record_status "$?"
         fi
 
+        agent-guard mcp check --root "$root" --json > "$raw_dir/mcp.json"
+        record_status "$?"
+
         agent-guard surface inventory --root "$root" --context-policy "$context_policy" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
         record_status "$?"
 

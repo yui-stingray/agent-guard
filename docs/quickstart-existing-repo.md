@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.15
+        uses: yui-stingray/agent-guard@v0.1.16
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -66,6 +66,7 @@ For a local first pass, run the same evidence surfaces directly:
 ```bash
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard mcp check --root . --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 ```
 
@@ -97,6 +98,7 @@ Create an evidence directory and write a sanitized report:
 ```bash
 mkdir -p .agent-guard/evidence
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+agent-guard mcp check --root . --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -113,21 +115,24 @@ format.
 Do not treat every `--json` command as a public artifact. The report,
 render-report, conformance, and evidence-pack outputs are the sanitized review
 surfaces. Raw scanner JSON from commands such as `api check --json`, `content
-check --json`, or `workflow check --json` may include snippets, matched URLs,
-configured patterns, or policy diagnostics and should stay in local automation
-or temporary CI storage unless reviewed.
+check --json`, `mcp check --json`, or `workflow check --json` may include
+scanner metadata, snippets, matched URLs, configured patterns, or policy
+diagnostics depending on the scanner and should stay in local automation or
+temporary CI storage unless reviewed.
 
 `--evidence-preset recommended` expands unset report options to the current
-recommended static gate bundle: path, content, workflow, policy/spec drift v2,
-surface inventory v2, recommended conformance, and an embedded evidence-pack
-manifest. It does not enable API or digest policies automatically; add those
-options only when the repository has reviewed policy files for them.
+recommended static gate bundle: path, content, MCP config, workflow,
+policy/spec drift v2, surface inventory v2, recommended conformance, and an
+embedded evidence-pack manifest. It does not enable API or digest policies
+automatically; add those options only when the repository has reviewed policy
+files for them.
 
-Use `--conformance-profile strict` only after reviewing v2 surface inventory
-output and deciding that malformed MCP config files or risky MCP configuration
-metadata should fail CI. Strict mode is still static evidence over repository
-configuration; it does not execute MCP servers, inspect MCP tool results, or
-act as an MCP runtime security validator.
+The recommended report preset already fails on malformed committed MCP config
+files and deterministic risky MCP configuration metadata. Use
+`--conformance-profile strict` only after reviewing v2 surface inventory output
+and deciding that the same labels should also appear as conformance findings.
+Both modes are static evidence over repository configuration; they do not
+execute MCP servers, inspect MCP tool results, or act as an MCP runtime security validator.
 
 For pull requests that can change guard policy or workflow files, fetch the
 base branch in CI and add `--base-ref <ref>` to `drift check` or

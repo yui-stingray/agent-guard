@@ -18,7 +18,7 @@
 | Inventory evidence records | 5 |
 | Agent surfaces inventoried | 1 |
 | Evidence gates enabled | 2 |
-| Evidence gates missing | 7 |
+| Evidence gates missing | 8 |
 | Evidence gates failing | 1 |
 | Permission boundaries present | 3 |
 | Permission boundaries missing | 3 |
@@ -32,6 +32,7 @@
 | path | missing | 0 | 0 | - |
 | content | missing | 0 | 0 | - |
 | api | missing | 0 | 0 | - |
+| mcp_config | missing | 0 | 0 | - |
 | context_lock | missing | 0 | 0 | - |
 | digest | missing | 0 | 0 | - |
 | workflow | missing | 0 | 0 | - |
@@ -62,8 +63,8 @@
 | AGENTS.md | 1 | approval_boundary | approval_boundary_mention | ASI09 Human-Agent Trust Exploitation |
 | AGENTS.md | 2 | approval_boundary | approval_boundary_mention | ASI09 Human-Agent Trust Exploitation |
 | AGENTS.md | 3 | local_verification | local_verification_mention | ASI08 Cascading Failures |
-| AGENTS.md | 1 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse &amp; Exploitation |
-| AGENTS.md | 2 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse &amp; Exploitation |
+| AGENTS.md | 1 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse and Exploitation |
+| AGENTS.md | 2 | tool_permission_boundary | tool_permission_boundary_mention | ASI02 Tool Misuse and Exploitation |
 
 ## Permission Boundary Evidence
 

@@ -134,6 +134,8 @@ workflow_checks:
         command: agent-guard path check --root . --policy .agent-guard/path-policy.yaml
       - id: content_guard
         command: agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml
+      - id: mcp_config_guard
+        command: agent-guard mcp check --root .
       - id: surface_inventory
         command: agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2
       - id: workflow_guard
@@ -185,6 +187,9 @@ jobs:
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+          code=$?
+          if [ "$code" -ne 0 ]; then status=$code; fi
+          agent-guard mcp check --root . --json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json

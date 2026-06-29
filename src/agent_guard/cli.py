@@ -35,6 +35,7 @@ from .digest_guard import load_digest_policy, scan_digests
 from .drift_guard import build_policy_spec_drift_report
 from .evidence_pack import build_evidence_pack_manifest
 from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
+from .mcp_guard import build_mcp_config_report
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .profiles import PROFILE_NAMES
 from .report_render import emit_report_output, render_report_output
@@ -278,6 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
     surface_inventory.add_argument("--schema-version", choices=("v1", "v2"), default="v1", help="inventory schema version")
     surface_inventory.add_argument("--json", action="store_true", help="emit JSON")
 
+    mcp = top.add_parser("mcp", help="static MCP configuration evidence")
+    mcp_sub = mcp.add_subparsers(dest="command", required=True)
+    mcp_check = mcp_sub.add_parser("check", help="scan committed MCP configuration metadata")
+    mcp_check.add_argument("--root", default=".", help="repository root path")
+    mcp_check.add_argument("--json", action="store_true", help="emit JSON")
+
     drift = top.add_parser("drift", help="small policy/spec drift guard")
     drift_sub = drift.add_subparsers(dest="command", required=True)
     drift_check = drift_sub.add_parser("check", help="verify README, workflow, and .agent-guard policy alignment")
@@ -349,6 +356,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("v1", "v2"),
         default="",
         help="surface inventory schema version embedded in the report",
+    )
+    report.add_argument(
+        "--mcp-config-check",
+        action="store_true",
+        help="include static MCP configuration evidence derived from committed config metadata",
     )
     report.add_argument("--conformance-profile", choices=PROFILE_NAMES, default="", help="embed conformance evidence")
     report.add_argument(
@@ -499,6 +511,56 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
     else:
         print(f"surface-inventory: OK ({surface_count} surfaces)")
     return 0
+
+
+def run_mcp_check(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        report = build_mcp_config_report(root=root)
+    except Exception as exc:
+        payload = result_payload(
+            scanner="mcp",
+            status="error",
+            exit_code=2,
+            policy_arg=".mcp-config",
+            root=root,
+            error=str(exc),
+            extra={"command": "check"},
+        )
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        return 2
+
+    findings = report.get("findings", [])
+    finding_items = findings if isinstance(findings, list) else []
+    checked_count = int(report.get("checked_count", 0))
+    exit_code = 0 if not finding_items else 1
+    payload = result_payload(
+        scanner="mcp",
+        status="ok" if exit_code == 0 else "violation",
+        exit_code=exit_code,
+        policy_arg=".mcp-config",
+        root=root,
+        findings=[item for item in finding_items if isinstance(item, dict)],
+        scanned_count=checked_count,
+        scanned_unit="mcp_config_surfaces",
+        extra={"command": "check", "mcp_config": report},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    elif finding_items:
+        print(f"mcp-config: NG ({len(finding_items)} findings)")
+        for item in finding_items:
+            if isinstance(item, dict):
+                print(
+                    f"- {item.get('severity', 'medium')} {item.get('rule_id', '-')} "
+                    f"{item.get('path', '-')} {item.get('reason', '-')}"
+                )
+    else:
+        print(f"mcp-config: OK ({checked_count} config surfaces checked)")
+    return exit_code
 
 
 def run_drift_check(args: argparse.Namespace) -> int:
@@ -682,6 +744,7 @@ def apply_report_evidence_preset(args: argparse.Namespace) -> None:
         args.drift_schema_version = "v2"
     if not str(args.surface_inventory_version).strip():
         args.surface_inventory_version = "v2"
+    args.mcp_config_check = True
     if not str(args.conformance_profile).strip():
         args.conformance_profile = RECOMMENDED_EVIDENCE_PRESET
     args.evidence_pack_manifest = True
@@ -1084,6 +1147,7 @@ def report_scope(
     path_enabled: bool,
     content_enabled: bool,
     api_enabled: bool,
+    mcp_enabled: bool,
     digest_enabled: bool,
     workflow_enabled: bool,
     drift_enabled: bool = False,
@@ -1095,6 +1159,8 @@ def report_scope(
         parts.append("content")
     if api_enabled:
         parts.append("api")
+    if mcp_enabled:
+        parts.append("mcp")
     if digest_enabled:
         parts.append("digest")
     if workflow_enabled:
@@ -1159,6 +1225,7 @@ def build_evidence_coverage(
     path_report: dict[str, object] | None,
     content_report: dict[str, object] | None,
     api_report: dict[str, object] | None,
+    mcp_report: dict[str, object] | None,
     context_lock_report: dict[str, object] | None,
     digest_report: dict[str, object] | None,
     workflow_report: dict[str, object] | None,
@@ -1184,6 +1251,7 @@ def build_evidence_coverage(
         ("path", path_report),
         ("content", content_report),
         ("api", api_report),
+        ("mcp_config", mcp_report),
         ("context_lock", context_lock_report),
         ("digest", digest_report),
         ("workflow", workflow_report),
@@ -1378,6 +1446,7 @@ def run_report(args: argparse.Namespace) -> int:
         path_enabled=bool(path_policy_arg),
         content_enabled=bool(content_policy_arg),
         api_enabled=bool(api_policy_arg),
+        mcp_enabled=bool(args.mcp_config_check),
         digest_enabled=bool(digest_policy_arg),
         workflow_enabled=bool(workflow_policy_arg),
         drift_enabled=bool(args.drift_check),
@@ -1399,6 +1468,7 @@ def run_report(args: argparse.Namespace) -> int:
             else None
         )
         api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
+        mcp_report = build_mcp_config_report(root=root) if args.mcp_config_check else None
         context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
@@ -1482,11 +1552,11 @@ def run_report(args: argparse.Namespace) -> int:
                 if path
             ],
             extra={
-            "command": "report",
-            "report": {
-                "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
-                "format": args.format,
-                "scope": scope,
+                "command": "report",
+                "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                    "format": args.format,
+                    "scope": scope,
                     "sanitized": True,
                 },
                 **(
@@ -1543,6 +1613,7 @@ def run_report(args: argparse.Namespace) -> int:
     path_finding_count = int(path_report["finding_count"]) if path_report else 0
     content_finding_count = int(content_report["finding_count"]) if content_report else 0
     api_finding_count = int(api_report["finding_count"]) if api_report else 0
+    mcp_finding_count = int(mcp_report["finding_count"]) if mcp_report else 0
     digest_finding_count = int(digest_report["finding_count"]) if digest_report else 0
     context_lock_finding_count = (
         int(context_lock_report["finding_count"]) if context_lock_report else 0
@@ -1555,6 +1626,7 @@ def run_report(args: argparse.Namespace) -> int:
         and path_finding_count == 0
         and content_finding_count == 0
         and api_finding_count == 0
+        and mcp_finding_count == 0
         and context_lock_finding_count == 0
         and digest_finding_count == 0
         and workflow_finding_count == 0
@@ -1575,6 +1647,7 @@ def run_report(args: argparse.Namespace) -> int:
         path_report=path_report,
         content_report=content_report,
         api_report=api_report,
+        mcp_report=mcp_report,
         context_lock_report=context_lock_report,
         digest_report=digest_report,
         workflow_report=workflow_report,
@@ -1642,6 +1715,14 @@ def run_report(args: argparse.Namespace) -> int:
             ),
             **(
                 {
+                    "mcp_config_checked_count": mcp_report["checked_count"],
+                    "mcp_config_finding_count": mcp_report["finding_count"],
+                }
+                if mcp_report
+                else {}
+            ),
+            **(
+                {
                     "context_lock_checked_count": context_lock_report["checked_count"],
                     "context_lock_covered_count": context_lock_report["covered_count"],
                     "context_lock_finding_count": context_lock_report["finding_count"],
@@ -1683,6 +1764,7 @@ def run_report(args: argparse.Namespace) -> int:
                     path_enabled=path_report is not None,
                     content_enabled=content_report is not None,
                     api_enabled=api_report is not None,
+                    mcp_enabled=mcp_report is not None,
                     digest_enabled=digest_report is not None,
                     workflow_enabled=workflow_report is not None,
                     drift_enabled=drift_report is not None,
@@ -1696,6 +1778,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"path": path_report} if path_report else {}),
             **({"content": content_report} if content_report else {}),
             **({"api": api_report} if api_report else {}),
+            **({"mcp_config": mcp_report} if mcp_report else {}),
             **({"context_lock": context_lock_report} if context_lock_report else {}),
             **({"digest": digest_report} if digest_report else {}),
             **({"workflow": workflow_report} if workflow_report else {}),
@@ -1908,6 +1991,8 @@ def main() -> int:
         return run_workflow_check(args)
     if args.scanner == "surface" and args.command == "inventory":
         return run_surface_inventory(args)
+    if args.scanner == "mcp" and args.command == "check":
+        return run_mcp_check(args)
     if args.scanner == "drift" and args.command == "check":
         return run_drift_check(args)
     if args.scanner == "conformance" and args.command == "check":

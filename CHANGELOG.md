@@ -4,6 +4,22 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.16 - 2026-06-29
+
+- Promoted committed MCP configuration metadata into a first-class deterministic
+  static evidence gate via `agent-guard mcp check` and report
+  `--mcp-config-check`.
+- Included the `mcp_config` gate in the recommended evidence preset and
+  recommended conformance profile, while keeping repository-specific API and
+  digest evidence opt-in.
+- Added sanitized MCP findings to JSON reports, Markdown, GitHub annotations,
+  and SARIF without emitting raw MCP args, env values, secret-shaped server
+  names, or local absolute paths.
+- Updated the composite Action, starter workflow, self-dogfood workflow, schemas,
+  docs, and public sample around the static MCP gate while keeping MCP server
+  execution, runtime tool-poisoning detection, and MCP security validation out
+  of scope.
+
 ## 0.1.15 - 2026-06-29
 
 - Hardened the public composite Action by moving user-supplied inputs out of

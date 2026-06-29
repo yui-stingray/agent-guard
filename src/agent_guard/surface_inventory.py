@@ -141,6 +141,50 @@ def command_basename(command: object) -> str:
     return Path(text).name
 
 
+def unsafe_mcp_public_token(text: str) -> bool:
+    if any(ord(char) < 32 or ord(char) == 127 for char in text):
+        return True
+    if SECRET_SHAPED_VALUE.search(text):
+        return True
+    if "/" in text or "\\" in text:
+        return True
+    if PureWindowsPath(text).drive or text.startswith("\\\\"):
+        return True
+    if Path(text).is_absolute() or ".." in Path(text).parts:
+        return True
+    return len(text) > 80
+
+
+def safe_mcp_public_token(raw_name: object, *, empty: str, redacted: str) -> str:
+    text = str(raw_name).strip()
+    if not text:
+        return empty
+    if unsafe_mcp_public_token(text):
+        return redacted
+    return text
+
+
+def safe_mcp_server_name(raw_name: object) -> str:
+    return safe_mcp_public_token(raw_name, empty="<unnamed-server>", redacted="<redacted-server>")
+
+
+def safe_mcp_command_basename(raw_name: object) -> str:
+    return safe_mcp_public_token(raw_name, empty="", redacted="<redacted-command>")
+
+
+def safe_mcp_env_var_name(raw_name: object) -> str:
+    token = safe_mcp_public_token(raw_name, empty="", redacted="<redacted-env>")
+    if not token or token == "<redacted-env>":
+        return token
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", token):
+        return token
+    return "<redacted-env>"
+
+
+def safe_mcp_remote_host(raw_name: object) -> str:
+    return safe_mcp_public_token(raw_name, empty="", redacted="<redacted-host>")
+
+
 def count_tree_files(base: Path, *, cap: int = MAX_SURFACE_TREE_FILES) -> tuple[int, bool]:
     if base.is_file():
         return 1, False
@@ -355,11 +399,15 @@ def collect_mcp_config_surfaces(root: Path) -> list[dict[str, object]]:
         for server_name, raw_server in sorted(mcp_server_maps(loaded).items()):
             if not isinstance(raw_server, dict):
                 continue
-            command = command_basename(raw_server.get("command"))
+            command = safe_mcp_command_basename(command_basename(raw_server.get("command")))
             args = command_inline_args(raw_server.get("command")) + string_list(raw_server.get("args"))
             env = raw_server.get("env")
-            env_vars = sorted(str(key) for key in env.keys()) if isinstance(env, dict) else []
-            remote_host = extract_remote_host(raw_server)
+            env_vars = (
+                sorted({name for name in (safe_mcp_env_var_name(key) for key in env.keys()) if name})
+                if isinstance(env, dict)
+                else []
+            )
+            remote_host = safe_mcp_remote_host(extract_remote_host(raw_server))
             transport = infer_transport(raw_server, remote_host, command)
             version_pinned = infer_version_pin(command, args)
             package_manager = command if command in PACKAGE_MANAGER_COMMANDS else ""
@@ -389,7 +437,7 @@ def collect_mcp_config_surfaces(root: Path) -> list[dict[str, object]]:
                     "path": display_path,
                     "kind": kind,
                     "status": "referenced",
-                    "server_name": str(server_name),
+                    "server_name": safe_mcp_server_name(server_name),
                     "transport": transport,
                     **({"command_basename": command} if command else {}),
                     **({"package_manager": package_manager} if package_manager else {}),

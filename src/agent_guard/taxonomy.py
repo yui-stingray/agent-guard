@@ -10,10 +10,10 @@ from collections.abc import Mapping
 
 OWASP_AGENTIC_TOP10: dict[str, str] = {
     "ASI01": "Agent Goal Hijack",
-    "ASI02": "Tool Misuse & Exploitation",
-    "ASI03": "Identity & Privilege Abuse",
+    "ASI02": "Tool Misuse and Exploitation",
+    "ASI03": "Identity and Privilege Abuse",
     "ASI04": "Agentic Supply Chain Vulnerabilities",
-    "ASI05": "Unexpected Code Execution",
+    "ASI05": "Unexpected Code Execution (RCE)",
     "ASI06": "Memory & Context Poisoning",
     "ASI07": "Insecure Inter-Agent Communication",
     "ASI08": "Cascading Failures",
@@ -160,7 +160,7 @@ def risk_themes_for_finding(scanner: str, finding: Mapping[str, object]) -> list
             or DRIFT_CLASSIFICATION_THEMES.get(str(finding.get("classification") or ""))
             or ()
         )
-    elif scanner_name == "conformance" and rule_id == "mcp_config_risky_pattern":
+    elif scanner_name in {"conformance", "mcp_config"} and rule_id == "mcp_config_risky_pattern":
         themes = tuple(theme["id"] for theme in risk_themes_for_mcp_pattern(reason))
 
     if not themes and category:

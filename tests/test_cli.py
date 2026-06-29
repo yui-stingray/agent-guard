@@ -84,6 +84,7 @@ def write_baseline_ready_repo(repo: Path) -> None:
         repo / "README.md",
         "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
         "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard mcp check --root .\n"
         "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
         "agent-guard drift check --root .\n"
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
@@ -536,6 +537,234 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
         assert forbidden not in result.stdout
 
 
+def test_surface_inventory_cli_v2_redacts_sensitive_mcp_server_names(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    secret_server = "github_pat_" + ("0" * 20)
+    local_server = "/home/alice/private"
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    secret_server: {"command": "npx", "args": ["secret-mcp@latest"]},
+                    local_server: {"command": "npx", "args": ["local-mcp@latest"]},
+                }
+            }
+        ),
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0
+    surfaces = json.loads(result.stdout)["surface_inventory"]["surfaces"]
+    server_names = [item["server_name"] for item in surfaces if item["surface"] == "mcp_server_reference"]
+    assert server_names == ["<redacted-server>", "<redacted-server>"]
+    assert secret_server not in result.stdout
+    assert local_server not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_public_outputs_redact_sensitive_command_env_and_host_metadata(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    secret_command = "sk-exampleSecretValue123"
+    secret_host = "sk-exampleSecretHost123"
+    local_env_key = "/home/alice/private"
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "safe": {
+                        "command": secret_command,
+                        "args": ["@vendor/browser-mcp@latest"],
+                        "env": {local_env_key: "${TOKEN}"},
+                        "url": f"https://{secret_host}/sse",
+                    }
+                }
+            }
+        ),
+    )
+
+    surface = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+    mcp = run_cli("mcp", "check", "--root", str(tmp_path), "--json")
+    report = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--mcp-config-check",
+        "--format",
+        "json",
+    )
+
+    assert surface.returncode == 0
+    surfaces = json.loads(surface.stdout)["surface_inventory"]["surfaces"]
+    server = next(item for item in surfaces if item["surface"] == "mcp_server_reference")
+    assert server["command_basename"] == "<redacted-command>"
+    assert server["env_vars"] == ["<redacted-env>"]
+    assert server["remote_host"] == "<redacted-host>"
+    assert mcp.returncode == 1
+    assert report.returncode == 1
+    combined = surface.stdout + mcp.stdout + report.stdout
+    for forbidden in (
+        secret_command,
+        secret_host,
+        secret_host.lower(),
+        local_env_key,
+        str(tmp_path),
+    ):
+        assert forbidden not in combined
+
+
+def test_mcp_check_cli_flags_sanitized_mcp_risky_patterns(tmp_path: Path) -> None:
+    fake_token = "github_pat_" + ("0" * 20)
+    raw_command = "npx -y @vendor/browser-mcp --token sk-exampleSecretValue123 --root /home/alice/private"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "browser": {
+                        "command": raw_command,
+                        "args": ["@vendor/browser-mcp@latest"],
+                        "env": {"GITHUB_TOKEN": fake_token},
+                    }
+                }
+            }
+        ),
+    )
+
+    result = run_cli("mcp", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["scanner"] == "mcp"
+    assert payload["mcp_config"]["status"] == "violation"
+    assert payload["mcp_config"]["checked_count"] == 2
+    reasons = {item["reason"] for item in payload["mcp_config"]["findings"]}
+    assert reasons == {
+        "filesystem_root_reference",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unpinned_package",
+    }
+    assert payload["mcp_config"]["findings"][0]["owasp_agentic_risk_themes"]
+    assert raw_command not in result.stdout
+    assert "sk-exampleSecretValue123" not in result.stdout
+    assert fake_token not in result.stdout
+    assert "/home/alice/private" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_redacts_sensitive_server_names(tmp_path: Path) -> None:
+    secret_server = "github_pat_" + ("0" * 20)
+    local_server = "/home/alice/private"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    secret_server: {"command": "npx", "args": ["secret-mcp@latest"]},
+                    local_server: {"command": "npx", "args": ["local-mcp@latest"]},
+                }
+            }
+        ),
+    )
+
+    result = run_cli("mcp", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    server_names = {item.get("server_name") for item in payload["mcp_config"]["findings"]}
+    assert server_names == {"<redacted-server>"}
+    assert secret_server not in result.stdout
+    assert local_server not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_flags_parse_errors(tmp_path: Path) -> None:
+    write(tmp_path / ".mcp.json", "{not json")
+
+    result = run_cli("mcp", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    finding = payload["mcp_config"]["findings"][0]
+    assert finding["reason"] == "parse_error"
+    assert finding["surface"] == "mcp_config"
+    assert finding["path"] == ".mcp.json"
+    assert finding["owasp_agentic_risk_themes"] == [
+        {"id": "ASI04", "name": "Agentic Supply Chain Vulnerabilities"}
+    ]
+    assert "{not json" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_markdown_mcp_config_findings_are_sanitized(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    secret_server = "github_pat_" + ("0" * 20)
+    raw_command = "npx -y @vendor/browser-mcp --token sk-exampleSecretValue123 --root /home/alice/private"
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    secret_server: {
+                        "command": raw_command,
+                        "args": ["@vendor/browser-mcp@latest"],
+                    }
+                }
+            }
+        ),
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--mcp-config-check",
+    )
+
+    assert result.returncode == 1
+    assert "## MCP Configuration Evidence" in result.stdout
+    assert "&lt;redacted-server&gt;" in result.stdout
+    assert "secret_shaped_inline_value" in result.stdout
+    assert secret_server not in result.stdout
+    assert raw_command not in result.stdout
+    assert "sk-exampleSecretValue123" not in result.stdout
+    assert "/home/alice/private" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
 def test_drift_cli_json_checks_readme_policy_and_workflow_alignment(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text(
@@ -615,6 +844,7 @@ def test_drift_cli_v2_does_not_error_when_context_lock_has_no_context_files(tmp_
         tmp_path / "README.md",
         "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
         "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard mcp check --root .\n"
         "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
         "agent-guard drift check --root .\n"
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
@@ -939,6 +1169,7 @@ def test_conformance_cli_strict_requires_sanitized_evidence_pack_report_artifact
                     "surface_inventory",
                     "path",
                     "content",
+                    "mcp_config",
                     "context_lock",
                     "digest",
                     "workflow",
@@ -996,6 +1227,7 @@ def test_conformance_cli_strict_flags_mcp_risky_patterns(tmp_path: Path) -> None
                             "surface_inventory",
                             "path",
                             "content",
+                            "mcp_config",
                             "context_lock",
                             "digest",
                             "workflow",
@@ -1044,7 +1276,7 @@ def test_conformance_cli_strict_flags_mcp_risky_patterns(tmp_path: Path) -> None
     findings = payload["conformance"]["findings"]
     assert [item["reason"] for item in findings] == ["secret_shaped_inline_value", "unpinned_package"]
     assert findings[0]["severity"] == "high"
-    assert findings[0]["owasp_agentic_risk_themes"] == [{"id": "ASI03", "name": "Identity & Privilege Abuse"}]
+    assert findings[0]["owasp_agentic_risk_themes"] == [{"id": "ASI03", "name": "Identity and Privilege Abuse"}]
     assert findings[1]["owasp_agentic_risk_themes"] == [
         {"id": "ASI04", "name": "Agentic Supply Chain Vulnerabilities"}
     ]
@@ -1064,6 +1296,7 @@ def test_conformance_cli_strict_flags_mcp_config_parse_errors(tmp_path: Path) ->
                             "surface_inventory",
                             "path",
                             "content",
+                            "mcp_config",
                             "context_lock",
                             "digest",
                             "workflow",
@@ -1194,18 +1427,20 @@ def test_report_cli_recommended_preset_expands_adoption_bundle() -> None:
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["report"]["scope"] == "context+path+content+workflow+drift"
+    assert payload["report"]["scope"] == "context+path+content+mcp+workflow+drift"
     assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
     assert payload["conformance"]["profile"] == "recommended"
     assert payload["conformance"]["status"] == "ok"
     assert payload["evidence_pack_manifest"]["sanitized"] is True
     assert "api" not in payload
+    assert payload["mcp_config"]["status"] == "ok"
     assert "digest" not in payload
     assert "context_lock" not in payload
     gates = {item["gate"]: item["status"] for item in payload["evidence_coverage"]["gates"]}
     assert gates["context"] == "ok"
     assert gates["path"] == "ok"
     assert gates["content"] == "ok"
+    assert gates["mcp_config"] == "ok"
     assert gates["workflow"] == "ok"
     assert gates["policy_spec_drift"] == "ok"
     assert gates["api"] == "missing"
@@ -1224,6 +1459,7 @@ def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path
         repo / "README.md",
         "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
         "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard mcp check --root .\n"
         "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
         "agent-guard drift check --root .\n"
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
@@ -1269,6 +1505,7 @@ def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path
         "          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json\n"
         "          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json\n"
         "          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json\n"
+        "          agent-guard mcp check --root . --json\n"
         "          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json\n"
         "          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json\n"
         "          agent-guard drift check --root . --profile recommended --schema-version v2 --json\n"
@@ -1289,10 +1526,77 @@ def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path
 
     assert result.returncode == 0, result.stdout
     payload = json.loads(result.stdout)
-    assert payload["report"]["scope"] == "context+path+content+workflow+drift"
+    assert payload["report"]["scope"] == "context+path+content+mcp+workflow+drift"
     assert payload["path"]["policy"]["path"] == ".agent-guard/path-policy.yaml"
     assert payload["content"]["policy"]["path"] == ".agent-guard/content-policy.yaml"
     assert payload["workflow"]["policy"]["path"] == ".agent-guard/workflow-policy.yaml"
+    assert payload["mcp_config"]["status"] == "ok"
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_recommended_preset_fails_risky_mcp_config_without_raw_leak(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    fake_token = "github_pat_" + ("0" * 20)
+    raw_command = "npx -y @vendor/browser-mcp --token sk-exampleSecretValue123 --root /home/alice/private"
+    write(
+        repo / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        "Keep credentials redacted in public evidence.\n"
+        "Run pytest before reporting success.\n",
+    )
+    write(repo / ".agent-guard" / "context-policy.yaml", "{}\n")
+    write(
+        repo / ".agent-guard" / "path-policy.yaml",
+        "scan:\n  include:\n    - .\n  exclude: []\npolicy:\n  allowed_path_patterns: []\n  forbidden_path_patterns: []\n",
+    )
+    write(
+        repo / ".agent-guard" / "content-policy.yaml",
+        "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+    )
+    write(
+        repo / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n",
+    )
+    write(
+        repo / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "browser": {
+                        "command": raw_command,
+                        "args": ["@vendor/browser-mcp@latest"],
+                        "env": {"GITHUB_TOKEN": fake_token},
+                    }
+                }
+            }
+        ),
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(repo / ".agent-guard" / "context-policy.yaml"),
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["mcp_config"]["status"] == "violation"
+    gates = {item["gate"]: item for item in payload["evidence_coverage"]["gates"]}
+    assert gates["mcp_config"]["status"] == "violation"
+    assert gates["mcp_config"]["finding_count"] == 4
+    assert raw_command not in result.stdout
+    assert "sk-exampleSecretValue123" not in result.stdout
+    assert fake_token not in result.stdout
+    assert "/home/alice/private" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 
@@ -1364,7 +1668,7 @@ def test_report_cli_json_adds_owasp_agentic_risk_theme_metadata(tmp_path: Path) 
     assert result.returncode == 1
     payload = json.loads(result.stdout)
     themes = payload["findings"][0]["owasp_agentic_risk_themes"]
-    assert {"id": "ASI03", "name": "Identity & Privilege Abuse"} in themes
+    assert {"id": "ASI03", "name": "Identity and Privilege Abuse"} in themes
     assert {"id": "ASI09", "name": "Human-Agent Trust Exploitation"} in themes
     assert "Please paste" not in result.stdout
     assert "API key" not in result.stdout
@@ -1393,7 +1697,7 @@ def test_report_cli_sarif_is_thin_sanitized_adapter(tmp_path: Path) -> None:
     assert run["tool"]["driver"]["name"] == "agent-guard"
     assert run["tool"]["driver"]["rules"][0]["id"] == "agent-guard.context.secret_prompt"
     assert run["tool"]["driver"]["rules"][0]["properties"]["owasp_agentic_risk_themes"] == [
-        {"id": "ASI03", "name": "Identity & Privilege Abuse"},
+        {"id": "ASI03", "name": "Identity and Privilege Abuse"},
         {"id": "ASI09", "name": "Human-Agent Trust Exploitation"},
     ]
     finding = run["results"][0]
@@ -3212,12 +3516,12 @@ def test_report_cli_markdown_static_scanner_violations_are_sanitized(tmp_path: P
     assert "| Content guard findings | 1 |" in result.stdout
     assert "| API guard findings | 1 |" in result.stdout
     assert (
-        "| high | private_path | ASI03 Identity &amp; Privilege Abuse; "
+        "| high | private_path | ASI03 Identity and Privilege Abuse; "
         "ASI04 Agentic Supply Chain Vulnerabilities | secrets/.env.local |"
         in result.stdout
     )
-    assert "| high | secret_prompt | ASI03 Identity &amp; Privilege Abuse | docs/bad.md | 1 |" in result.stdout
-    assert "| src/bad.py | 1 | forbidden_api | ASI02 Tool Misuse &amp; Exploitation |" in result.stdout
+    assert "| high | secret_prompt | ASI03 Identity and Privilege Abuse | docs/bad.md | 1 |" in result.stdout
+    assert "| src/bad.py | 1 | forbidden_api | ASI02 Tool Misuse and Exploitation |" in result.stdout
     assert raw_content not in result.stdout
     assert raw_url not in result.stdout
     assert "^https://api" not in result.stdout
@@ -3334,15 +3638,15 @@ jobs:
     assert (
         "::error file=secrets/.env.local,title=agent-guard path%3A private_path"
         "::path guard finding: private_path (OWASP risk themes: "
-        "ASI03 Identity & Privilege Abuse; ASI04 Agentic Supply Chain Vulnerabilities)\n"
+        "ASI03 Identity and Privilege Abuse; ASI04 Agentic Supply Chain Vulnerabilities)\n"
     ) in result.stdout
     assert (
         "::error file=docs/bad.md,line=1,title=agent-guard content%3A secret_prompt"
-        "::content guard finding: secret_prompt (OWASP risk themes: ASI03 Identity & Privilege Abuse)\n"
+        "::content guard finding: secret_prompt (OWASP risk themes: ASI03 Identity and Privilege Abuse)\n"
     ) in result.stdout
     assert (
         "::error file=src/bad.py,line=1,title=agent-guard api%3A forbidden_api"
-        "::api guard finding: forbidden_api (OWASP risk themes: ASI02 Tool Misuse & Exploitation)\n"
+        "::api guard finding: forbidden_api (OWASP risk themes: ASI02 Tool Misuse and Exploitation)\n"
     ) in result.stdout
     assert (
         "::error file=AGENTS.md,title=agent-guard digest%3A agent_context_pin"

@@ -31,7 +31,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
         "artifact_roles": (),
     },
     "recommended": {
-        "gates": ("context", "surface_inventory", "path", "content", "workflow", "policy_spec_drift"),
+        "gates": ("context", "surface_inventory", "path", "content", "mcp_config", "workflow", "policy_spec_drift"),
         "surfaces": ("agent_context", "policy_file", "workflow_file", "workflow_reference"),
         "policy_files": (
             ".agent-guard/context-policy.yaml",
@@ -52,6 +52,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
                 "readme_workflow_guard",
                 "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml",
             ),
+            ("readme_mcp_config_guard", "agent-guard mcp check --root ."),
             ("readme_drift_guard", "agent-guard drift check --root ."),
             (
                 "readme_report_with_drift",
@@ -62,6 +63,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             ("context", "check"),
             ("path", "check"),
             ("content", "check"),
+            ("mcp", "check"),
             ("surface", "inventory"),
             ("workflow", "check"),
             ("drift", "check"),
@@ -77,6 +79,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             "surface_inventory",
             "path",
             "content",
+            "mcp_config",
             "context_lock",
             "digest",
             "workflow",
@@ -118,6 +121,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
                 "readme_workflow_guard",
                 "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml",
             ),
+            ("readme_mcp_config_guard", "agent-guard mcp check --root ."),
             ("readme_drift_guard", "agent-guard drift check --root ."),
             (
                 "readme_report_with_drift",
@@ -130,6 +134,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             ("digest", "check"),
             ("path", "check"),
             ("content", "check"),
+            ("mcp", "check"),
             ("surface", "inventory"),
             ("workflow", "check"),
             ("drift", "check"),

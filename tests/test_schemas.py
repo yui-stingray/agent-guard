@@ -252,6 +252,24 @@ def test_report_schema_validates_error_cli_payload(tmp_path: Path) -> None:
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
 
 
+def test_report_schema_validates_mcp_enabled_error_cli_payload(tmp_path: Path) -> None:
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(tmp_path / "missing.yaml"),
+        "--mcp-config-check",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert "mcp_config" not in payload
+    validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+
+
 def test_public_sample_report_matches_schema_and_is_sanitized() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
 

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from .mcp_guard import mcp_config_findings_from_surfaces
 from .profiles import profile_requirements, normalize_profile_name
-from .taxonomy import annotate_finding
 
 
 CONFORMANCE_SCHEMA_VERSION = "agent-guard.conformance.v1"
@@ -60,62 +60,11 @@ def artifact_roles(report_payload: Mapping[str, object]) -> set[str]:
     return roles
 
 
-def mcp_risk_severity(pattern: str) -> str:
-    return "high" if pattern == "secret_shaped_inline_value" else "medium"
-
-
 def strict_mcp_risk_findings(surface_inventory: dict[str, object]) -> tuple[list[dict[str, object]], int]:
-    surfaces = surface_inventory.get("surfaces", [])
-    if not isinstance(surfaces, list):
-        return [], 0
-    findings: list[dict[str, object]] = []
-    checked_count = 0
-    for item in surfaces:
-        if not isinstance(item, Mapping):
-            continue
-        surface = str(item.get("surface", ""))
-        if surface == "mcp_config":
-            checked_count += 1
-            if item.get("status") == "parse_error":
-                findings.append(
-                    annotate_finding(
-                        "conformance",
-                        {
-                            "rule_id": "mcp_config_risky_pattern",
-                            "severity": "medium",
-                            "requirement_id": "mcp_config_risky_patterns",
-                            "message": "strict profile requires parseable MCP configuration metadata",
-                            "reason": "parse_error",
-                            "surface": "mcp_config",
-                            "path": str(item.get("path", "")),
-                        },
-                    )
-                )
-            continue
-        if surface != "mcp_server_reference":
-            continue
-        checked_count += 1
-        raw_patterns = item.get("risky_patterns", [])
-        if not isinstance(raw_patterns, list):
-            continue
-        patterns = sorted(value.strip() for value in raw_patterns if isinstance(value, str) and value.strip())
-        for pattern in patterns:
-            findings.append(
-                annotate_finding(
-                    "conformance",
-                    {
-                        "rule_id": "mcp_config_risky_pattern",
-                        "severity": mcp_risk_severity(pattern),
-                        "requirement_id": "mcp_config_risky_patterns",
-                        "message": "strict profile requires review of risky MCP configuration metadata",
-                        "reason": pattern,
-                        "surface": "mcp_server_reference",
-                        "path": str(item.get("path", "")),
-                        "server_name": str(item.get("server_name", "")),
-                    },
-                )
-            )
-    return findings, checked_count
+    return mcp_config_findings_from_surfaces(
+        surface_inventory.get("surfaces", []),
+        requirement_id="mcp_config_risky_patterns",
+    )
 
 
 def build_conformance_report(

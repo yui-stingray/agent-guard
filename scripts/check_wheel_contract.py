@@ -220,7 +220,8 @@ def main() -> int:
             "      - name: Run guard checks\n"
             "        run: |\n"
             "          python -m agent_guard.cli context check --root . --policy context-policy.yaml --json\n"
-            "          python -m agent_guard.cli digest check --root . --policy digest-policy.yaml --json\n",
+            "          python -m agent_guard.cli digest check --root . --policy digest-policy.yaml --json\n"
+            "          python -m agent_guard.cli mcp check --root . --json\n",
             encoding="utf-8",
         )
         workflow_policy = repo / "workflow-policy.yaml"
@@ -238,7 +239,9 @@ def main() -> int:
             "      - id: context_guard\n"
             "        command: python -m agent_guard.cli context check\n"
             "      - id: digest_guard\n"
-            "        command: python -m agent_guard.cli digest check\n",
+            "        command: python -m agent_guard.cli digest check\n"
+            "      - id: mcp_config_guard\n"
+            "        command: python -m agent_guard.cli mcp check\n",
             encoding="utf-8",
         )
         workflow_cli = run(
@@ -305,6 +308,7 @@ def main() -> int:
             "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
             "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
             "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml\n"
+            "agent-guard mcp check --root .\n"
             "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
             "agent-guard drift check --root .\n"
             "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
@@ -376,7 +380,7 @@ def main() -> int:
         assert "| Digest policy | digest-policy.yaml |" in report_cli.stdout
         assert "| Digest checks | 1 |" in report_cli.stdout
         assert "| Workflow policy | workflow-policy.yaml |" in report_cli.stdout
-        assert "| Workflow checks | 4 |" in report_cli.stdout
+        assert "| Workflow checks | 5 |" in report_cli.stdout
         assert "| Workflow drift findings | 0 |" in report_cli.stdout
         assert "| Policy/spec drift findings | 0 |" in report_cli.stdout
         assert agent_context_sha256 not in report_cli.stdout
@@ -473,7 +477,7 @@ def main() -> int:
             cwd=temp,
         )
         preset_payload = json.loads(preset_cli.stdout)
-        assert preset_payload["report"]["scope"] == "context+path+content+workflow+drift"
+        assert preset_payload["report"]["scope"] == "context+path+content+mcp+workflow+drift"
         assert preset_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
         assert preset_payload["conformance"]["profile"] == "recommended"
         assert preset_payload["evidence_pack_manifest"]["sanitized"] is True

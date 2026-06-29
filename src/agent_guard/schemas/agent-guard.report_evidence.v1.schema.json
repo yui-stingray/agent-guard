@@ -166,6 +166,18 @@
       "additionalProperties": true
     },
     "digest": {"type": "object"},
+    "mcp_config": {
+      "type": "object",
+      "required": ["status", "checked_count", "finding_count", "findings"],
+      "properties": {
+        "status": {"type": "string", "enum": ["ok", "violation"]},
+        "checked_count": {"type": "integer", "minimum": 0},
+        "finding_count": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array"},
+        "surfaces": {"type": "array"}
+      },
+      "additionalProperties": true
+    },
     "workflow": {"type": "object"},
     "policy_spec_drift": {"type": "object"},
     "conformance": {

@@ -131,6 +131,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     path = as_mapping(payload.get("path"))
     content = as_mapping(payload.get("content"))
     api = as_mapping(payload.get("api"))
+    mcp_config = as_mapping(payload.get("mcp_config"))
     context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
@@ -140,6 +141,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
     api_findings = as_sequence(api.get("findings"))
+    mcp_findings = as_sequence(mcp_config.get("findings"))
     context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
@@ -209,6 +211,19 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
                 message=f"api guard finding: {category}{risk_theme_message_suffix(themes)}",
                 file=finding.get("path", ""),
                 line=finding.get("line", ""),
+            )
+        )
+
+    for item in mcp_findings:
+        finding = as_mapping(item)
+        rule_id = finding.get("rule_id", "-")
+        themes = risk_themes_for_finding("mcp_config", finding)
+        lines.append(
+            github_annotation(
+                level=annotation_level(finding.get("severity")),
+                title=f"agent-guard mcp: {rule_id}",
+                message=f"mcp config finding: {finding.get('reason', '-')}{risk_theme_message_suffix(themes)}",
+                file=finding.get("path", ""),
             )
         )
 
@@ -408,6 +423,7 @@ def render_sarif_report(payload: Mapping[str, object]) -> str:
         ("path", "path", "path guard finding"),
         ("content", "content", "content guard finding"),
         ("api", "api", "api guard finding"),
+        ("mcp_config", "mcp", "mcp config finding"),
         ("context_lock", "context-lock", "context lock coverage"),
         ("digest", "digest", "digest drift"),
         ("workflow", "workflow", "workflow drift"),
@@ -467,6 +483,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     path = as_mapping(payload.get("path"))
     content = as_mapping(payload.get("content"))
     api = as_mapping(payload.get("api"))
+    mcp_config = as_mapping(payload.get("mcp_config"))
     context_lock = as_mapping(payload.get("context_lock"))
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
@@ -484,6 +501,8 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     path_findings = as_sequence(path.get("findings"))
     content_findings = as_sequence(content.get("findings"))
     api_findings = as_sequence(api.get("findings"))
+    mcp_findings = as_sequence(mcp_config.get("findings"))
+    mcp_surfaces = as_sequence(mcp_config.get("surfaces"))
     context_lock_covered = as_sequence(context_lock.get("covered"))
     context_lock_findings = as_sequence(context_lock.get("findings"))
     digest_findings = as_sequence(digest.get("findings"))
@@ -509,6 +528,8 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     if api:
         api_policy = as_mapping(api.get("policy"))
         overview_rows.append(("API policy", api_policy.get("path", "-")))
+    if mcp_config:
+        overview_rows.append(("MCP config evidence", mcp_config.get("status", "-")))
     if digest:
         digest_policy = as_mapping(digest.get("policy"))
         overview_rows.append(("Digest policy", digest_policy.get("path", "-")))
@@ -581,6 +602,13 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             [
                 ("API files scanned", api.get("checked_count", 0)),
                 ("API guard findings", api.get("finding_count", 0)),
+            ]
+        )
+    if mcp_config:
+        summary_rows.extend(
+            [
+                ("MCP config surfaces checked", mcp_config.get("checked_count", 0)),
+                ("MCP config findings", mcp_config.get("finding_count", 0)),
             ]
         )
     if digest:
@@ -748,6 +776,54 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             lines.extend(markdown_table(("File", "Line", "Category", "OWASP risk themes"), api_rows))
         else:
             lines.append("No API guard findings were detected.")
+
+    if mcp_config:
+        lines.extend(["", "## MCP Configuration Evidence", ""])
+        if mcp_findings:
+            mcp_rows = []
+            for item in mcp_findings:
+                finding = as_mapping(item)
+                mcp_rows.append(
+                    (
+                        finding.get("severity", "-"),
+                        finding.get("rule_id", "-"),
+                        risk_theme_cell("mcp_config", finding),
+                        finding.get("path", "-"),
+                        finding.get("server_name", "-"),
+                        finding.get("reason", "-"),
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Severity", "Rule", "OWASP risk themes", "Path", "Server", "Reason"),
+                    mcp_rows,
+                )
+            )
+        else:
+            lines.append("No MCP configuration findings were detected.")
+        if mcp_surfaces:
+            lines.extend(["", "MCP config surfaces:"])
+            surface_rows = []
+            for item in mcp_surfaces:
+                surface = as_mapping(item)
+                risky_patterns = as_sequence(surface.get("risky_patterns"))
+                surface_rows.append(
+                    (
+                        surface.get("surface", "-"),
+                        surface.get("kind", "-"),
+                        surface.get("path", "-"),
+                        surface.get("status", "-"),
+                        surface.get("server_name", "-"),
+                        surface.get("transport", "-"),
+                        "; ".join(str(pattern) for pattern in risky_patterns) if risky_patterns else "-",
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Surface", "Kind", "Path", "Status", "Server", "Transport", "Risk labels"),
+                    surface_rows,
+                )
+            )
 
     if context_lock:
         lines.extend(["", "## Context Lock Coverage Evidence", ""])

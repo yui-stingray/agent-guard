@@ -10,8 +10,8 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.15` alpha. The current MVP ships six guard scanners:
-`api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
+**Status**: `0.1.16` alpha. The current MVP ships seven guard scanners:
+`api`, `content`, `context`, `mcp`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
 
@@ -29,6 +29,7 @@ The current extracted scanners are intentionally narrow:
 - `api`: scan repository text files for URL/API endpoint references, allow approved endpoint patterns, fail on forbidden endpoint patterns
 - `content`: scan Markdown or other configured text files for dangerous instruction patterns
 - `context`: scan agent instruction files such as `AGENTS.md`, `CLAUDE.md`, and Copilot/Cursor/Windsurf rules
+- `mcp`: scan committed MCP configuration metadata for parse errors and deterministic risk labels without executing MCP servers
 - `path`: scan repository path names for private artifacts, env files, and other publish-time leaks
 - `digest`: verify SHA-256 pins for governance docs and safety-critical scripts
 - `workflow`: verify that declared CI guard commands and required policy files remain present
@@ -121,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.15
+      - uses: yui-stingray/agent-guard@v0.1.16
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -159,7 +160,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.15"},
+  "tool": {"name": "agent-guard", "version": "0.1.16"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -201,6 +202,7 @@ agent-guard context check --root . --policy .agent-guard/context-policy.yaml --j
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+agent-guard mcp check --root . --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
@@ -222,6 +224,9 @@ Recommended split:
   silently.
 - `content`: detects unsafe instruction drift in Markdown, scripts, and other
   configured text surfaces.
+- `mcp`: checks committed MCP configuration metadata for parse errors,
+  unpinned or `@latest` package-manager server commands, filesystem-root
+  references, and secret-shaped inline values without running MCP servers.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
 - `surface inventory v2`: records documented guard commands, evidence artifact
@@ -253,7 +258,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.15
+    rev: v0.1.16
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -409,16 +414,17 @@ security compliance, or proof that a category is exploitable. Evidence
 coverage records which gates were enabled, missing, clean, or failing without
 making missing optional gates a failure. With `--evidence-preset recommended`,
 unset report options expand to
-the current recommended static evidence bundle: path, content, workflow,
-policy/spec drift v2, surface inventory v2, recommended conformance, and an
-embedded evidence-pack manifest. The preset intentionally does not enable API
-or digest evidence because those policies are repository-specific. With
-`--conformance-profile <minimal|recommended|strict>`, it checks
-the sanitized report evidence against a named adoption profile. The `strict`
-profile also fails when v2 surface inventory records malformed MCP config files
-or risky MCP configuration metadata, such as unpinned package-manager commands
-or secret-shaped inline values; it still does not execute MCP servers, inspect
-tool results, or act as an MCP runtime security validator. With
+the current recommended static evidence bundle: path, content, MCP config,
+workflow, policy/spec drift v2, surface inventory v2, recommended conformance,
+and an embedded evidence-pack manifest. The preset intentionally does not enable
+API or digest evidence because those policies are repository-specific. With
+`--conformance-profile <minimal|recommended|strict>`, it checks the sanitized
+report evidence against a named adoption profile. `mcp check` and the
+recommended report preset fail on malformed committed MCP config files or risky
+MCP configuration metadata, such as unpinned package-manager commands or
+secret-shaped inline values. The `strict` profile also turns the same v2 surface
+inventory labels into conformance findings. None of these modes execute MCP
+servers, inspect tool results, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without
@@ -750,8 +756,9 @@ agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
+agent-guard mcp check --root <repo> [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
@@ -789,7 +796,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.15"
+version = "0.1.16"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -797,14 +804,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.15-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.1.16-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.15
-gh attestation verify dist-verify/yui_agent_guard-0.1.15.tar.gz \
+  --source-ref refs/tags/v0.1.16
+gh attestation verify dist-verify/yui_agent_guard-0.1.16.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.15
+  --source-ref refs/tags/v0.1.16
 ```
 
 ## License
