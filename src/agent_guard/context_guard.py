@@ -157,6 +157,36 @@ DEFAULT_FORBIDDEN_PATTERNS = [
         "pattern": r"(?i)\b(publish|release|deploy)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval|verification|ci|tests?)\b",
         "message": "agent context must not authorize unreviewed publication or release",
     },
+    {
+        "id": "delegate_policy_bypass",
+        "severity": "high",
+        "pattern": r"(?i)(?<!not )(?<!never )\b(delegate|handoff|ask\s+another\s+agent|spawn\s+agent|subagent)\b.{0,80}\b(bypass|avoid|skip)\b.{0,80}\b(approval|policy|guardrail|review)\b",
+        "message": "agent context must not use delegation to bypass review or policy boundaries",
+    },
+    {
+        "id": "unsafe_tool_auto_allow",
+        "severity": "high",
+        "pattern": r"(?i)(?<!not )(?<!never )\b(always|automatically|auto)\b.{0,80}\b(allow|approve|permit)\b.{0,40}\b(all|any)\b.{0,20}\b(tools?|commands?|capabilities)\b",
+        "message": "agent context must not broadly auto-allow all tools or commands",
+    },
+    {
+        "id": "unreviewed_agent_output",
+        "severity": "high",
+        "pattern": r"(?i)(?<!not )(?<!never )\b(apply|merge|execute|trust)\b.{0,80}\b(agent|model|llm|ai)\b.{0,80}\b(output|patch(?:es)?|changes?)\b.{0,80}\b(without|no)\b.{0,40}\b(review|verification|tests?)\b",
+        "message": "agent context must not accept agent output without review or verification",
+    },
+    {
+        "id": "unsafe_background_agent",
+        "severity": "medium",
+        "pattern": r"(?i)(?<!not )(?<!never )\b(run|keep|start)\b.{0,80}\b(background|daemon|persistent)\b.{0,80}\b(without|no)\b.{0,40}\b(approval|notice|reporting|review)\b",
+        "message": "agent context should not authorize unreviewed background or persistent agent activity",
+    },
+    {
+        "id": "unreviewed_suppression",
+        "severity": "high",
+        "pattern": r"(?i)(?<!not )(?<!never )\b(add|insert|use)\b.{0,80}\b(agent-guard:\s*allow|allowlist|suppression)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval)\b",
+        "message": "agent context must not authorize unreviewed guard suppressions",
+    },
 ]
 
 CONTEXT_INVENTORY_SCHEMA_VERSION = "agent-guard.context_inventory.v1"

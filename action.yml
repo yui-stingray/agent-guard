@@ -13,9 +13,9 @@ inputs:
     required: false
     default: "3.12"
   package-spec:
-    description: Package spec to install before running checks.
+    description: Optional package spec override. Empty installs the checked-out action package.
     required: false
-    default: "yui-agent-guard==0.1.9"
+    default: ""
   context-policy:
     description: Path to the agent context policy, relative to root unless absolute.
     required: false
@@ -74,7 +74,11 @@ runs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        python -m pip install "${{ inputs.package-spec }}"
+        if [ -n "${{ inputs.package-spec }}" ]; then
+          python -m pip install "${{ inputs.package-spec }}"
+        else
+          python -m pip install "$GITHUB_ACTION_PATH"
+        fi
     - id: evidence
       name: Generate deterministic evidence
       shell: bash
@@ -158,33 +162,10 @@ runs:
         agent-guard report "${report_args[@]}" --format json --output "$report_json"
         record_status "$?"
 
-        render_report() {
-          source="$1"
-          target="$2"
-          output_format="$3"
-          python - "$source" "$target" "$output_format" <<'PY'
-        import json
-        import sys
-        from pathlib import Path
-
-        from agent_guard.cli import render_report_output
-
-        source = Path(sys.argv[1])
-        target = sys.argv[2]
-        output_format = sys.argv[3]
-        payload = json.loads(source.read_text(encoding="utf-8"))
-        rendered = render_report_output(payload, output_format)
-        if target == "-":
-            sys.stdout.write(rendered)
-        else:
-            Path(target).write_text(rendered, encoding="utf-8")
-        PY
-        }
-
-        render_report "$report_json" "$report_markdown" markdown
+        agent-guard render-report --root "$root" --input "$report_json" --format markdown --output "$report_markdown"
         record_status "$?"
 
-        render_report "$report_json" "$report_sarif" sarif
+        agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif"
         record_status "$?"
 
         agent-guard conformance check --root "$root" --evidence "$report_json" --profile recommended --json > "${evidence_dir%/}/agent-guard-conformance.json"
@@ -194,7 +175,7 @@ runs:
         record_status "$?"
 
         if [ "${{ inputs.github-annotations }}" = "true" ]; then
-          render_report "$report_json" "-" github-annotations
+          agent-guard render-report --root "$root" --input "$report_json" --format github-annotations
           record_status "$?"
         fi
 

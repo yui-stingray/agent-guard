@@ -4,6 +4,21 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.10 - 2026-06-29
+
+- Added `agent-guard render-report` to render an existing sanitized JSON report
+  into Markdown, SARIF, GitHub annotations, or canonical JSON without rerunning
+  scanner and policy checks.
+- Moved report rendering helpers into a small dedicated module so CI delivery
+  code no longer imports private CLI helpers.
+- Updated the composite GitHub Action and `agent-guard init` starter workflow
+  to render Markdown, SARIF, and annotations through the public CLI.
+- Expanded default agent-context rules for delegation-based policy bypasses,
+  broad tool auto-allow instructions, unreviewed agent output, unreviewed
+  background agents, and unreviewed guard suppressions.
+- Added public-safe rendering examples and updated adoption docs to keep the
+  sanitized JSON report as the single source for review surfaces.
+
 ## 0.1.9 - 2026-06-28
 
 - Added a root composite GitHub Action that generates recommended

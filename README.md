@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.9` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.10` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.9
+      - uses: yui-stingray/agent-guard@v0.1.10
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -157,7 +157,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.9"},
+  "tool": {"name": "agent-guard", "version": "0.1.10"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -240,7 +240,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.9
+    rev: v0.1.10
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -361,15 +361,20 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format github-annotations
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
+agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
+agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
+agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
-It runs the context check, redacted context inventory, agent surface inventory,
+Use `agent-guard render-report` in CI when Markdown, SARIF, or GitHub
+annotations should be derived from one already-sanitized JSON report instead of
+rerunning scanner and policy checks for each output format.
+
+`agent-guard report` runs the context check, redacted context inventory, agent surface inventory,
 and evidence coverage summary, then emits scanner status, counts,
 repository-relative context file paths, permission-boundary status, and finding
 anchors limited to severity, rule id, file, and line. Surface inventory lists
@@ -706,6 +711,7 @@ agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--json]
 agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
+agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]

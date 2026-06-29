@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.9
+        uses: yui-stingray/agent-guard@v0.1.10
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -82,30 +82,10 @@ jobs:
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          render_report() {
-            source="$1"
-            target="$2"
-            output_format="$3"
-            python - "$source" "$target" "$output_format" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-          from agent_guard.cli import render_report_output
-          source = Path(sys.argv[1])
-          target = sys.argv[2]
-          output_format = sys.argv[3]
-          payload = json.loads(source.read_text(encoding="utf-8"))
-          rendered = render_report_output(payload, output_format)
-          if target == "-":
-              sys.stdout.write(rendered)
-          else:
-              Path(target).write_text(rendered, encoding="utf-8")
-          PY
-          }
-          render_report .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-report.md markdown
+          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          render_report .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-results.sarif sarif
+          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
@@ -114,7 +94,7 @@ jobs:
           agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          render_report .agent-guard/evidence/agent-guard-report.json - github-annotations
+          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           exit "$status"
@@ -142,7 +122,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.9
+  - uses: yui-stingray/agent-guard@v0.1.10
     id: agent-guard
   - name: Upload SARIF
     if: always()

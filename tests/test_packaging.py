@@ -34,6 +34,7 @@ RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 PRE_COMMIT_HOOKS = REPO_ROOT / ".pre-commit-hooks.yaml"
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
 SELF_PATH_POLICY = REPO_ROOT / ".agent-guard" / "path-policy.yaml"
@@ -165,6 +166,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard context lock --root ." in quickstart
     assert ".agent-guard/context-digest-policy.yaml" in quickstart
     assert "agent-guard report --root ." in quickstart
+    assert "agent-guard render-report --root ." in quickstart
     assert "--evidence-preset recommended" in quickstart
     assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
     assert "agent-guard conformance check --root ." in quickstart
@@ -172,7 +174,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "LLM reviewer" in quickstart
     assert "MoA orchestrator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
-    assert "uses: yui-stingray/agent-guard@v0.1.9" in actions
+    assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
     assert "status=0" in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
@@ -183,7 +185,11 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard evidence-pack manifest --root ." in actions
     assert 'exit "$status"' in actions
     assert "if: always()" in actions
-    assert "render_report .agent-guard/evidence/agent-guard-report.json - github-annotations" in actions
+    assert (
+        "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
+        "--format github-annotations"
+        in actions
+    )
     assert "does not post pull request comments" in actions
     assert "raw context text" in actions
     assert "raw snippets" in actions
@@ -217,16 +223,19 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
     assert action["name"] == "agent-guard evidence"
     assert action["runs"]["using"] == "composite"
-    assert action["inputs"]["package-spec"]["default"] == f"yui-agent-guard=={pyproject_version()}"
+    assert action["inputs"]["package-spec"]["default"] == ""
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
     assert action["outputs"]["report-sarif"]["value"] == "${{ steps.evidence.outputs.report-sarif }}"
+    action_text = ACTION_METADATA.read_text(encoding="utf-8")
+    assert 'python -m pip install "$GITHUB_ACTION_PATH"' in action_text
+    assert 'python -m pip install "${{ inputs.package-spec }}"' in action_text
     action_script = action_evidence_script()
     assert "--evidence-preset recommended" in action_script
     assert "agent-guard conformance check" in action_script
     assert "agent-guard evidence-pack manifest" in action_script
-    assert 'render_report "$report_json" "-" github-annotations' in action_script
-    assert "render_report_output" in action_script
-    assert '"$report_sarif" sarif' in action_script
+    assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
+    assert "render_report_output" not in action_script
+    assert '--format sarif --output "$report_sarif"' in action_script
     assert "agent-guard-results.sarif" in action_script
     rendered_report_lines = [
         line.strip()
@@ -286,6 +295,35 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
         "--evidence-preset",
     ]
     assert "recommended" in evidence_hook["args"]
+
+
+def test_ci_self_dogfood_renders_from_single_json_report() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    self_dogfood = workflow.split("Run self-dogfood evidence gates", 1)[1]
+
+    report_lines = [
+        line.strip()
+        for line in self_dogfood.splitlines()
+        if "python -m agent_guard.cli report " in line
+    ]
+    assert report_lines == [
+        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json"
+    ]
+    assert (
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
+        "--format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md"
+        in self_dogfood
+    )
+    assert (
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
+        "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
+        in self_dogfood
+    )
+    assert (
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
+        "--format github-annotations"
+        in self_dogfood
+    )
 
 
 def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path: Path) -> None:

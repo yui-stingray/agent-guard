@@ -80,11 +80,12 @@ jobs:
           python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
           python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           python -m agent_guard.cli drift check --root . --profile recommended --schema-version v2 --json
-          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md
           python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
+          python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json --format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md
+          python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
           python -m agent_guard.cli conformance check --root . --evidence .agent-guard/evidence/agent-guard-evidence-report.json --profile recommended --json
           python -m agent_guard.cli evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-evidence-report.json --artifact .agent-guard/evidence/agent-guard-evidence-report.json --json
-          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format github-annotations
+          python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json --format github-annotations
       - name: Upload self-dogfood evidence report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7.0.1

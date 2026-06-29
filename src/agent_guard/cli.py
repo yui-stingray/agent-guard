@@ -37,7 +37,7 @@ from .evidence_pack import build_evidence_pack_manifest
 from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .profiles import PROFILE_NAMES
-from .report import render_github_annotations_report, render_markdown_evidence_report, render_sarif_report
+from .report_render import emit_report_output, render_report_output
 from .surface_inventory import collect_agent_surface_inventory
 from .workflow_guard import load_workflow_policy, scan_workflow_policy
 
@@ -359,28 +359,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument("--output", default="", help="optional output path; stdout when omitted")
 
+    render_report = top.add_parser(
+        "render-report",
+        help="render an existing sanitized report JSON without rescanning",
+    )
+    render_report.add_argument("--root", default=".", help="repository root used for display-path scrubbing")
+    render_report.add_argument("--input", required=True, help="sanitized agent-guard report JSON path")
+    render_report.add_argument(
+        "--format",
+        choices=("markdown", "json", "github-annotations", "sarif"),
+        default="markdown",
+        help="rendered output format",
+    )
+    render_report.add_argument("--output", default="", help="optional output path; stdout when omitted")
+
     return parser
-
-
-def render_report_output(payload: dict[str, object], output_format: str) -> str:
-    if output_format == "json":
-        return json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
-    if output_format == "github-annotations":
-        return render_github_annotations_report(payload)
-    if output_format == "sarif":
-        return render_sarif_report(payload)
-    return render_markdown_evidence_report(payload)
-
-
-def emit_report_output(rendered: str, output_path: str) -> None:
-    output = str(output_path).strip()
-    if not output:
-        print(rendered, end="")
-        return
-
-    path = Path(output)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
 
 
 def output_json_or_text(*, payload: dict[str, object], text: str, emit_json: bool) -> None:
@@ -388,6 +381,40 @@ def output_json_or_text(*, payload: dict[str, object], text: str, emit_json: boo
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
         print(text, end="" if text.endswith("\n") else "\n")
+
+
+def run_report_render(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    input_arg = str(args.input).strip()
+    try:
+        payload = json.loads(Path(input_arg).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("report JSON root must be an object")
+    except Exception as exc:
+        payload = result_payload(
+            scanner="report",
+            status="error",
+            exit_code=2,
+            policy_arg=input_arg,
+            root=root,
+            error=scrub_report_error_message(str(exc)),
+            error_paths=[input_arg],
+            extra={
+                "command": "render-report",
+                "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                    "format": args.format,
+                    "sanitized": True,
+                    "source": "json",
+                },
+            },
+        )
+        emit_report_output(render_report_output(payload, args.format), args.output)
+        return 2
+
+    emit_report_output(render_report_output(payload, args.format), args.output)
+    exit_code = payload.get("exit_code", 0)
+    return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0
 
 
 def run_init(args: argparse.Namespace) -> int:
@@ -1819,6 +1846,8 @@ def main() -> int:
         return run_context_lock(args)
     if args.scanner == "report":
         return run_report(args)
+    if args.scanner == "render-report":
+        return run_report_render(args)
     if args.scanner == "path" and args.command == "check":
         return run_path_check(args)
     if args.scanner == "digest" and args.command == "check":

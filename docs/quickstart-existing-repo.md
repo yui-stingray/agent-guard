@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.9
+        uses: yui-stingray/agent-guard@v0.1.10
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -96,16 +96,7 @@ mkdir -p .agent-guard/evidence
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-python - .agent-guard/evidence/agent-guard-report.json .agent-guard/evidence/agent-guard-report.md markdown <<'PY'
-import json
-import sys
-from pathlib import Path
-from agent_guard.cli import render_report_output
-source = Path(sys.argv[1])
-target = Path(sys.argv[2])
-payload = json.loads(source.read_text(encoding="utf-8"))
-target.write_text(render_report_output(payload, sys.argv[3]), encoding="utf-8")
-PY
+agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
