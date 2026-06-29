@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.12` alpha. The current MVP ships six guard scanners:
+**Status**: `0.1.13` alpha. The current MVP ships six guard scanners:
 `api`, `content`, `context`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.12
+      - uses: yui-stingray/agent-guard@v0.1.13
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -157,7 +157,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.12"},
+  "tool": {"name": "agent-guard", "version": "0.1.13"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -251,7 +251,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.12
+    rev: v0.1.13
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -769,15 +769,28 @@ To verify the GitHub provenance for a downloaded release artifact, install the
 GitHub CLI and check the tag, repository, and signer workflow explicitly:
 
 ```bash
-python -m pip download --no-deps "yui-agent-guard==0.1.12" -d dist-verify
-gh attestation verify dist-verify/yui_agent_guard-0.1.12-py3-none-any.whl \
+mkdir -p dist-verify
+python - <<'PY'
+import json
+import urllib.request
+from pathlib import Path
+
+version = "0.1.13"
+target = Path("dist-verify")
+with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
+    release = json.load(response)
+for file_info in release["urls"]:
+    if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
+        urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
+PY
+gh attestation verify dist-verify/yui_agent_guard-0.1.13-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.12
-gh attestation verify dist-verify/yui_agent_guard-0.1.12.tar.gz \
+  --source-ref refs/tags/v0.1.13
+gh attestation verify dist-verify/yui_agent_guard-0.1.13.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.12
+  --source-ref refs/tags/v0.1.13
 ```
 
 ## License

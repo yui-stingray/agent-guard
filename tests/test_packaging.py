@@ -376,6 +376,9 @@ def test_release_workflow_attests_built_distributions() -> None:
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
     assert "gh attestation verify" in readme
+    assert "https://pypi.org/pypi/yui-agent-guard/" in readme
+    assert '"bdist_wheel", "sdist"' in readme
+    assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
     assert f"--source-ref refs/tags/v{pyproject_version()}" in readme
     assert "proof of code correctness" in readme

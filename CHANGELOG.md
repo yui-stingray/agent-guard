@@ -4,6 +4,12 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.13 - 2026-06-29
+
+- Corrected the release provenance verification example so it downloads both
+  the wheel and sdist explicitly from the PyPI release JSON before running
+  `gh attestation verify`.
+
 ## 0.1.12 - 2026-06-29
 
 - Added GitHub artifact attestations for release workflow `dist/*` outputs so

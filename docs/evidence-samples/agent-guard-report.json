@@ -1,6 +1,6 @@
 {
     "api": {
-        "checked_count": 71,
+        "checked_count": 73,
         "finding_count": 0,
         "findings": [],
         "policy": {
@@ -95,7 +95,7 @@
                 "status": "ok"
             },
             {
-                "checked_count": 186,
+                "checked_count": 188,
                 "finding_count": 0,
                 "gate": "path",
                 "policy": {
@@ -113,7 +113,7 @@
                 "status": "ok"
             },
             {
-                "checked_count": 71,
+                "checked_count": 73,
                 "finding_count": 0,
                 "gate": "api",
                 "policy": {
@@ -240,7 +240,7 @@
         },
         "tool": {
             "name": "agent-guard",
-            "version": "0.1.12"
+            "version": "0.1.13"
         }
     },
     "exit_code": 0,
@@ -460,7 +460,7 @@
         "schema_version": "agent-guard.context_inventory.v1"
     },
     "path": {
-        "checked_count": 186,
+        "checked_count": 188,
         "finding_count": 0,
         "findings": [],
         "policy": {
@@ -490,7 +490,7 @@
     "schema_version": "agent-guard.result.v1",
     "status": "ok",
     "summary": {
-        "api_checked_count": 71,
+        "api_checked_count": 73,
         "api_finding_count": 0,
         "conformance_checked_count": 10,
         "conformance_finding_count": 0,
@@ -509,7 +509,7 @@
         "drift_finding_count": 0,
         "evidence_count": 23,
         "finding_count": 0,
-        "path_checked_count": 186,
+        "path_checked_count": 188,
         "path_finding_count": 0,
         "scanned_count": 1,
         "scanned_unit": "files",
@@ -1677,7 +1677,7 @@
             {
                 "kind": "committed_evidence_sample",
                 "path": "docs/evidence-samples/agent-guard-report.json",
-                "size_bytes": 67765,
+                "size_bytes": 67922,
                 "status": "present",
                 "surface": "evidence_artifact"
             },
@@ -1938,7 +1938,7 @@
     },
     "tool": {
         "name": "agent-guard",
-        "version": "0.1.12"
+        "version": "0.1.13"
     },
     "workflow": {
         "checked_count": 22,
