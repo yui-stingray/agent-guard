@@ -137,6 +137,12 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "does not emit context text" in readme
     assert "hash values" in readme
     assert "SARIF is a thin adapter" in readme
+    assert "Raw scanner JSON is for local automation and CI internals" in readme
+    assert "Public-safe evidence" in readme
+    assert "apply to `agent-guard report`" in readme
+    assert "URL/API endpoint references" in readme
+    assert "MCP configuration metadata" in readme
+    assert "env values" in readme
 
 
 def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
@@ -152,6 +158,10 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "LLM reviewer" in docs
     assert "model router" in docs
     assert "large governance framework" in docs
+    assert "Public Artifact Boundary" in docs
+    assert "Raw per-scanner JSON" in docs
+    assert "Do not" in docs
+    assert "upload raw scanner JSON as a public artifact" in docs
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
@@ -173,6 +183,11 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard evidence-pack manifest --root ." in quickstart
     assert "LLM reviewer" in quickstart
     assert "MoA orchestrator" in quickstart
+    assert "Raw scanner JSON" in quickstart
+    assert "agent execution UI" in quickstart
+    assert "MCP server names" in quickstart
+    assert "MCP runtime" in quickstart
+    assert "MCP tool-poisoning detector" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
     assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
@@ -194,6 +209,10 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "raw context text" in actions
     assert "raw snippets" in actions
     assert "workflow logs" in actions
+    assert "Raw" in actions
+    assert "scanner JSON may include raw snippets" in actions
+    assert "do not upload it publicly" in actions
+    assert "unless a maintainer has reviewed" in actions
     raw_json_doc_lines = [
         line.strip()
         for line in actions.splitlines()

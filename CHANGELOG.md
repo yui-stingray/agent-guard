@@ -18,6 +18,14 @@ Why: keep static guard releases auditable while the package is still alpha.
   background agents, and unreviewed guard suppressions.
 - Added public-safe rendering examples and updated adoption docs to keep the
   sanitized JSON report as the single source for review surfaces.
+- Clarified the public artifact boundary: raw per-scanner JSON is local/CI
+  automation material, while report/render-report/conformance/evidence-pack
+  outputs are the reviewable sanitized artifacts.
+- Expanded surface inventory v2 with metadata-only agent skills, agent
+  profiles, agent commands, hooks, and MCP config references without emitting
+  instruction bodies, MCP args, env values, secrets, or local paths.
+- Recognized `python3 -m agent_guard.cli` workflow references in addition to
+  `python -m agent_guard.cli` and `agent-guard` commands.
 
 ## 0.1.9 - 2026-06-28
 

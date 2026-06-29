@@ -71,9 +71,12 @@ agent-guard surface inventory --root . --context-policy .agent-guard/context-pol
 
 The inventories are metadata only. Review repository-relative paths, agent
 context kinds, policy files, workflow references, documented guard-command
-metadata, evidence artifact references, line counts, file sizes, and
-permission-boundary status. They should not emit raw instructions, raw
-workflow commands, snippets, matched text, secrets, or local paths.
+metadata, evidence artifact references, agent skills/profiles/commands/hooks,
+MCP server names, MCP transports, command basenames, package-manager pin
+status, remote hosts, env var names, filesystem-root presence, line counts,
+file sizes, and permission-boundary status. They should not emit raw
+instructions, raw workflow commands, MCP args, env values, snippets, matched
+text, secrets, hook bodies, or local paths.
 
 ## 4. Pin Agent Context Files
 
@@ -107,6 +110,13 @@ Render Markdown, SARIF, or GitHub annotations from the JSON report when you need
 additional surfaces; avoid rerunning `agent-guard report` just to change output
 format.
 
+Do not treat every `--json` command as a public artifact. The report,
+render-report, conformance, and evidence-pack outputs are the sanitized review
+surfaces. Raw scanner JSON from commands such as `api check --json`, `content
+check --json`, or `workflow check --json` may include snippets, matched URLs,
+configured patterns, or policy diagnostics and should stay in local automation
+or temporary CI storage unless reviewed.
+
 `--evidence-preset recommended` expands unset report options to the current
 recommended static gate bundle: path, content, workflow, policy/spec drift v2,
 surface inventory v2, recommended conformance, and an embedded evidence-pack
@@ -139,6 +149,7 @@ Common first fixes:
 ## What This Does Not Add
 
 This quickstart does not add an LLM reviewer, issue triage bot, model router,
-MoA orchestrator, broad secret scanner, or governance framework. It creates a
-deterministic static evidence gate that maintainers can inspect and combine
-with higher layers if they choose.
+MoA orchestrator, broad secret scanner, agent execution UI, an MCP runtime
+security layer, MCP tool-poisoning detector, or governance framework. It
+creates a deterministic static evidence gate that maintainers can inspect and
+combine with higher layers if they choose.

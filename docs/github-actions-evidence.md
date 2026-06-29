@@ -34,12 +34,16 @@ jobs:
           if-no-files-found: error
 ```
 
-The action keeps per-scanner JSON in temporary runner storage so raw snippets do
-not appear in workflow logs. The uploadable files are the sanitized report,
-SARIF report, surface inventory, conformance result, and evidence-pack
-manifest. Markdown, SARIF, and GitHub annotations are rendered from the same
-sanitized JSON report instead of rerunning the full report scan. GitHub
-annotations can be disabled with `github-annotations: "false"`.
+The action keeps per-scanner JSON in temporary runner storage so scanner
+diagnostics do not appear in workflow logs or uploaded public artifacts. Raw
+scanner JSON may include raw snippets, matched URLs, configured patterns, or
+other policy diagnostics depending on the scanner, so do not upload it publicly
+unless a maintainer has reviewed that exact output. The uploadable files from
+the packaged action are the sanitized report, SARIF report, surface inventory,
+conformance result, and evidence-pack manifest. Markdown, SARIF, and GitHub
+annotations are rendered from the same sanitized JSON report instead of
+rerunning the full report scan. GitHub annotations can be disabled with
+`github-annotations: "false"`.
 
 ## Expanded Workflow Step
 
@@ -137,8 +141,9 @@ text, raw workflow commands, hashes, secrets, and absolute local paths.
 
 ## How Maintainers Should Read It
 
-Use the Markdown artifact for a short human review and the JSON artifact for
-automation, downstream conformance checks, or evidence-pack manifests. The JSON report follows
+Use the Markdown artifact for a short human review and the sanitized report
+JSON artifact for automation, downstream conformance checks, or evidence-pack
+manifests. The JSON report follows
 `agent-guard.report_evidence.v1` inside the shared `agent-guard.result.v1`
 envelope and includes `surface_inventory` plus `evidence_coverage` on
 success/violation payloads. When `--conformance-profile` and

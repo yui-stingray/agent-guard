@@ -2,7 +2,8 @@
 
 `agent-guard` is a repo-scoped deterministic evidence gate for repositories
 touched by coding agents. It focuses on agent context files, repository policy
-files, pinned digests, workflow drift, and sanitized review reports.
+files, URL/API endpoint references, pinned digests, workflow drift, and
+sanitized review reports.
 
 The short description is:
 
@@ -10,8 +11,10 @@ The short description is:
 
 The project deliberately stays below runtime agent platforms. It does not route
 models, run LLM review, triage issues, manage approvals, provide an execution
-UI, or replace dedicated secret scanners. Those systems can consume
-`agent-guard` JSON evidence, but they should not move into this package.
+UI, execute MCP servers or skill code, or detect MCP tool poisoning. It also
+does not replace dedicated secret scanners.
+Those systems can consume `agent-guard` JSON evidence, but they should not move
+into this package.
 
 ## Why This Layer
 
@@ -26,6 +29,8 @@ verification requirements.
 
 - scan agent context files for unsafe instruction drift;
 - inventory agent-facing repository surfaces without emitting raw content;
+- collect URL/API endpoint pattern evidence without acting as a live API
+  client or API catalog;
 - pin reviewed context and policy files by digest;
 - check that CI still runs the declared guard commands;
 - emit a sanitized report and evidence-pack manifest that reviewers can inspect.

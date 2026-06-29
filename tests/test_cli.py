@@ -372,6 +372,106 @@ def test_surface_inventory_cli_v2_adds_documented_and_artifact_metadata(tmp_path
     assert str(tmp_path) not in result.stdout
 
 
+def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    fake_token = "github_pat_" + ("0" * 20)
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(tmp_path / ".github" / "skills" / "repo-review" / "SKILL.md", "secret skill body marker\n")
+    write(tmp_path / ".claude" / "agents" / "reviewer.md", "agent prompt marker\n")
+    write(tmp_path / ".claude" / "commands" / "review.md", "command prompt marker\n")
+    write(tmp_path / ".cursor" / "hooks.json", '{"hook": "private hook marker"}\n')
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "browser": {
+                        "command": "npx -y @vendor/browser-mcp --token sk-exampleSecretValue123 --root /home/alice/private",
+                        "args": ["@vendor/browser-mcp@latest"],
+                        "env": {"GITHUB_TOKEN": fake_token},
+                    }
+                }
+            }
+        ),
+    )
+    write(
+        tmp_path / ".codex" / "config.toml",
+        "[mcp_servers.docs]\n"
+        'command = "uvx"\n'
+        'args = ["docs-server==1.2.3"]\n'
+        'env = { API_KEY = "${API_KEY}" }\n',
+    )
+    write(
+        tmp_path / ".vscode" / "mcp.json",
+        json.dumps({"servers": {"remote": {"type": "http", "url": "https://mcp.example.com/sse"}}}),
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    surfaces = payload["surface_inventory"]["surfaces"]
+    by_surface = payload["surface_inventory"]["summary"]["by_surface"]
+    assert by_surface["agent_skill"] == 1
+    assert by_surface["agent_profile"] == 1
+    assert by_surface["agent_command"] == 1
+    assert by_surface["agent_hook_config"] == 1
+    assert by_surface["mcp_config"] == 3
+    assert by_surface["mcp_server_reference"] == 3
+    assert {
+        "surface": "agent_skill",
+        "path": ".github/skills/repo-review",
+        "kind": "github_copilot_skill",
+        "status": "present",
+        "file_count": 1,
+    } in surfaces
+
+    servers = {item["server_name"]: item for item in surfaces if item["surface"] == "mcp_server_reference"}
+    assert servers["browser"]["transport"] == "stdio"
+    assert servers["browser"]["command_basename"] == "npx"
+    assert servers["browser"]["package_manager"] == "npx"
+    assert servers["browser"]["version_pinned"] is False
+    assert servers["browser"]["env_vars"] == ["GITHUB_TOKEN"]
+    assert servers["browser"]["filesystem_root"] is True
+    assert set(servers["browser"]["risky_patterns"]) == {
+        "filesystem_root_reference",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unpinned_package",
+    }
+    assert servers["docs"]["command_basename"] == "uvx"
+    assert servers["docs"]["version_pinned"] is True
+    assert servers["docs"]["env_vars"] == ["API_KEY"]
+    assert "risky_patterns" not in servers["docs"]
+    assert servers["remote"]["transport"] == "http"
+    assert servers["remote"]["remote_host"] == "mcp.example.com"
+
+    for forbidden in (
+        fake_token,
+        "/home/alice/private",
+        "sk-exampleSecretValue123",
+        "@vendor/browser-mcp --token",
+        "secret skill body marker",
+        "agent prompt marker",
+        "command prompt marker",
+        "private hook marker",
+        "https://mcp.example.com/sse",
+        str(tmp_path),
+    ):
+        assert forbidden not in result.stdout
+
+
 def test_drift_cli_json_checks_readme_policy_and_workflow_alignment(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text(

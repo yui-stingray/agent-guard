@@ -1,9 +1,10 @@
 # Evidence Contracts
 
 `agent-guard` is a deterministic static evidence gate for repositories touched
-by coding agents. It emits small, sanitized evidence payloads that maintainers
-can read in pull requests, store as CI artifacts, or validate in downstream
-wrappers without sending repository contents to a model.
+by coding agents. Its report, render-report, conformance, and evidence-pack
+commands emit small, sanitized evidence payloads that maintainers can read in
+pull requests, store as CI artifacts, or validate in downstream wrappers
+without sending repository contents to a model.
 
 ## Contracts
 
@@ -11,7 +12,8 @@ Installed wheels package these JSON Schema resources under
 `agent_guard.schemas`:
 
 - `agent-guard.result.v1.schema.json`: the shared result envelope used by
-  scanner JSON output.
+  scanner JSON output. This envelope is stable, but individual raw scanner
+  payloads are not public-safe artifacts by default.
 - `agent-guard.context_inventory.v1.schema.json`: redacted metadata for
   discovered agent context files.
 - `agent-guard.context_lock_coverage.v1.schema.json`: hash-free evidence that
@@ -37,6 +39,18 @@ packaged schema.
 small downstream wrapper pattern that loads the packaged report schema and
 fails closed on incompatible or unsanitized evidence.
 
+## Public Artifact Boundary
+
+Public-safe claims apply to `agent-guard report`, `agent-guard render-report`,
+GitHub annotations, SARIF rendered from a report, conformance output, and
+evidence-pack manifests. Raw per-scanner JSON from commands such as
+`agent-guard api check --json`, `content check --json`, `context check --json`,
+or `workflow check --json` is intended for local automation and CI internals.
+Depending on the scanner and policy, raw JSON may include snippets, matched
+URLs, configured regex patterns, policy details, or other diagnostics. Do not
+upload raw scanner JSON as a public artifact unless a maintainer has reviewed
+that exact output.
+
 ## Minimal Adoption Path
 
 1. Run `agent-guard init --root . --json` and review the proposed starter
@@ -47,7 +61,8 @@ fails closed on incompatible or unsanitized evidence.
    repository-relative paths, agent context kinds, workflow references, policy
    files, counts, and permission-boundary status.
 4. Add the packaged GitHub Action or `agent-guard report` to CI and store the
-   JSON or Markdown output as a build artifact.
+   sanitized report JSON, rendered Markdown, SARIF, conformance, or evidence
+   pack output as a build artifact.
 5. Pair the static report with a runtime admission event from `agent-policy`
    when the repository uses an agent hook or wrapper before side effects. Pass
    that event only as an artifact reference; `agent-guard` does not read or
@@ -87,7 +102,11 @@ The JSON report is a compact statement of what `agent-guard` checked:
   local-verification, and sensitive-material handling boundaries are present.
 - `surface_inventory` lists agent context files, `.agent-guard` policy files,
   workflow files, agent-guard workflow references, documented guard commands,
-  and evidence artifact references as metadata only when v2 is requested.
+  evidence artifact references, agent skills/profiles/commands/hooks, and MCP
+  configuration metadata when v2 is requested. MCP entries omit raw args and
+  env values; they keep only server names, transports, command basenames,
+  package-manager pin status, remote hosts, env var names, filesystem-root
+  presence, and deterministic risk labels.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
@@ -104,7 +123,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
 
 Report output omits raw context text, snippets, matched text, raw regex
 patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,
-sensitive material, and absolute local paths.
+sensitive material, and absolute local paths. This guarantee applies to the
+sanitized report/render-report/evidence artifact surfaces, not to raw scanner
+JSON.
 
 ## SARIF Thin Adapter
 

@@ -26,7 +26,7 @@ for a public demo that wires both tools together.
 `agent-guard` exists to enforce fail-closed static checks around agent-operated repositories without pulling in a full control plane. It is model- and provider-agnostic: it checks the repository tree and configured policy files, so the same static gate can be used for repos touched by single-model coding agents, MoA-style multi-model agent loops, or persistent agent sessions.
 
 The current extracted scanners are intentionally narrow:
-- `api`: scan repository text files for URLs, allow approved API patterns, fail on forbidden API patterns
+- `api`: scan repository text files for URL/API endpoint references, allow approved endpoint patterns, fail on forbidden endpoint patterns
 - `content`: scan Markdown or other configured text files for dangerous instruction patterns
 - `context`: scan agent instruction files such as `AGENTS.md`, `CLAUDE.md`, and Copilot/Cursor/Windsurf rules
 - `path`: scan repository path names for private artifacts, env files, and other publish-time leaks
@@ -56,7 +56,7 @@ The intended split is:
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
 | Runtime admission | `agent-policy` | Decide whether a normalized agent action is `deny`, `require_approval`, or `auto_allow`. |
-| Static repository gate | `agent-guard` | Scan paths, text, API surfaces, pinned digests, and workflow gates for repository safety drift. |
+| Static repository gate | `agent-guard` | Scan paths, text, URL/API endpoint references, pinned digests, and workflow gates for repository safety drift. |
 
 A practical setup uses `agent-policy` in a shell hook or wrapper before an
 agent performs a side effect, then runs `agent-guard` in CI or pre-release
@@ -178,6 +178,15 @@ Policy paths are emitted as repository-relative or user-provided paths, not
 absolute local paths. Error JSON uses the same envelope with `status: "error"`
 and `exit_code: 2`.
 
+Raw scanner JSON is for local automation and CI internals, not automatically a
+public artifact. Scanner-specific output may include operational details such
+as snippets, matched URLs, configured patterns, policy paths, or line-level
+diagnostics depending on the scanner and policy. Treat those files as
+repository-private unless a maintainer has reviewed them. Public-safe evidence
+claims in this README apply to `agent-guard report`, `agent-guard
+render-report`, GitHub annotations, SARIF rendered from a report, conformance
+output, and evidence-pack manifests.
+
 ## CI gate recipe
 
 For ai-resilience-style repositories, use `agent-guard` as the static half of
@@ -213,8 +222,10 @@ Recommended split:
   configured text surfaces.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
-- `surface inventory v2`: records documented guard commands and evidence
-  artifact references as metadata without emitting raw workflow commands.
+- `surface inventory v2`: records documented guard commands, evidence artifact
+  references, agent skills/profiles/commands/hooks, and MCP configuration
+  metadata without emitting raw workflow commands, MCP args, env values, or
+  instruction bodies.
 - `conformance`: checks sanitized report evidence against `minimal`,
   `recommended`, or `strict` adoption profiles.
 - `evidence-pack manifest`: summarizes the public-safe report artifacts that a
@@ -261,10 +272,13 @@ pre-commit run agent-guard-evidence --hook-stage manual --all-files
 
 ### API guard
 
-The API guard scans configured paths for URLs and compares them against allow/deny regex lists.
+The API guard scans configured paths for URL/API endpoint references and
+compares them against allow/deny regex lists. It is endpoint-pattern evidence
+for repository architecture boundaries, not a live API client, API catalog,
+credential scanner, or network monitor.
 
 Typical use case:
-- keep a CLI-first repository from silently drifting into direct inference API calls
+- keep a CLI-first repository from silently drifting into direct inference API endpoint references
 
 It returns:
 - exit `0` on clean
@@ -380,10 +394,14 @@ repository-relative context file paths, permission-boundary status, and finding
 anchors limited to severity, rule id, file, and line. Surface inventory lists
 agent context files, `.agent-guard` policy files, workflow files, and
 agent-guard workflow references as metadata only; v2 also records documented
-guard commands and evidence artifact references without emitting raw
-instructions or raw workflow commands. Evidence coverage records which gates
-were enabled, missing, clean, or failing without making missing optional gates a
-failure. With `--evidence-preset recommended`, unset report options expand to
+guard commands, evidence artifact references, agent skills/profiles/commands/
+hooks, and MCP configuration metadata. MCP metadata is limited to server name,
+transport, command basename, package-manager pin status, remote host, env var
+names, filesystem-root presence, and deterministic risk labels; it does not
+emit raw args, env values, instruction bodies, or hook bodies. Evidence
+coverage records which gates were enabled, missing, clean, or failing without
+making missing optional gates a failure. With `--evidence-preset recommended`,
+unset report options expand to
 the current recommended static evidence bundle: path, content, workflow,
 policy/spec drift v2, surface inventory v2, recommended conformance, and an
 embedded evidence-pack manifest. The preset intentionally does not enable API
@@ -423,8 +441,10 @@ The Markdown headings for these review sections include `Evidence Coverage`,
 and `Context Lock Coverage Evidence`.
 
 Report output omits raw context contents, snippets, matched text, raw regex
-patterns, URLs, hashes, secrets, and absolute local paths. Markdown table cells
-escape HTML and Markdown control characters before output.
+patterns, URLs, hashes, secrets, and absolute local paths. These public-safe
+claims apply to report/render-report/evidence artifacts, not to raw per-scanner
+JSON captured for local automation. Markdown table cells escape HTML and
+Markdown control characters before output.
 
 Use `--format json` to emit the same sanitized evidence payload inside the
 shared `agent-guard.result.v1` envelope. This is the machine-readable report
@@ -709,7 +729,7 @@ agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
-agent-guard surface inventory --root <repo> --context-policy <yaml> [--json]
+agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
 agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
