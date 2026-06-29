@@ -243,6 +243,9 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["name"] == "agent-guard evidence"
     assert action["runs"]["using"] == "composite"
     assert action["inputs"]["package-spec"]["default"] == ""
+    assert action["inputs"]["base-ref"]["default"] == ""
+    evidence_step = next(step for step in action["runs"]["steps"] if step.get("id") == "evidence")
+    assert evidence_step["env"]["AGENT_GUARD_BASE_REF"] == "${{ inputs.base-ref }}"
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
     assert action["outputs"]["report-sarif"]["value"] == "${{ steps.evidence.outputs.report-sarif }}"
     action_text = ACTION_METADATA.read_text(encoding="utf-8")
@@ -250,6 +253,9 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'python -m pip install "${{ inputs.package-spec }}"' in action_text
     action_script = action_evidence_script()
     assert "--evidence-preset recommended" in action_script
+    assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
+    assert 'drift_args+=(--base-ref "$base_ref")' in action_script
+    assert 'report_args+=(--drift-base-ref "$base_ref")' in action_script
     assert "agent-guard conformance check" in action_script
     assert "agent-guard evidence-pack manifest" in action_script
     assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
@@ -400,11 +406,13 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
             script = script.replace(needle, value)
         return script
 
-    def run_action(*, github_annotations: str) -> subprocess.CompletedProcess[str]:
+    def run_action(*, github_annotations: str, base_ref: str = "") -> subprocess.CompletedProcess[str]:
+        action_env = env.copy()
+        action_env["AGENT_GUARD_BASE_REF"] = base_ref
         return subprocess.run(
             ["bash", "-c", render_action_script(github_annotations=github_annotations)],
             cwd=tmp_path,
-            env=env,
+            env=action_env,
             text=True,
             capture_output=True,
             timeout=60,
@@ -420,6 +428,16 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     assert "report-json=consumer/.agent-guard/evidence/agent-guard-report.json" in output_file.read_text(
         encoding="utf-8"
     )
+
+    marker = tmp_path / "base-ref-injection-marker"
+    malicious_base_ref = f"$(touch {marker})"
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-base-ref.txt")
+    malicious_result = run_action(github_annotations="false", base_ref=malicious_base_ref)
+    assert malicious_result.returncode == 1
+    malicious_output = f"{malicious_result.stdout}\n{malicious_result.stderr}"
+    assert not marker.exists()
+    assert malicious_base_ref not in malicious_output
+    assert str(tmp_path) not in malicious_output
 
     env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-annotations.txt")
     annotated_result = run_action(github_annotations="true")

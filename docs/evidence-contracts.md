@@ -119,13 +119,17 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize
   additional static gates when those policies are supplied.
 - Optional `policy_spec_drift` summarizes README, workflow-policy, and
-  `.agent-guard` policy alignment when `--drift-check` is enabled.
+  `.agent-guard` policy alignment when `--drift-check` is enabled. When
+  `--base-ref` or `--drift-base-ref` is supplied, it can also flag
+  baseline-sensitive guard policy, digest policy, workflow, action metadata, or
+  hook metadata changes as review-required evidence.
 
 Report output omits raw context text, snippets, matched text, raw regex
 patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,
-sensitive material, and absolute local paths. This guarantee applies to the
-sanitized report/render-report/evidence artifact surfaces, not to raw scanner
-JSON.
+sensitive material, base ref names, and absolute local paths. Baseline findings
+are not approval decisions or tamper-proof authorization. This guarantee
+applies to the sanitized report/render-report/evidence artifact surfaces, not
+to raw scanner JSON.
 
 ## SARIF Thin Adapter
 

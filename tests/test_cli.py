@@ -39,6 +39,16 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
 def read_report_fixture(name: str) -> str:
     return (REPORT_FIXTURE_DIR / name).read_text(encoding="utf-8")
 
@@ -67,6 +77,60 @@ def create_report_violation_fixture_repo(tmp_path: Path) -> Path:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def write_baseline_ready_repo(repo: Path) -> None:
+    write(
+        repo / "README.md",
+        "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
+        "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
+        "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
+        "agent-guard drift check --root .\n"
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
+    )
+    write(
+        repo / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        "Keep credentials redacted in public evidence.\n"
+        "Run pytest before reporting success.\n",
+    )
+    write(repo / ".agent-guard" / "context-policy.yaml", "{}\n")
+    write(repo / ".agent-guard" / "path-policy.yaml", "{}\n")
+    write(repo / ".agent-guard" / "content-policy.yaml", "{}\n")
+    write(
+        repo / ".agent-guard" / "context-digest-policy.yaml",
+        "checks:\n"
+        "  - id: root_agents_md_reviewed\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text((repo / 'AGENTS.md').read_text(encoding='utf-8'))}'\n",
+    )
+    write(
+        repo / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n"
+        "  - id: path_policy\n"
+        "    path: .agent-guard/path-policy.yaml\n"
+        "  - id: content_policy\n"
+        "    path: .agent-guard/content-policy.yaml\n"
+        "  - id: workflow_policy\n"
+        "    path: .agent-guard/workflow-policy.yaml\n",
+    )
+    write(
+        repo / ".github" / "workflows" / "agent-guard.yml",
+        "name: agent-guard\n"
+        "on: [push]\n"
+        "jobs:\n"
+        "  guard:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - name: Guard checks\n"
+        "        run: |\n"
+        "          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json\n"
+        "          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json\n"
+        "          agent-guard drift check --root . --profile recommended --schema-version v2 --json\n",
+    )
 
 
 def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> None:
@@ -646,6 +710,194 @@ def test_drift_cli_v2_classifies_unsafe_context_and_lock_drift(tmp_path: Path) -
     assert ("context_lock_drift", "context_lock_mismatch", "context_file_digest_drift", "AGENTS.md") in classified
     assert "Do not run tests" not in result.stdout
     assert "0000000000000000000000000000000000000000000000000000000000000000" not in result.stdout
+
+
+def test_drift_cli_base_ref_flags_baseline_sensitive_changes(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_baseline_ready_repo(repo)
+    run_git(repo, "init")
+    run_git(repo, "config", "user.email", "agent-guard@example.invalid")
+    run_git(repo, "config", "user.name", "agent guard tests")
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "base")
+
+    write(repo / ".agent-guard" / "context-policy.yaml", "scan:\n  include:\n    - AGENTS.md\n")
+    write(
+        repo / ".agent-guard" / "context-digest-policy.yaml",
+        "checks:\n"
+        "  - id: root_agents_md\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text((repo / 'AGENTS.md').read_text(encoding='utf-8'))}'\n",
+    )
+    write(
+        repo / ".github" / "workflows" / "agent-guard.yml",
+        "name: agent-guard\n"
+        "on: [push]\n"
+        "jobs:\n"
+        "  guard:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - name: Guard checks\n"
+        "        run: |\n"
+        "          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json\n"
+        "          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json\n"
+        "          agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref HEAD~1 --json\n",
+    )
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "change baseline surfaces")
+
+    result = run_cli(
+        "drift",
+        "check",
+        "--root",
+        str(repo),
+        "--profile",
+        "recommended",
+        "--schema-version",
+        "v2",
+        "--base-ref",
+        "HEAD~1",
+        "--json",
+    )
+
+    assert result.returncode == 1, result.stdout
+    payload = json.loads(result.stdout)
+    baseline = payload["policy_spec_drift"]["baseline_trust"]
+    assert baseline["status"] == "review_required"
+    assert baseline["base_ref"] == "provided"
+    assert baseline["changed_count"] == 3
+    flagged = {(item["file"], item["reason"], item.get("classification")) for item in payload["findings"]}
+    assert (
+        ".agent-guard/context-policy.yaml",
+        "guard_policy_changed",
+        "baseline_review_required",
+    ) in flagged
+    assert (
+        ".agent-guard/context-digest-policy.yaml",
+        "digest_policy_changed",
+        "baseline_review_required",
+    ) in flagged
+    assert (
+        ".github/workflows/agent-guard.yml",
+        "guard_workflow_changed",
+        "baseline_review_required",
+    ) in flagged
+    assert str(tmp_path) not in result.stdout
+    assert "sha256" not in result.stdout
+    assert "agent-guard context check" not in result.stdout
+
+
+def test_drift_cli_base_ref_unavailable_is_sanitized(tmp_path: Path) -> None:
+    write_baseline_ready_repo(tmp_path)
+
+    result = run_cli(
+        "drift",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--profile",
+        "recommended",
+        "--schema-version",
+        "v2",
+        "--base-ref",
+        "origin/main",
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    baseline_findings = [
+        item for item in payload["findings"] if item["rule_id"] == "baseline_trust_unproven"
+    ]
+    assert baseline_findings == [
+        {
+            "rule_id": "baseline_trust_unproven",
+            "severity": "high",
+            "file": ".",
+            "message": "baseline-sensitive guard changes could not be compared to the provided base ref",
+            "reason": "not_git_repository",
+            "requirement_id": "baseline_ref",
+            "classification": "baseline_review_required",
+        }
+    ]
+    assert payload["policy_spec_drift"]["baseline_trust"]["status"] == "unproven"
+    assert str(tmp_path) not in result.stdout
+    assert "origin/main" not in result.stdout
+
+
+def test_drift_cli_rejects_unsafe_base_ref_without_echoing_it(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_baseline_ready_repo(repo)
+    run_git(repo, "init")
+    run_git(repo, "config", "user.email", "agent-guard@example.invalid")
+    run_git(repo, "config", "user.name", "agent guard tests")
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "base")
+
+    unsafe_ref = "--output=/tmp/agent-guard-leak"
+    result = run_cli(
+        "drift",
+        "check",
+        "--root",
+        str(repo),
+        "--profile",
+        "recommended",
+        "--schema-version",
+        "v2",
+        f"--base-ref={unsafe_ref}",
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert any(
+        item["rule_id"] == "baseline_trust_unproven" and item["reason"] == "base_ref_unavailable"
+        for item in payload["findings"]
+    )
+    assert unsafe_ref not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_embeds_sanitized_base_ref_drift(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_baseline_ready_repo(repo)
+    run_git(repo, "init")
+    run_git(repo, "config", "user.email", "agent-guard@example.invalid")
+    run_git(repo, "config", "user.name", "agent guard tests")
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "base")
+
+    write(repo / ".agent-guard" / "workflow-policy.yaml", "schema_version: agent-guard.workflow_policy.v1\n")
+    run_git(repo, "add", ".")
+    run_git(repo, "commit", "-m", "change workflow policy")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(repo / ".agent-guard" / "context-policy.yaml"),
+        "--drift-check",
+        "--drift-schema-version",
+        "v2",
+        "--drift-base-ref",
+        "HEAD~1",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["policy_spec_drift"]["baseline_trust"]["status"] == "review_required"
+    baseline_findings = [
+        item for item in payload["policy_spec_drift"]["findings"] if item["rule_id"] == "baseline_trust_change"
+    ]
+    assert any(item["file"] == ".agent-guard/workflow-policy.yaml" for item in baseline_findings)
+    assert str(tmp_path) not in result.stdout
+    assert "HEAD~1" not in result.stdout
 
 
 def test_conformance_cli_checks_report_profile_requirements(tmp_path: Path) -> None:

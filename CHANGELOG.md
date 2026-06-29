@@ -4,6 +4,20 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.11 - 2026-06-29
+
+- Added optional `--base-ref` / `--drift-base-ref` policy/spec drift evidence
+  that flags changed `.agent-guard` policy files, digest policy files, and
+  guard workflow/action surfaces relative to an explicit git base ref.
+- Added a composite action `base-ref` input that passes the same opt-in
+  baseline comparison into raw drift JSON and the sanitized evidence report.
+- Kept baseline comparison as review evidence only: reports emit controlled
+  categories and repository-relative paths, not raw diffs, hashes, workflow
+  bodies, branch names, local paths, or approval decisions.
+- Updated adoption docs to pair baseline-sensitive change evidence with
+  digest and context-lock checks without expanding into runtime authorization
+  or broad governance tooling.
+
 ## 0.1.10 - 2026-06-29
 
 - Added `agent-guard render-report` to render an existing sanitized JSON report

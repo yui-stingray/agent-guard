@@ -283,6 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
     drift_check.add_argument("--root", default=".", help="repository root path")
     drift_check.add_argument("--profile", choices=PROFILE_NAMES, default="recommended", help="conformance profile")
     drift_check.add_argument("--schema-version", choices=("v1", "v2"), default="v1", help="drift schema version")
+    drift_check.add_argument(
+        "--base-ref",
+        default="",
+        help="optional git base ref used to flag baseline-sensitive guard changes",
+    )
     drift_check.add_argument("--json", action="store_true", help="emit JSON")
 
     conformance = top.add_parser("conformance", help="profile conformance over sanitized evidence")
@@ -333,6 +338,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     report.add_argument("--drift-profile", choices=PROFILE_NAMES, default="", help="profile for --drift-check")
     report.add_argument("--drift-schema-version", choices=("v1", "v2"), default="", help="drift evidence schema version")
+    report.add_argument(
+        "--drift-base-ref",
+        default="",
+        help="optional git base ref passed to policy/spec drift evidence",
+    )
     report.add_argument(
         "--surface-inventory-version",
         choices=("v1", "v2"),
@@ -497,6 +507,7 @@ def run_drift_check(args: argparse.Namespace) -> int:
             root=root,
             profile=args.profile,
             schema_version=args.schema_version,
+            base_ref=args.base_ref,
         )
     except Exception as exc:
         payload = result_payload(
@@ -1412,6 +1423,7 @@ def run_report(args: argparse.Namespace) -> int:
                 root=root,
                 profile=args.drift_profile,
                 schema_version=args.drift_schema_version,
+                base_ref=args.drift_base_ref,
             )
     except Exception as exc:
         payload = result_payload(

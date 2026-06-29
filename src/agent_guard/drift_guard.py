@@ -5,6 +5,7 @@ Why: keep README guidance, workflow policy, and guard files aligned.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,6 +77,38 @@ CONTEXT_LOCK_CLASSIFICATIONS = {
     "partial": "context_file_partially_pinned",
     "mismatch": "context_file_digest_drift",
 }
+
+BASELINE_TRUST_EXTRA_PATHS = (
+    ".agent-guard/context-digest-policy.yaml",
+    ".github/workflows",
+    "action.yml",
+    ".pre-commit-hooks.yaml",
+)
+
+
+@dataclass(frozen=True)
+class BaselineTrustSummary:
+    status: str
+    protected_path_count: int
+    changed_count: int
+    finding_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "mode": "git_diff",
+            "base_ref": "provided",
+            "status": self.status,
+            "protected_path_count": self.protected_path_count,
+            "changed_count": self.changed_count,
+            "finding_count": self.finding_count,
+        }
+
+
+@dataclass(frozen=True)
+class PolicySpecDriftScan:
+    findings: list["DriftFinding"]
+    checked_count: int
+    baseline_trust: BaselineTrustSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +188,133 @@ def workflow_policy_required_paths(root: Path) -> set[str]:
         elif isinstance(item, dict) and isinstance(item.get("path"), str):
             paths.add(str(item["path"]))
     return paths
+
+
+def baseline_trust_paths(profile: str) -> tuple[str, ...]:
+    paths = {*profile_required_files(profile), *BASELINE_TRUST_EXTRA_PATHS}
+    return tuple(sorted(paths))
+
+
+def classify_baseline_trust_path(path: str) -> str:
+    if path == ".agent-guard/context-digest-policy.yaml" or "digest" in Path(path).name:
+        return "digest_policy_changed"
+    if path.startswith(".agent-guard/"):
+        return "guard_policy_changed"
+    if path.startswith(".github/workflows/") or path == "action.yml":
+        return "guard_workflow_changed"
+    if path == ".pre-commit-hooks.yaml":
+        return "guard_hook_changed"
+    return "baseline_guard_surface_changed"
+
+
+def build_baseline_unproven_finding(reason: str) -> DriftFinding:
+    return DriftFinding(
+        rule_id="baseline_trust_unproven",
+        severity="high",
+        file=".",
+        message="baseline-sensitive guard changes could not be compared to the provided base ref",
+        reason=reason,
+        requirement_id="baseline_ref",
+        classification="baseline_review_required",
+    )
+
+
+def is_safe_base_ref_arg(base_ref: str) -> bool:
+    return bool(base_ref) and not base_ref.startswith("-") and not any(char in base_ref for char in "\x00\r\n")
+
+
+def run_git_command(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def scan_baseline_trust_drift(
+    *,
+    root: Path,
+    base_ref: str,
+    profile: str,
+) -> tuple[list[DriftFinding], int, BaselineTrustSummary]:
+    protected_paths = baseline_trust_paths(profile)
+    if not is_safe_base_ref_arg(base_ref):
+        finding = build_baseline_unproven_finding("base_ref_unavailable")
+        return [finding], 1, BaselineTrustSummary(
+            status="unproven",
+            protected_path_count=len(protected_paths),
+            changed_count=0,
+            finding_count=1,
+        )
+    try:
+        probe = run_git_command(root, ["rev-parse", "--is-inside-work-tree"])
+    except FileNotFoundError:
+        finding = build_baseline_unproven_finding("git_unavailable")
+        return [finding], 1, BaselineTrustSummary(
+            status="unproven",
+            protected_path_count=len(protected_paths),
+            changed_count=0,
+            finding_count=1,
+        )
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
+        finding = build_baseline_unproven_finding("not_git_repository")
+        return [finding], 1, BaselineTrustSummary(
+            status="unproven",
+            protected_path_count=len(protected_paths),
+            changed_count=0,
+            finding_count=1,
+        )
+
+    try:
+        diff = run_git_command(
+            root,
+            [
+                "diff",
+                "--relative",
+                "--name-only",
+                "--diff-filter=AMDR",
+                f"{base_ref}...HEAD",
+                "--",
+                *protected_paths,
+            ],
+        )
+    except FileNotFoundError:
+        finding = build_baseline_unproven_finding("git_unavailable")
+        return [finding], 1, BaselineTrustSummary(
+            status="unproven",
+            protected_path_count=len(protected_paths),
+            changed_count=0,
+            finding_count=1,
+        )
+    if diff.returncode != 0:
+        finding = build_baseline_unproven_finding("base_ref_unavailable")
+        return [finding], 1, BaselineTrustSummary(
+            status="unproven",
+            protected_path_count=len(protected_paths),
+            changed_count=0,
+            finding_count=1,
+        )
+
+    changed_paths = sorted({line.strip() for line in diff.stdout.splitlines() if line.strip()})
+    findings = [
+        DriftFinding(
+            rule_id="baseline_trust_change",
+            severity="high",
+            file=path,
+            message="baseline-sensitive guard surface changed relative to the provided base ref",
+            reason=classify_baseline_trust_path(path),
+            requirement_id=Path(path).name or path,
+            classification="baseline_review_required",
+        )
+        for path in changed_paths
+    ]
+    return findings, len(protected_paths), BaselineTrustSummary(
+        status="ok" if not findings else "review_required",
+        protected_path_count=len(protected_paths),
+        changed_count=len(changed_paths),
+        finding_count=len(findings),
+    )
 
 
 def scan_context_boundary_drift(*, root: Path, profile: str) -> tuple[list[DriftFinding], int]:
@@ -254,7 +414,24 @@ def scan_policy_spec_drift(
     root: Path,
     profile: str = "recommended",
     schema_version: str = "v1",
+    base_ref: str = "",
 ) -> tuple[list[DriftFinding], int]:
+    scan = build_policy_spec_drift_scan(
+        root=root,
+        profile=profile,
+        schema_version=schema_version,
+        base_ref=base_ref,
+    )
+    return scan.findings, scan.checked_count
+
+
+def build_policy_spec_drift_scan(
+    *,
+    root: Path,
+    profile: str = "recommended",
+    schema_version: str = "v1",
+    base_ref: str = "",
+) -> PolicySpecDriftScan:
     root = root.resolve()
     version = normalize_drift_schema_version(schema_version)
     profile_name = normalize_profile_name(profile)
@@ -354,7 +531,22 @@ def scan_policy_spec_drift(
         checked_count += context_lock_checked
         findings.extend(context_lock_findings)
 
-    return findings, checked_count
+    baseline_trust: BaselineTrustSummary | None = None
+    baseline_ref = str(base_ref).strip()
+    if baseline_ref:
+        baseline_findings, baseline_checked, baseline_trust = scan_baseline_trust_drift(
+            root=root,
+            base_ref=baseline_ref,
+            profile=profile_name,
+        )
+        checked_count += baseline_checked
+        findings.extend(baseline_findings)
+
+    return PolicySpecDriftScan(
+        findings=findings,
+        checked_count=checked_count,
+        baseline_trust=baseline_trust,
+    )
 
 
 def build_policy_spec_drift_report(
@@ -362,19 +554,24 @@ def build_policy_spec_drift_report(
     root: Path,
     profile: str = "recommended",
     schema_version: str = "v1",
+    base_ref: str = "",
 ) -> dict[str, object]:
     version = normalize_drift_schema_version(schema_version)
     profile_name = normalize_profile_name(profile)
-    findings, checked_count = scan_policy_spec_drift(
+    scan = build_policy_spec_drift_scan(
         root=root,
         profile=profile_name,
         schema_version=version,
+        base_ref=base_ref,
     )
-    return {
+    payload: dict[str, object] = {
         "schema_version": drift_schema_id(version),
         "profile": profile_name,
-        "status": "ok" if not findings else "violation",
-        "checked_count": checked_count,
-        "finding_count": len(findings),
-        "findings": [item.to_dict() for item in findings],
+        "status": "ok" if not scan.findings else "violation",
+        "checked_count": scan.checked_count,
+        "finding_count": len(scan.findings),
+        "findings": [item.to_dict() for item in scan.findings],
     }
+    if scan.baseline_trust is not None:
+        payload["baseline_trust"] = scan.baseline_trust.to_dict()
+    return payload

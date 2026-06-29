@@ -40,6 +40,10 @@ inputs:
     description: Optional digest policy path. It is used only when the file exists.
     required: false
     default: ".agent-guard/context-digest-policy.yaml"
+  base-ref:
+    description: Optional git ref used to flag baseline-sensitive guard changes. The caller must fetch this ref before running the action.
+    required: false
+    default: ""
   evidence-dir:
     description: Directory where JSON and Markdown evidence files are written, relative to root unless absolute.
     required: false
@@ -82,6 +86,8 @@ runs:
     - id: evidence
       name: Generate deterministic evidence
       shell: bash
+      env:
+        AGENT_GUARD_BASE_REF: ${{ inputs.base-ref }}
       run: |
         set +e
         status=0
@@ -120,6 +126,7 @@ runs:
         content_scan_dir="${{ inputs.content-scan-dir }}"
         workflow_policy="$(policy_path "${{ inputs.workflow-policy }}")"
         digest_policy="$(policy_path "${{ inputs.digest-policy }}")"
+        base_ref="${AGENT_GUARD_BASE_REF:-}"
 
         agent-guard context check --root "$root" --policy "$context_policy" --json > "$raw_dir/context.json"
         record_status "$?"
@@ -142,7 +149,11 @@ runs:
           record_status "$?"
         fi
 
-        agent-guard drift check --root "$root" --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
+        drift_args=(--root "$root" --profile recommended --schema-version v2)
+        if [ -n "$base_ref" ]; then
+          drift_args+=(--base-ref "$base_ref")
+        fi
+        agent-guard drift check "${drift_args[@]}" --json > "$raw_dir/drift.json"
         record_status "$?"
 
         report_args=(--root "$root" --context-policy "$context_policy" --evidence-preset recommended)
@@ -157,6 +168,9 @@ runs:
         fi
         if path_exists "$digest_policy"; then
           report_args+=(--digest-policy "$digest_policy")
+        fi
+        if [ -n "$base_ref" ]; then
+          report_args+=(--drift-base-ref "$base_ref")
         fi
 
         agent-guard report "${report_args[@]}" --format json --output "$report_json"

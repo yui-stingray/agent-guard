@@ -238,7 +238,7 @@
         },
         "tool": {
             "name": "agent-guard",
-            "version": "0.1.10"
+            "version": "0.1.11"
         }
     },
     "exit_code": 0,
@@ -2076,7 +2076,7 @@
     },
     "tool": {
         "name": "agent-guard",
-        "version": "0.1.10"
+        "version": "0.1.11"
     },
     "workflow": {
         "checked_count": 19,

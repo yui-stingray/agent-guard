@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.10
+        uses: yui-stingray/agent-guard@v0.1.11
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -44,6 +44,25 @@ conformance result, and evidence-pack manifest. Markdown, SARIF, and GitHub
 annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
 `github-annotations: "false"`.
+
+When a pull request should surface guard policy or workflow changes relative
+to its base branch, fetch the base ref and pass it explicitly:
+
+```yaml
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.1.11
+        with:
+          base-ref: origin/${{ github.base_ref }}
+```
+
+The `base-ref` input only adds sanitized review evidence for changed
+`.agent-guard` policies, digest policies, guard workflows, action metadata, or
+pre-commit hook metadata. It does not approve, reject, or enforce GitHub branch
+protection, and it does not publish raw diffs, hash values, raw workflow
+bodies, branch names, or local paths.
 
 ## Expanded Workflow Step
 
@@ -126,7 +145,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.10
+  - uses: yui-stingray/agent-guard@v0.1.11
     id: agent-guard
   - name: Upload SARIF
     if: always()
