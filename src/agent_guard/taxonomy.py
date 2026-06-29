@@ -82,6 +82,9 @@ MCP_RISK_PATTERN_THEMES: dict[str, tuple[str, ...]] = {
     "filesystem_root_reference": ("ASI02", "ASI05"),
     "secret_shaped_inline_value": ("ASI03",),
     "inline_env_value": ("ASI03",),
+    "inline_authorization_value": ("ASI03",),
+    "broad_authorization_scope": ("ASI02", "ASI03"),
+    "unsafe_url_scheme": ("ASI02", "ASI05"),
     "parse_error": ("ASI04",),
 }
 

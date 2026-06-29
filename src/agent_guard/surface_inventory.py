@@ -11,7 +11,7 @@ import shlex
 import tomllib
 from pathlib import Path, PureWindowsPath
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 import yaml
 
@@ -57,6 +57,56 @@ MCP_CONFIG_FILES = (
     (".claude/settings*.json", "claude_mcp_config"),
 )
 PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "uvx", "python", "python3", "node", "deno", "docker"}
+MCP_URL_KEYS = ("url", "uri", "endpoint", "serverUrl", "server_url")
+SAFE_MCP_URL_SCHEMES = {"http", "https", "sse"}
+AUTH_FIELD_NAMES = {
+    "api_key",
+    "apikey",
+    "access_token",
+    "accesstoken",
+    "authorization",
+    "authorization_header",
+    "authorizationheader",
+    "auth_token",
+    "authtoken",
+    "bearer_token",
+    "bearertoken",
+    "client_secret",
+    "clientsecret",
+    "oauth_token",
+    "oauthtoken",
+    "password",
+    "refresh_token",
+    "refreshtoken",
+    "secret",
+    "token",
+}
+AUTH_OPTION_RE = re.compile(
+    r"^--?(?:access-token|api-key|apikey|auth-token|authorization|bearer-token|client-secret|oauth-token|password|refresh-token|secret|token)(?:=|$)",
+    re.IGNORECASE,
+)
+SCOPE_FIELD_NAMES = {
+    "authscope",
+    "authscopes",
+    "authorizationscope",
+    "authorizationscopes",
+    "oauthscope",
+    "oauthscopes",
+    "scope",
+    "scopes",
+}
+BROAD_AUTHORIZATION_SCOPE_VALUES = {
+    "*",
+    "admin",
+    "all",
+    "full",
+    "full-access",
+    "full_access",
+    "read-write",
+    "read_write",
+    "repo",
+    "write",
+}
 SECRET_SHAPED_VALUE = re.compile(
     r"(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16})"
 )
@@ -309,6 +359,15 @@ def is_env_reference(value: str) -> bool:
     return bool(re.fullmatch(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?", text))
 
 
+def contains_env_reference(value: str) -> bool:
+    return bool(re.search(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?", value.strip()))
+
+
+def is_inline_auth_literal(value: str) -> bool:
+    text = value.strip()
+    return bool(text) and not is_env_reference(text) and not contains_env_reference(text)
+
+
 def contains_filesystem_root(value: str) -> bool:
     text = value.strip().strip("'\"")
     if not text:
@@ -322,8 +381,19 @@ def contains_filesystem_root(value: str) -> bool:
     return Path(text).is_absolute()
 
 
+def has_unsafe_mcp_url_scheme(raw: dict[str, object]) -> bool:
+    for key in MCP_URL_KEYS:
+        value = raw.get(key)
+        if not isinstance(value, str):
+            continue
+        parsed = urlparse(value.strip())
+        if parsed.scheme and parsed.scheme.lower() not in SAFE_MCP_URL_SCHEMES:
+            return True
+    return False
+
+
 def extract_remote_host(raw: dict[str, object]) -> str:
-    for key in ("url", "uri", "endpoint", "serverUrl", "server_url"):
+    for key in MCP_URL_KEYS:
         value = raw.get(key)
         if not isinstance(value, str):
             continue
@@ -359,6 +429,91 @@ def infer_version_pin(command: str, args: list[str]) -> bool | None:
     if re.search(r"(?:@sha256:|sha256:)[A-Fa-f0-9]{16,}", joined):
         return True
     return False if command in PACKAGE_MANAGER_COMMANDS else None
+
+
+def normalized_auth_field_name(name: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+
+
+def is_authorization_field_name(name: object) -> bool:
+    normalized = normalized_auth_field_name(name)
+    if normalized in AUTH_FIELD_NAMES:
+        return True
+    return normalized.endswith(("_token", "_secret"))
+
+
+def contains_inline_authorization_value(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if is_authorization_field_name(key):
+                if any(is_inline_auth_literal(item) for item in string_values(child)):
+                    return True
+            elif contains_inline_authorization_value(child):
+                return True
+    elif isinstance(value, list):
+        return any(contains_inline_authorization_value(child) for child in value)
+    return False
+
+
+def contains_inline_authorization_arg(args: list[str]) -> bool:
+    for index, arg in enumerate(args):
+        if not AUTH_OPTION_RE.match(arg):
+            continue
+        if "=" in arg:
+            value = arg.split("=", 1)[1]
+        elif index + 1 < len(args) and not args[index + 1].startswith("-"):
+            value = args[index + 1]
+        else:
+            continue
+        if is_inline_auth_literal(value):
+            return True
+    return False
+
+
+def contains_inline_authorization_url_value(raw: dict[str, object]) -> bool:
+    for key in MCP_URL_KEYS:
+        value = raw.get(key)
+        if not isinstance(value, str):
+            continue
+        parsed = urlparse(value.strip())
+        for query_key, query_value in parse_qsl(parsed.query, keep_blank_values=False):
+            if is_authorization_field_name(query_key) and is_inline_auth_literal(query_value):
+                return True
+    return False
+
+
+def is_scope_field_name(name: object) -> bool:
+    normalized = normalized_auth_field_name(name)
+    if normalized in SCOPE_FIELD_NAMES:
+        return True
+    return normalized.endswith("_scope") or normalized.endswith("_scopes")
+
+
+def scope_values(value: object) -> list[str]:
+    values: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if is_scope_field_name(key):
+                values.extend(string_values(child))
+            else:
+                values.extend(scope_values(child))
+    elif isinstance(value, list):
+        for child in value:
+            values.extend(scope_values(child))
+    return values
+
+
+def has_broad_authorization_scope(raw: dict[str, object]) -> bool:
+    for value in scope_values(raw):
+        for token in re.split(r"[\s,]+", value.strip().lower()):
+            cleaned = token.strip("'\"[](){}")
+            if not cleaned:
+                continue
+            if "*" in cleaned or cleaned in BROAD_AUTHORIZATION_SCOPE_VALUES:
+                return True
+            if cleaned.startswith("admin:") or cleaned.endswith(":admin"):
+                return True
+    return False
 
 
 def mcp_server_maps(config: object) -> dict[str, object]:
@@ -418,6 +573,16 @@ def collect_mcp_config_surfaces(root: Path) -> list[dict[str, object]]:
                 risky_patterns.add("latest_package")
             if package_manager and version_pinned is False:
                 risky_patterns.add("unpinned_package")
+            if has_unsafe_mcp_url_scheme(raw_server):
+                risky_patterns.add("unsafe_url_scheme")
+            if (
+                contains_inline_authorization_arg(args)
+                or contains_inline_authorization_url_value(raw_server)
+                or contains_inline_authorization_value(raw_server)
+            ):
+                risky_patterns.add("inline_authorization_value")
+            if has_broad_authorization_scope(raw_server):
+                risky_patterns.add("broad_authorization_scope")
             has_filesystem_root = any(contains_filesystem_root(item) for item in metadata_strings)
             if has_filesystem_root:
                 risky_patterns.add("filesystem_root_reference")

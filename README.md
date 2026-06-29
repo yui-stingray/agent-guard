@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.16` alpha. The current MVP ships seven guard scanners:
+**Status**: `0.1.17` alpha. The current MVP ships seven guard scanners:
 `api`, `content`, `context`, `mcp`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: yui-stingray/agent-guard@v0.1.16
+      - uses: yui-stingray/agent-guard@v0.1.17
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -160,7 +160,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.16"},
+  "tool": {"name": "agent-guard", "version": "0.1.17"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -226,7 +226,8 @@ Recommended split:
   configured text surfaces.
 - `mcp`: checks committed MCP configuration metadata for parse errors,
   unpinned or `@latest` package-manager server commands, filesystem-root
-  references, and secret-shaped inline values without running MCP servers.
+  references, unsafe URL schemes, broad authorization scopes, and inline
+  authorization values without running MCP servers.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
 - `surface inventory v2`: records documented guard commands, evidence artifact
@@ -258,7 +259,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.16
+    rev: v0.1.17
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -405,8 +406,10 @@ agent-guard workflow references as metadata only; v2 also records documented
 guard commands, evidence artifact references, agent skills/profiles/commands/
 hooks, and MCP configuration metadata. MCP metadata is limited to server name,
 transport, command basename, package-manager pin status, remote host, env var
-names, filesystem-root presence, and deterministic risk labels; it does not
-emit raw args, env values, instruction bodies, or hook bodies. Findings and
+names, filesystem-root presence, and deterministic risk labels for static
+authorization, scope, URL-scheme, package, path, and inline-value review; it
+does not emit raw args, env values, authorization values, scope strings, URLs,
+instruction bodies, or hook bodies. Findings and
 surface risk labels may also include `owasp_agentic_risk_themes`, a static
 crosswalk to OWASP Agentic Top 10 risk themes. These labels are review context
 for deterministic evidence; they are not runtime vulnerability detection,
@@ -422,9 +425,10 @@ API or digest evidence because those policies are repository-specific. With
 report evidence against a named adoption profile. `mcp check` and the
 recommended report preset fail on malformed committed MCP config files or risky
 MCP configuration metadata, such as unpinned package-manager commands or
-secret-shaped inline values. The `strict` profile also turns the same v2 surface
+secret-shaped inline values, unsafe URL schemes, broad authorization scopes, or
+inline authorization values. The `strict` profile also turns the same v2 surface
 inventory labels into conformance findings. None of these modes execute MCP
-servers, inspect tool results, or act as an MCP runtime security validator. With
+servers, inspect tool results, validate live OAuth flows, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without
@@ -491,9 +495,10 @@ when a repository wants to upload findings to GitHub code scanning with
 consumer workflow because it changes repository permissions.
 SARIF is a thin adapter and not a separate scanner.
 
-`agent-guard` does not detect runtime prompt injection, MCP tool poisoning, or
-agent memory poisoning. It emits static repository evidence that can help a
-maintainer decide where those runtime controls may be needed.
+`agent-guard` does not detect runtime prompt injection, MCP tool poisoning,
+live MCP authorization failures, or agent memory poisoning. It emits static
+repository evidence that can help a maintainer decide where those runtime
+controls may be needed.
 
 For `report`, it returns:
 - exit `0` when the report is generated and all enabled checks pass
@@ -796,7 +801,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.16"
+version = "0.1.17"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -804,14 +809,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.16-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.1.17-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.16
-gh attestation verify dist-verify/yui_agent_guard-0.1.16.tar.gz \
+  --source-ref refs/tags/v0.1.17
+gh attestation verify dist-verify/yui_agent_guard-0.1.17.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.16
+  --source-ref refs/tags/v0.1.17
 ```
 
 ## License

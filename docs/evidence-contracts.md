@@ -115,7 +115,8 @@ The JSON report is a compact statement of what `agent-guard` checked:
   configuration metadata when v2 is requested. MCP entries omit raw args and
   env values; they keep only server names, transports, command basenames,
   package-manager pin status, remote hosts, env var names, filesystem-root
-  presence, and deterministic risk labels.
+  presence, and deterministic risk labels for static authorization, scope,
+  URL-scheme, package, path, and inline-value review.
 - Findings and surface risk labels can include `owasp_agentic_risk_themes` to
   show which OWASP Agentic Top 10 risk themes the static evidence is relevant
   to.
@@ -123,7 +124,8 @@ The JSON report is a compact statement of what `agent-guard` checked:
   failing without treating every missing optional gate as a failure.
 - Optional `mcp_config` records whether committed MCP configuration metadata had
   parse errors or deterministic risk labels. It omits raw args, env values,
-  secrets, instruction bodies, and local absolute paths.
+  authorization values, scope strings, URLs, secrets, instruction bodies, and
+  local absolute paths.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
   config files and risky MCP configuration metadata are additionally treated as

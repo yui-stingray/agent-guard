@@ -511,6 +511,7 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
     assert servers["browser"]["filesystem_root"] is True
     assert set(servers["browser"]["risky_patterns"]) == {
         "filesystem_root_reference",
+        "inline_authorization_value",
         "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
@@ -669,6 +670,7 @@ def test_mcp_check_cli_flags_sanitized_mcp_risky_patterns(tmp_path: Path) -> Non
     reasons = {item["reason"] for item in payload["mcp_config"]["findings"]}
     assert reasons == {
         "filesystem_root_reference",
+        "inline_authorization_value",
         "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
@@ -679,6 +681,52 @@ def test_mcp_check_cli_flags_sanitized_mcp_risky_patterns(tmp_path: Path) -> Non
     assert fake_token not in result.stdout
     assert "/home/alice/private" not in result.stdout
     assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_flags_static_auth_scope_and_url_scheme_without_raw_values(tmp_path: Path) -> None:
+    raw_url = "javascript:alert('private-host')"
+    raw_token = "literal-admin-token"
+    raw_query_token = "query-admin-token"
+    raw_scope = "repo admin"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "auth-review": {
+                        "type": "http",
+                        "url": raw_url,
+                        "accessToken": raw_token,
+                        "oauthScopes": [raw_scope],
+                    },
+                    "query-auth": {
+                        "type": "http",
+                        "url": f"https://mcp.example.test/sse?accessToken={raw_query_token}",
+                    }
+                }
+            }
+        ),
+    )
+
+    result = run_cli("mcp", "check", "--root", str(tmp_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    reasons = {item["reason"] for item in payload["mcp_config"]["findings"]}
+    assert reasons == {
+        "broad_authorization_scope",
+        "inline_authorization_value",
+        "unsafe_url_scheme",
+    }
+    severities = {item["reason"]: item["severity"] for item in payload["mcp_config"]["findings"]}
+    assert severities["inline_authorization_value"] == "high"
+    assert any(
+        item["reason"] == "inline_authorization_value" and item["server_name"] == "query-auth"
+        for item in payload["mcp_config"]["findings"]
+    )
+    assert all(item["owasp_agentic_risk_themes"] for item in payload["mcp_config"]["findings"])
+    for forbidden in (raw_url, raw_token, raw_query_token, raw_scope, "private-host", str(tmp_path)):
+        assert forbidden not in result.stdout
 
 
 def test_mcp_check_cli_redacts_sensitive_server_names(tmp_path: Path) -> None:
@@ -1592,7 +1640,7 @@ def test_report_cli_recommended_preset_fails_risky_mcp_config_without_raw_leak(t
     assert payload["mcp_config"]["status"] == "violation"
     gates = {item["gate"]: item for item in payload["evidence_coverage"]["gates"]}
     assert gates["mcp_config"]["status"] == "violation"
-    assert gates["mcp_config"]["finding_count"] == 4
+    assert gates["mcp_config"]["finding_count"] == 5
     assert raw_command not in result.stdout
     assert "sk-exampleSecretValue123" not in result.stdout
     assert fake_token not in result.stdout

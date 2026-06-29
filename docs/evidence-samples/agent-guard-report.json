@@ -97,7 +97,7 @@
                 "status": "ok"
             },
             {
-                "checked_count": 199,
+                "checked_count": 200,
                 "finding_count": 0,
                 "gate": "path",
                 "policy": {
@@ -253,7 +253,7 @@
         },
         "tool": {
             "name": "agent-guard",
-            "version": "0.1.16"
+            "version": "0.1.17"
         }
     },
     "exit_code": 0,
@@ -480,7 +480,7 @@
         "surfaces": []
     },
     "path": {
-        "checked_count": 199,
+        "checked_count": 200,
         "finding_count": 0,
         "findings": [],
         "policy": {
@@ -531,7 +531,7 @@
         "finding_count": 0,
         "mcp_config_checked_count": 0,
         "mcp_config_finding_count": 0,
-        "path_checked_count": 199,
+        "path_checked_count": 200,
         "path_finding_count": 0,
         "scanned_count": 1,
         "scanned_unit": "files",
@@ -578,14 +578,14 @@
             {
                 "kind": "repo_evidence_file",
                 "path": ".agent-guard/evidence/agent-guard-evidence-report.json",
-                "size_bytes": 37519,
+                "size_bytes": 39452,
                 "status": "present",
                 "surface": "evidence_artifact"
             },
             {
                 "kind": "repo_evidence_file",
                 "path": ".agent-guard/evidence/agent-guard-evidence-report.md",
-                "size_bytes": 20876,
+                "size_bytes": 21975,
                 "status": "present",
                 "surface": "evidence_artifact"
             },
@@ -599,7 +599,7 @@
             {
                 "kind": "repo_evidence_file",
                 "path": ".agent-guard/evidence/agent-surface-inventory.json",
-                "size_bytes": 26532,
+                "size_bytes": 28132,
                 "status": "present",
                 "surface": "evidence_artifact"
             },
@@ -1303,7 +1303,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 345,
+                "line": 346,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1314,18 +1314,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 346,
-                "path": "README.md",
-                "status": "documented",
-                "surface": "documented_guard_command"
-            },
-            {
-                "command": {
-                    "command": "",
-                    "scanner": "report"
-                },
-                "kind": "documentation_recipe",
-                "line": 381,
+                "line": 347,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1366,7 +1355,7 @@
             {
                 "command": {
                     "command": "",
-                    "scanner": "render-report"
+                    "scanner": "report"
                 },
                 "kind": "documentation_recipe",
                 "line": 385,
@@ -1399,7 +1388,7 @@
             {
                 "command": {
                     "command": "",
-                    "scanner": "report"
+                    "scanner": "render-report"
                 },
                 "kind": "documentation_recipe",
                 "line": 388,
@@ -1453,11 +1442,22 @@
             },
             {
                 "command": {
+                    "command": "",
+                    "scanner": "report"
+                },
+                "kind": "documentation_recipe",
+                "line": 393,
+                "path": "README.md",
+                "status": "documented",
+                "surface": "documented_guard_command"
+            },
+            {
+                "command": {
                     "command": "references",
                     "scanner": "workflow"
                 },
                 "kind": "documentation_recipe",
-                "line": 404,
+                "line": 405,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1468,7 +1468,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 738,
+                "line": 743,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1479,7 +1479,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 740,
+                "line": 745,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1490,7 +1490,7 @@
                     "scanner": "digest"
                 },
                 "kind": "documentation_recipe",
-                "line": 742,
+                "line": 747,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1501,7 +1501,7 @@
                     "scanner": "init"
                 },
                 "kind": "documentation_recipe",
-                "line": 753,
+                "line": 758,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1512,7 +1512,7 @@
                     "scanner": "api"
                 },
                 "kind": "documentation_recipe",
-                "line": 754,
+                "line": 759,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1523,7 +1523,7 @@
                     "scanner": "content"
                 },
                 "kind": "documentation_recipe",
-                "line": 755,
+                "line": 760,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1534,7 +1534,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 756,
+                "line": 761,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1545,7 +1545,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 757,
+                "line": 762,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1556,7 +1556,7 @@
                     "scanner": "context"
                 },
                 "kind": "documentation_recipe",
-                "line": 758,
+                "line": 763,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1567,7 +1567,7 @@
                     "scanner": "mcp"
                 },
                 "kind": "documentation_recipe",
-                "line": 759,
+                "line": 764,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1578,7 +1578,7 @@
                     "scanner": "surface"
                 },
                 "kind": "documentation_recipe",
-                "line": 760,
+                "line": 765,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1589,7 +1589,7 @@
                     "scanner": "report"
                 },
                 "kind": "documentation_recipe",
-                "line": 761,
+                "line": 766,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1600,7 +1600,7 @@
                     "scanner": "render-report"
                 },
                 "kind": "documentation_recipe",
-                "line": 762,
+                "line": 767,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1611,7 +1611,7 @@
                     "scanner": "path"
                 },
                 "kind": "documentation_recipe",
-                "line": 763,
+                "line": 768,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1622,7 +1622,7 @@
                     "scanner": "digest"
                 },
                 "kind": "documentation_recipe",
-                "line": 764,
+                "line": 769,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1633,7 +1633,7 @@
                     "scanner": "workflow"
                 },
                 "kind": "documentation_recipe",
-                "line": 765,
+                "line": 770,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1644,7 +1644,7 @@
                     "scanner": "drift"
                 },
                 "kind": "documentation_recipe",
-                "line": 766,
+                "line": 771,
                 "path": "README.md",
                 "status": "documented",
                 "surface": "documented_guard_command"
@@ -1784,7 +1784,7 @@
             {
                 "kind": "committed_evidence_sample",
                 "path": "docs/evidence-samples/agent-guard-report.json",
-                "size_bytes": 72551,
+                "size_bytes": 72708,
                 "status": "present",
                 "surface": "evidence_artifact"
             },
@@ -2078,7 +2078,7 @@
     },
     "tool": {
         "name": "agent-guard",
-        "version": "0.1.16"
+        "version": "0.1.17"
     },
     "workflow": {
         "checked_count": 23,

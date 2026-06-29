@@ -4,6 +4,21 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.17 - 2026-06-30
+
+- Extended the deterministic MCP config gate with sanitized static labels for
+  unsafe URL schemes, inline authorization values, and broad authorization
+  scopes.
+- Mapped the new MCP labels to OWASP Agentic risk-theme metadata while keeping
+  them as review context, not runtime vulnerability detection or compliance
+  proof.
+- Added regression coverage that verifies MCP auth/scope/URL findings do not
+  emit raw URLs, authorization values, scope strings, host fragments, or local
+  paths in public JSON evidence.
+- Updated docs and release examples for `0.1.17` while keeping MCP server
+  execution, live OAuth validation, tool-poisoning detection, and generic secret
+  scanning out of scope.
+
 ## 0.1.16 - 2026-06-29
 
 - Promoted committed MCP configuration metadata into a first-class deterministic

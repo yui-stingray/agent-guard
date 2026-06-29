@@ -13,7 +13,7 @@ from .taxonomy import annotate_finding
 
 
 def mcp_risk_severity(pattern: str) -> str:
-    return "high" if pattern == "secret_shaped_inline_value" else "medium"
+    return "high" if pattern in {"inline_authorization_value", "secret_shaped_inline_value"} else "medium"
 
 
 def mcp_config_findings_from_surfaces(
