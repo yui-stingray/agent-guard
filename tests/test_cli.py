@@ -146,30 +146,35 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         ".agent-guard/context-policy.yaml",
         ".agent-guard/path-policy.yaml",
         ".agent-guard/content-policy.yaml",
+        ".agent-guard/mcp-policy.yaml",
         ".agent-guard/workflow-policy.yaml",
         ".github/workflows/agent-guard.yml",
     ]
     assert all(item["status"] == "create" for item in files)
     contents = {item["path"]: item["content"] for item in files}
     workflow = contents[".github/workflows/agent-guard.yml"]
+    mcp_policy = contents[".agent-guard/mcp-policy.yaml"]
     workflow_policy = contents[".agent-guard/workflow-policy.yaml"]
+    assert "schema_version: agent-guard.mcp_policy.v1" in mcp_policy
+    assert "forbidden_risky_patterns:" in mcp_policy
     assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in workflow
     assert (
         "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml "
         "--schema-version v2 --json"
         in workflow
     )
+    assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json" in workflow
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
     assert "agent-guard drift check --root . --profile recommended --schema-version v2 --json" in workflow
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json"
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
         in workflow
     )
     report_lines = [line.strip() for line in workflow.splitlines() if line.strip().startswith("agent-guard report")]
     assert report_lines == [
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json"
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
     ]
     assert "render_report_output" not in workflow
     assert (
@@ -220,10 +225,12 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         in workflow
     )
     assert "workflow_checks:" in workflow_policy
+    assert "path: .agent-guard/mcp-policy.yaml" in workflow_policy
+    assert "command: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in workflow_policy
     assert "command: agent-guard drift check --root . --profile recommended --schema-version v2" in workflow_policy
     assert (
         "command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended"
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml"
         in workflow_policy
     )
     next_steps = "\n".join(payload["next_steps"])
@@ -804,6 +811,195 @@ def test_mcp_check_cli_flags_parse_errors(tmp_path: Path) -> None:
         {"id": "ASI04", "name": "Agentic Supply Chain Vulnerabilities"}
     ]
     assert "{not json" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_respects_reviewed_policy_forbidden_patterns(tmp_path: Path) -> None:
+    raw_command = "npx -y @vendor/browser-mcp --token sk-exampleSecretValue123 --root /home/alice/private"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "browser": {
+                        "command": raw_command,
+                        "args": ["@vendor/browser-mcp@latest"],
+                    }
+                }
+            }
+        ),
+    )
+    write(
+        tmp_path / "mcp-policy.yaml",
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        "policy:\n"
+        "  fail_on_parse_error: true\n"
+        "  forbidden_risky_patterns:\n"
+        "    - inline_authorization_value\n",
+    )
+
+    result = run_cli(
+        "mcp",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["policy"] == {"path": "mcp-policy.yaml"}
+    assert payload["mcp_config"]["policy"]["path"] == "mcp-policy.yaml"
+    assert payload["mcp_config"]["policy"]["forbidden_risky_patterns"] == ["inline_authorization_value"]
+    assert {item["reason"] for item in payload["mcp_config"]["findings"]} == {"inline_authorization_value"}
+    server = next(item for item in payload["mcp_config"]["surfaces"] if item["surface"] == "mcp_server_reference")
+    assert set(server["risky_patterns"]) == {
+        "filesystem_root_reference",
+        "inline_authorization_value",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unpinned_package",
+    }
+    assert raw_command not in result.stdout
+    assert "sk-exampleSecretValue123" not in result.stdout
+    assert "/home/alice/private" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_rejects_bad_policy_without_path_leak(tmp_path: Path) -> None:
+    write(tmp_path / ".mcp.json", json.dumps({"mcpServers": {}}))
+    secret_like_unknown_label = "sk-exampleUnknownPolicyValue12345"
+    write(
+        tmp_path / "mcp-policy.yaml",
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        "policy:\n"
+        "  forbidden_risky_patterns:\n"
+        f"    - {secret_like_unknown_label}\n",
+    )
+
+    result = run_cli(
+        "mcp",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["policy"] == {"path": "mcp-policy.yaml"}
+    assert "unknown MCP risk pattern" in payload["error"]
+    assert secret_like_unknown_label not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_check_cli_rejects_malformed_policy_without_yaml_content_leak(tmp_path: Path) -> None:
+    secret_like_yaml_tag = "sk-exampleYamlTagLeak12345"
+    write(tmp_path / ".mcp.json", json.dumps({"mcpServers": {}}))
+    write(
+        tmp_path / "mcp-policy.yaml",
+        f"schema_version: !{secret_like_yaml_tag} agent-guard.mcp_policy.v1\n",
+    )
+
+    result = run_cli(
+        "mcp",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["error"] == "MCP policy YAML is not parseable"
+    assert secret_like_yaml_tag not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_mcp_policy_parse_error_does_not_leak_yaml_content(tmp_path: Path) -> None:
+    secret_like_yaml_value = "sk-exampleYamlLineLeak12345"
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(tmp_path / "context-policy.yaml", "{}\n")
+    write(tmp_path / ".mcp.json", json.dumps({"mcpServers": {}}))
+    write(
+        tmp_path / "mcp-policy.yaml",
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        f"policy:\n\tforbidden_risky_patterns: [{secret_like_yaml_value}]\n",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(tmp_path / "context-policy.yaml"),
+        "--mcp-policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["error"] == "MCP policy YAML is not parseable"
+    assert payload["mcp_config"] == {"policy": {"path": "mcp-policy.yaml"}}
+    assert secret_like_yaml_value not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_mcp_policy_implies_mcp_config_check(tmp_path: Path) -> None:
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(tmp_path / "context-policy.yaml", "{}\n")
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "browser": {
+                        "command": "npx",
+                        "args": ["@vendor/browser-mcp@latest"],
+                    }
+                }
+            }
+        ),
+    )
+    write(
+        tmp_path / "mcp-policy.yaml",
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        "policy:\n"
+        "  forbidden_risky_patterns:\n"
+        "    - latest_package\n",
+    )
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(tmp_path / "context-policy.yaml"),
+        "--mcp-policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["report"]["scope"] == "context+mcp"
+    assert payload["mcp_config"]["policy"]["path"] == "mcp-policy.yaml"
+    assert payload["mcp_config"]["policy"]["forbidden_risky_patterns"] == ["latest_package"]
+    assert {item["reason"] for item in payload["mcp_config"]["findings"]} == {"latest_package"}
+    gates = {item["gate"]: item for item in payload["evidence_coverage"]["gates"]}
+    assert gates["mcp_config"]["policy"] == {"path": "mcp-policy.yaml"}
     assert str(tmp_path) not in result.stdout
 
 

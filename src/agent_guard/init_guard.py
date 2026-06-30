@@ -106,6 +106,26 @@ forbidden_patterns:
 """
 
 
+MCP_POLICY = """# Where: .agent-guard/mcp-policy.yaml
+# What: static MCP configuration policy for agent-guard.
+# Why: make MCP risk-label enforcement reviewable without executing MCP servers.
+
+schema_version: agent-guard.mcp_policy.v1
+
+policy:
+  fail_on_parse_error: true
+  forbidden_risky_patterns:
+    - broad_authorization_scope
+    - filesystem_root_reference
+    - inline_authorization_value
+    - inline_env_value
+    - latest_package
+    - secret_shaped_inline_value
+    - unsafe_url_scheme
+    - unpinned_package
+"""
+
+
 WORKFLOW_POLICY = """# Where: .agent-guard/workflow-policy.yaml
 # What: starter workflow drift policy for agent-guard evidence.
 # Why: verify that the reviewable guard files and evidence workflow exist.
@@ -119,6 +139,8 @@ required_files:
     path: .agent-guard/path-policy.yaml
   - id: content_policy
     path: .agent-guard/content-policy.yaml
+  - id: mcp_policy
+    path: .agent-guard/mcp-policy.yaml
   - id: workflow_policy
     path: .agent-guard/workflow-policy.yaml
   - id: agent_guard_workflow
@@ -135,7 +157,7 @@ workflow_checks:
       - id: content_guard
         command: agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml
       - id: mcp_config_guard
-        command: agent-guard mcp check --root .
+        command: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml
       - id: surface_inventory
         command: agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2
       - id: workflow_guard
@@ -143,7 +165,7 @@ workflow_checks:
       - id: drift_guard
         command: agent-guard drift check --root . --profile recommended --schema-version v2
       - id: evidence_report_with_drift
-        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended
+        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml
       - id: conformance_check
         command: agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended
       - id: evidence_pack_manifest
@@ -193,7 +215,7 @@ jobs:
           agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json > "$raw_dir/content.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard mcp check --root . --json > "$raw_dir/mcp.json"
+          agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
@@ -205,7 +227,7 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -255,6 +277,7 @@ INIT_FILES = (
     InitFile(".agent-guard/context-policy.yaml", CONTEXT_POLICY),
     InitFile(".agent-guard/path-policy.yaml", PATH_POLICY),
     InitFile(".agent-guard/content-policy.yaml", CONTENT_POLICY),
+    InitFile(".agent-guard/mcp-policy.yaml", MCP_POLICY),
     InitFile(".agent-guard/workflow-policy.yaml", WORKFLOW_POLICY),
     InitFile(".github/workflows/agent-guard.yml", GITHUB_WORKFLOW),
 )

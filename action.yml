@@ -28,6 +28,10 @@ inputs:
     description: Path to the content policy, relative to root unless absolute.
     required: false
     default: ".agent-guard/content-policy.yaml"
+  mcp-policy:
+    description: Optional MCP policy path. It is used only when the file exists.
+    required: false
+    default: ".agent-guard/mcp-policy.yaml"
   content-scan-dir:
     description: Directory scanned by the content guard.
     required: false
@@ -115,6 +119,7 @@ runs:
         AGENT_GUARD_CONTEXT_POLICY: ${{ inputs.context-policy }}
         AGENT_GUARD_PATH_POLICY: ${{ inputs.path-policy }}
         AGENT_GUARD_CONTENT_POLICY: ${{ inputs.content-policy }}
+        AGENT_GUARD_MCP_POLICY: ${{ inputs.mcp-policy }}
         AGENT_GUARD_CONTENT_SCAN_DIR: ${{ inputs.content-scan-dir }}
         AGENT_GUARD_WORKFLOW_POLICY: ${{ inputs.workflow-policy }}
         AGENT_GUARD_DIGEST_POLICY: ${{ inputs.digest-policy }}
@@ -163,6 +168,7 @@ runs:
         validate_no_control_chars "context-policy" "$AGENT_GUARD_CONTEXT_POLICY" || exit 2
         validate_no_control_chars "path-policy" "$AGENT_GUARD_PATH_POLICY" || exit 2
         validate_no_control_chars "content-policy" "$AGENT_GUARD_CONTENT_POLICY" || exit 2
+        validate_no_control_chars "mcp-policy" "$AGENT_GUARD_MCP_POLICY" || exit 2
         validate_no_control_chars "content-scan-dir" "$AGENT_GUARD_CONTENT_SCAN_DIR" || exit 2
         validate_no_control_chars "workflow-policy" "$AGENT_GUARD_WORKFLOW_POLICY" || exit 2
         validate_no_control_chars "digest-policy" "$AGENT_GUARD_DIGEST_POLICY" || exit 2
@@ -216,6 +222,10 @@ runs:
         context_policy="$(policy_path "$AGENT_GUARD_CONTEXT_POLICY")"
         path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"
         content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"
+        mcp_policy=""
+        if [ -n "$AGENT_GUARD_MCP_POLICY" ]; then
+          mcp_policy="$(policy_path "$AGENT_GUARD_MCP_POLICY")"
+        fi
         content_scan_dir="$AGENT_GUARD_CONTENT_SCAN_DIR"
         workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"
         digest_policy="$(policy_path "$AGENT_GUARD_DIGEST_POLICY")"
@@ -234,7 +244,11 @@ runs:
           record_status "$?"
         fi
 
-        agent-guard mcp check --root "$root" --json > "$raw_dir/mcp.json"
+        mcp_args=(--root "$root")
+        if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
+          mcp_args+=(--policy "$mcp_policy")
+        fi
+        agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
         record_status "$?"
 
         agent-guard surface inventory --root "$root" --context-policy "$context_policy" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
@@ -258,6 +272,9 @@ runs:
         fi
         if path_exists "$content_policy"; then
           report_args+=(--content-policy "$content_policy" --content-scan-dir "$content_scan_dir")
+        fi
+        if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
+          report_args+=(--mcp-policy "$mcp_policy")
         fi
         if path_exists "$workflow_policy"; then
           report_args+=(--workflow-policy "$workflow_policy")

@@ -35,7 +35,7 @@ from .digest_guard import load_digest_policy, scan_digests
 from .drift_guard import build_policy_spec_drift_report
 from .evidence_pack import build_evidence_pack_manifest
 from .init_guard import build_init_plan, render_init_plan_text, write_init_plan
-from .mcp_guard import build_mcp_config_report
+from .mcp_guard import build_mcp_config_report, load_mcp_policy
 from .path_guard import load_path_policy, scan_paths as scan_repo_paths
 from .profiles import PROFILE_NAMES
 from .report_render import emit_report_output, render_report_output
@@ -283,6 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_sub = mcp.add_subparsers(dest="command", required=True)
     mcp_check = mcp_sub.add_parser("check", help="scan committed MCP configuration metadata")
     mcp_check.add_argument("--root", default=".", help="repository root path")
+    mcp_check.add_argument("--policy", default="", help="optional MCP YAML policy path")
     mcp_check.add_argument("--json", action="store_true", help="emit JSON")
 
     drift = top.add_parser("drift", help="small policy/spec drift guard")
@@ -361,6 +362,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--mcp-config-check",
         action="store_true",
         help="include static MCP configuration evidence derived from committed config metadata",
+    )
+    report.add_argument(
+        "--mcp-policy",
+        default="",
+        help="optional MCP YAML policy path; implies --mcp-config-check",
     )
     report.add_argument("--conformance-profile", choices=PROFILE_NAMES, default="", help="embed conformance evidence")
     report.add_argument(
@@ -515,14 +521,17 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
 
 def run_mcp_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
+    policy_arg = str(args.policy).strip()
+    policy_path = safe_policy_path(policy_arg, root) if policy_arg else ""
     try:
-        report = build_mcp_config_report(root=root)
+        policy = load_mcp_policy(Path(policy_arg).resolve()) if policy_arg else None
+        report = build_mcp_config_report(root=root, policy=policy, policy_path=policy_path)
     except Exception as exc:
         payload = result_payload(
             scanner="mcp",
             status="error",
             exit_code=2,
-            policy_arg=".mcp-config",
+            policy_arg=policy_arg or ".mcp-config",
             root=root,
             error=str(exc),
             extra={"command": "check"},
@@ -541,7 +550,7 @@ def run_mcp_check(args: argparse.Namespace) -> int:
         scanner="mcp",
         status="ok" if exit_code == 0 else "violation",
         exit_code=exit_code,
-        policy_arg=".mcp-config",
+        policy_arg=policy_arg or ".mcp-config",
         root=root,
         findings=[item for item in finding_items if isinstance(item, dict)],
         scanned_count=checked_count,
@@ -1438,6 +1447,9 @@ def run_report(args: argparse.Namespace) -> int:
     content_policy_arg = str(args.content_policy).strip()
     content_scan_dir_arg = str(args.content_scan_dir).strip() or "."
     api_policy_arg = str(args.api_policy).strip()
+    mcp_policy_arg = str(args.mcp_policy).strip()
+    if mcp_policy_arg:
+        args.mcp_config_check = True
     digest_policy_arg = str(args.digest_policy).strip()
     workflow_policy_arg = str(args.workflow_policy).strip()
     safe_context_policy_path = safe_policy_path(args.context_policy, root)
@@ -1468,7 +1480,16 @@ def run_report(args: argparse.Namespace) -> int:
             else None
         )
         api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
-        mcp_report = build_mcp_config_report(root=root) if args.mcp_config_check else None
+        mcp_policy = load_mcp_policy(Path(mcp_policy_arg).resolve()) if mcp_policy_arg else None
+        mcp_report = (
+            build_mcp_config_report(
+                root=root,
+                policy=mcp_policy,
+                policy_path=safe_policy_path(mcp_policy_arg, root) if mcp_policy_arg else "",
+            )
+            if args.mcp_config_check
+            else None
+        )
         context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
@@ -1546,6 +1567,7 @@ def run_report(args: argparse.Namespace) -> int:
                     content_policy_arg,
                     *([content_scan_dir_arg] if content_policy_arg else []),
                     api_policy_arg,
+                    mcp_policy_arg,
                     digest_policy_arg,
                     workflow_policy_arg,
                 )
@@ -1583,6 +1605,11 @@ def run_report(args: argparse.Namespace) -> int:
                 **(
                     {"api": {"policy": {"path": safe_policy_path(api_policy_arg, root)}}}
                     if api_policy_arg
+                    else {}
+                ),
+                **(
+                    {"mcp_config": {"policy": {"path": safe_policy_path(mcp_policy_arg, root)}}}
+                    if mcp_policy_arg
                     else {}
                 ),
                 **(

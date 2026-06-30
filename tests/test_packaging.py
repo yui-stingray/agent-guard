@@ -102,7 +102,7 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
         "--mode registered --scan-dir . --json"
         in readme
     )
-    assert "agent-guard mcp check --root . --json" in readme
+    assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json" in readme
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in readme
     assert "agent-guard drift check --root . --profile recommended --schema-version v2 --json" in readme
     assert "--evidence-preset recommended" in readme
@@ -162,6 +162,7 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "URL/API endpoint references" in readme
     assert "MCP configuration metadata" in readme
     assert "--mcp-config-check" in readme
+    assert "--mcp-policy" in readme
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
     assert "not runtime vulnerability detection" in readme
@@ -208,6 +209,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert ".agent-guard/context-policy.yaml" in quickstart
     assert "agent-guard context inventory --root ." in quickstart
     assert "agent-guard mcp check --root ." in quickstart
+    assert "--policy .agent-guard/mcp-policy.yaml" in quickstart
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in quickstart
     assert "agent-guard init --root . --json" in quickstart
     assert "agent-guard context lock --root ." in quickstart
@@ -235,7 +237,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
     assert "status=0" in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
-    assert "agent-guard mcp check --root ." in actions
+    assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in actions
+    assert "mcp-policy" in actions
     assert "agent-guard drift check --root . --profile recommended --schema-version v2" in actions
     assert "--evidence-preset recommended" in actions
     assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in actions
@@ -392,14 +395,14 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
         if "python -m agent_guard.cli report " in line
     ]
     assert report_lines == [
-        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json"
+        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json"
     ]
     assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
         "--format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md"
         in self_dogfood
     )
-    assert "python -m agent_guard.cli mcp check --root . --json" in self_dogfood
+    assert "python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json" in self_dogfood
     assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
         "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
@@ -500,6 +503,7 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
         action_env["AGENT_GUARD_CONTEXT_POLICY"] = ".agent-guard/context-policy.yaml"
         action_env["AGENT_GUARD_PATH_POLICY"] = ".agent-guard/path-policy.yaml"
         action_env["AGENT_GUARD_CONTENT_POLICY"] = ".agent-guard/content-policy.yaml"
+        action_env["AGENT_GUARD_MCP_POLICY"] = ".agent-guard/mcp-policy.yaml"
         action_env["AGENT_GUARD_CONTENT_SCAN_DIR"] = "."
         action_env["AGENT_GUARD_WORKFLOW_POLICY"] = ".agent-guard/workflow-policy.yaml"
         action_env["AGENT_GUARD_DIGEST_POLICY"] = ".agent-guard/context-digest-policy.yaml"
@@ -670,7 +674,7 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
         root=REPO_ROOT,
         policy=load_digest_policy(SELF_DIGEST_POLICY),
     )
-    assert digest_checked == 5
+    assert digest_checked == 6
     assert digest_findings == []
     coverage = check_context_digest_coverage(
         root=REPO_ROOT,
@@ -693,7 +697,7 @@ def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
         root=REPO_ROOT,
         policy=load_workflow_policy(SELF_WORKFLOW_POLICY),
     )
-    assert workflow_checked == 23
+    assert workflow_checked == 24
     assert workflow_findings == []
 
 

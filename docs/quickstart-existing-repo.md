@@ -66,7 +66,7 @@ For a local first pass, run the same evidence surfaces directly:
 ```bash
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
-agent-guard mcp check --root . --json
+agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 ```
 
@@ -98,9 +98,9 @@ Create an evidence directory and write a sanitized report:
 ```bash
 mkdir -p .agent-guard/evidence
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
-agent-guard mcp check --root . --json
+agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
@@ -128,7 +128,10 @@ automatically; add those options only when the repository has reviewed policy
 files for them.
 
 The recommended report preset already fails on malformed committed MCP config
-files and deterministic risky MCP configuration metadata. Use
+files and deterministic risky MCP configuration metadata. Pass
+`--policy .agent-guard/mcp-policy.yaml` to `mcp check`, or
+`--mcp-policy .agent-guard/mcp-policy.yaml` to `report`, when the repository
+wants the enforced risk-label set to be an explicit reviewed policy. Use
 `--conformance-profile strict` only after reviewing v2 surface inventory output
 and deciding that the same labels should also appear as conformance findings.
 Both modes are static evidence over repository configuration; they do not

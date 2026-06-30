@@ -4,6 +4,12 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## Unreleased
+
+- Added an optional static MCP policy file for explicitly reviewing which
+  sanitized MCP risk labels are enforced, without executing MCP servers or
+  exposing raw policy parse content in error payloads.
+
 ## 0.1.18 - 2026-06-30
 
 - Kept raw per-scanner JSON out of generated CI artifacts by writing scanner

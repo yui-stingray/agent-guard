@@ -205,11 +205,11 @@ agent-guard context check --root . --policy .agent-guard/context-policy.yaml --j
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
-agent-guard mcp check --root . --json
+agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
@@ -230,7 +230,9 @@ Recommended split:
 - `mcp`: checks committed MCP configuration metadata for parse errors,
   unpinned or `@latest` package-manager server commands, filesystem-root
   references, unsafe URL schemes, broad authorization scopes, and inline
-  authorization values without running MCP servers.
+  authorization values without running MCP servers. A reviewed
+  `.agent-guard/mcp-policy.yaml` can make the enforced risk-label set explicit
+  while keeping the same static metadata boundary.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
 - `surface inventory v2`: records documented guard commands, evidence artifact
@@ -433,8 +435,11 @@ report evidence against a named adoption profile. `mcp check` and the
 recommended report preset fail on malformed committed MCP config files or risky
 MCP configuration metadata, such as unpinned package-manager commands or
 secret-shaped inline values, unsafe URL schemes, broad authorization scopes, or
-inline authorization values. The `strict` profile also turns the same v2 surface
-inventory labels into conformance findings. None of these modes execute MCP
+inline authorization values. Pass `--policy .agent-guard/mcp-policy.yaml` or
+`--mcp-policy .agent-guard/mcp-policy.yaml` when a repository wants that
+deterministic risk-label enforcement to be an explicit reviewed policy. The
+`strict` profile also turns the same v2 surface inventory labels into
+conformance findings. None of these modes execute MCP
 servers, inspect tool results, validate live OAuth flows, detect MCP
 tool-poisoning behavior, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
@@ -769,9 +774,9 @@ agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|
 agent-guard context check --root <repo> --policy <yaml> [--json]
 agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
-agent-guard mcp check --root <repo> [--json]
+agent-guard mcp check --root <repo> [--policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]

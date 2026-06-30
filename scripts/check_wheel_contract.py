@@ -308,10 +308,10 @@ def main() -> int:
             "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml\n"
             "agent-guard context check --root . --policy .agent-guard/context-policy.yaml\n"
             "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml\n"
-            "agent-guard mcp check --root .\n"
+            "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml\n"
             "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml\n"
             "agent-guard drift check --root .\n"
-            "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml\n",
+            "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml\n",
             encoding="utf-8",
         )
         drift_policy_dir = repo / ".agent-guard"
@@ -326,6 +326,15 @@ def main() -> int:
             "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
             encoding="utf-8",
         )
+        (drift_policy_dir / "mcp-policy.yaml").write_text(
+            "schema_version: agent-guard.mcp_policy.v1\n"
+            "policy:\n"
+            "  fail_on_parse_error: true\n"
+            "  forbidden_risky_patterns:\n"
+            "    - latest_package\n"
+            "    - unpinned_package\n",
+            encoding="utf-8",
+        )
         (drift_policy_dir / "workflow-policy.yaml").write_text(
             "schema_version: agent-guard.workflow_policy.v1\n"
             "required_files:\n"
@@ -335,6 +344,8 @@ def main() -> int:
             "    path: .agent-guard/path-policy.yaml\n"
             "  - id: content_policy\n"
             "    path: .agent-guard/content-policy.yaml\n"
+            "  - id: mcp_policy\n"
+            "    path: .agent-guard/mcp-policy.yaml\n"
             "  - id: workflow_policy\n"
             "    path: .agent-guard/workflow-policy.yaml\n",
             encoding="utf-8",

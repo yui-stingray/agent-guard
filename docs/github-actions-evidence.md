@@ -52,7 +52,9 @@ fails on malformed committed MCP config files or deterministic risky MCP
 configuration metadata. Set `conformance-profile: strict` only when the
 repository also wants those v2 surface inventory labels to appear as conformance
 findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
-as a runtime MCP tool-poisoning detector or live OAuth validator.
+as a runtime MCP tool-poisoning detector or live OAuth validator. The packaged
+action uses `.agent-guard/mcp-policy.yaml` when that file exists; set
+`mcp-policy` to another reviewed path when needed.
 
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
@@ -107,7 +109,7 @@ jobs:
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard mcp check --root . --json > "$raw_dir/mcp.json"
+          agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
@@ -116,7 +118,7 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md

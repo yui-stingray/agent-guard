@@ -66,7 +66,7 @@ jobs:
           )
           PY
           python -m agent_guard.cli digest check --root /tmp/agent-guard-digest-smoke --policy /tmp/agent-guard-digest-smoke/policy.yaml --json
-          python -m agent_guard.cli mcp check --root . --json
+          python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
           python -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
       - name: Run self-dogfood evidence gates
         run: |
@@ -78,11 +78,11 @@ jobs:
           python -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-self-context-lock.yaml --json
           python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
           python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
-          python -m agent_guard.cli mcp check --root . --json
+          python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
           python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
           python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           python -m agent_guard.cli drift check --root . --profile recommended --schema-version v2 --json
-          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
+          python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
           python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json --format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md
           python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
           python -m agent_guard.cli conformance check --root . --evidence .agent-guard/evidence/agent-guard-evidence-report.json --profile recommended --json

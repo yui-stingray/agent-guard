@@ -1,0 +1,17 @@
+# Where: .agent-guard/mcp-policy.yaml
+# What: self-dogfood static MCP configuration policy.
+# Why: keep MCP risk-label enforcement explicit without executing MCP servers.
+
+schema_version: agent-guard.mcp_policy.v1
+
+policy:
+  fail_on_parse_error: true
+  forbidden_risky_patterns:
+    - broad_authorization_scope
+    - filesystem_root_reference
+    - inline_authorization_value
+    - inline_env_value
+    - latest_package
+    - secret_shaped_inline_value
+    - unsafe_url_scheme
+    - unpinned_package

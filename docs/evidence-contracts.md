@@ -85,9 +85,9 @@ agent-guard init --root . --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
-agent-guard mcp check --root . --json
+agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
@@ -129,6 +129,10 @@ The JSON report is a compact statement of what `agent-guard` checked:
   local absolute paths. Static authorization, scope, and URL-scheme labels are
   review evidence over committed configuration only; they do not prove that a
   live OAuth flow is correctly implemented or that an MCP server is safe to run.
+  When `--policy` or `--mcp-policy` is supplied, the report may include the
+  sanitized policy path and known MCP risk-label names enforced by that reviewed
+  YAML. It uses the policy only to decide which deterministic risk labels are
+  enforced as findings.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
   config files and risky MCP configuration metadata are additionally treated as
