@@ -50,7 +50,7 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - id: agent-guard
         uses: yui-stingray/agent-guard@v0.1.17
       - uses: actions/upload-artifact@v7
@@ -132,7 +132,8 @@ files and deterministic risky MCP configuration metadata. Use
 `--conformance-profile strict` only after reviewing v2 surface inventory output
 and deciding that the same labels should also appear as conformance findings.
 Both modes are static evidence over repository configuration; they do not
-execute MCP servers, inspect MCP tool results, or act as an MCP runtime security validator.
+execute MCP servers, inspect MCP tool results, validate live OAuth flows, detect
+MCP tool-poisoning behavior, or act as an MCP runtime security validator.
 
 For pull requests that can change guard policy or workflow files, fetch the
 base branch in CI and add `--base-ref <ref>` to `drift check` or

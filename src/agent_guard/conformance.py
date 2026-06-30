@@ -14,6 +14,12 @@ from .profiles import profile_requirements, normalize_profile_name
 CONFORMANCE_SCHEMA_VERSION = "agent-guard.conformance.v1"
 
 
+def surface_count_value(value: object) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError("surface summary counts must be non-negative integers")
+    return value
+
+
 def evidence_gate_map(evidence_coverage: dict[str, object]) -> dict[str, dict[str, object]]:
     gates = evidence_coverage.get("gates", [])
     if not isinstance(gates, list):
@@ -33,7 +39,7 @@ def surface_counts(surface_inventory: dict[str, object]) -> dict[str, int]:
     if isinstance(summary, dict):
         by_surface = summary.get("by_surface", {})
         if isinstance(by_surface, dict):
-            return {str(key): int(value) for key, value in by_surface.items()}
+            return {str(key): surface_count_value(value) for key, value in by_surface.items()}
     counts: dict[str, int] = {}
     surfaces = surface_inventory.get("surfaces", [])
     if isinstance(surfaces, list):

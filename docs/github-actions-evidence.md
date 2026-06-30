@@ -22,7 +22,7 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - id: agent-guard
         uses: yui-stingray/agent-guard@v0.1.17
         with:
@@ -52,13 +52,13 @@ fails on malformed committed MCP config files or deterministic risky MCP
 configuration metadata. Set `conformance-profile: strict` only when the
 repository also wants those v2 surface inventory labels to appear as conformance
 findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
-as a runtime MCP tool-poisoning detector.
+as a runtime MCP tool-poisoning detector or live OAuth validator.
 
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
 
 ```yaml
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: agent-guard
@@ -86,7 +86,7 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -97,7 +97,9 @@ jobs:
           set +e
           status=0
           mkdir -p .agent-guard/evidence
-          raw_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/agent-guard-raw.XXXXXX")"
+          raw_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$raw_parent"
+          raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
           trap 'rm -rf "$raw_dir"' EXIT
           agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
           code=$?

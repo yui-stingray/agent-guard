@@ -125,6 +125,9 @@ def test_readme_documents_agent_policy_companion_boundary() -> None:
     assert "| Runtime admission | `agent-policy` |" in readme
     assert "| Static repository gate | `agent-guard` |" in readme
     assert "It does **not** route models, score model quality, run LLM review" in readme
+    assert "does not execute MCP servers, validate" in readme
+    assert "live OAuth flows" in readme
+    assert "replace dedicated secret scanners" in readme
 
 
 def test_readme_documents_report_evidence_contract() -> None:
@@ -162,7 +165,11 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
     assert "not runtime vulnerability detection" in readme
+    assert "live OAuth validation" in readme
+    assert "SLSA/provenance verification" in readme
     assert "MCP runtime security validator" in readme
+    assert "they do not prove" in readme
+    assert "live OAuth flow is correctly implemented" in readme
 
 
 def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
@@ -184,7 +191,13 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "upload raw scanner JSON as a public artifact" in docs
     assert "owasp_agentic_risk_themes" in docs
     assert "runtime prompt/tool poisoning detection" in docs
+    assert "live OAuth validation" in docs
+    assert "generic secret scanning" in docs
+    assert "SLSA/provenance verification" in docs
     assert "MCP security validation" in docs
+    assert "live OAuth validator" in docs
+    assert "they do not prove" in docs
+    assert "live OAuth flow is correctly implemented" in docs
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
@@ -212,6 +225,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "MCP server names" in quickstart
     assert "MCP runtime" in quickstart
     assert "MCP tool-poisoning detector" in quickstart
+    assert "validate live OAuth flows" in quickstart
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
@@ -237,6 +251,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "does not post pull request comments" in actions
     assert "raw context text" in actions
     assert "OWASP risk-theme labels" in actions
+    assert "live OAuth validator" in actions
     assert "raw snippets" in actions
     assert "workflow logs" in actions
     assert "Raw" in actions
@@ -585,7 +600,9 @@ def test_positioning_doc_keeps_public_scope_narrow() -> None:
     assert "Static evidence contracts for AI-agent-maintained repositories." in docs
     assert "does not route" in docs
     assert "run LLM review" in docs
+    assert "validate live OAuth flows" in docs
     assert "replace dedicated secret scanners" in docs
+    assert "review metadata" in docs
     assert "related independent work" in docs
 
 
@@ -598,6 +615,8 @@ def test_release_criteria_keep_patch_releases_bounded() -> None:
     assert "wheel contract check" in docs
     assert "LLM review" in docs
     assert "model routing" in docs
+    assert "live OAuth validation" in docs
+    assert "security/compliance certification" in docs
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

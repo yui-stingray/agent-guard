@@ -49,11 +49,14 @@ the same files.
 Treat this as provenance and integrity evidence only. A successful attestation
 verification proves that an artifact matches a signed statement from the named
 GitHub workflow identity and tag. It does not prove code correctness,
-maintainer approval, dependency safety, branch protection, or secret absence.
+maintainer approval, dependency safety, branch protection, secret absence, SLSA
+level, vulnerability absence, or security/compliance certification.
 
 ## Non-Goals For Releases
 
 Do not use a release as a reason to expand into LLM review, issue triage,
 model routing, MoA orchestration, broad credential scanning, or a general
-governance framework. Those tools can consume `agent-guard` evidence, but they
-should remain separate layers.
+governance framework. Do not use release pressure to add runtime MCP execution,
+live OAuth validation, MCP tool-poisoning detection, or an MCP security
+validator. Those tools can consume `agent-guard` evidence, but they should
+remain separate layers.

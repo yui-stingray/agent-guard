@@ -169,7 +169,7 @@ jobs:
   evidence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -180,25 +180,29 @@ jobs:
           set +e
           status=0
           mkdir -p .agent-guard/evidence
-          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+          raw_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$raw_parent"
+          raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
+          trap 'rm -rf "$raw_dir"' EXIT
+          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
+          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json > "$raw_dir/path.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
+          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json > "$raw_dir/content.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard mcp check --root . --json
+          agent-guard mcp check --root . --json > "$raw_dir/mcp.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard drift check --root . --profile recommended --schema-version v2 --json
+          agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
@@ -210,10 +214,10 @@ jobs:
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
+          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
@@ -235,6 +239,8 @@ NEXT_STEPS = [
     "Run `agent-guard init --write` only after the printed plan is acceptable.",
     "Document the guard commands in README.md before expecting `agent-guard drift check` to pass cleanly.",
     "After context files are reviewed, run `agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml` if digest pinning is required.",
+    "Treat raw per-scanner JSON as local or CI-internal; publish only the sanitized report, render-report, or evidence-pack outputs after review.",
+    "Do not treat MCP evidence as runtime MCP validation, live OAuth validation, or MCP tool-poisoning detection.",
     "Commit generated evidence only when it is deliberately sanitized sample data; otherwise upload it as a CI artifact.",
 ]
 

@@ -35,7 +35,10 @@ The current extracted scanners are intentionally narrow:
 - `workflow`: verify that declared CI guard commands and required policy files remain present
 - return stable JSON or text output for local hooks and CI
 
-It does **not** route models, score model quality, run LLM review, manage approvals, logs, state, or UI. Those belong in higher layers.
+It does **not** route models, score model quality, run LLM review, manage
+approvals, logs, state, or UI. It also does not execute MCP servers, validate
+live OAuth flows, or replace dedicated secret scanners. Those belong in higher
+layers.
 
 ## Agent safety toolkit
 
@@ -121,7 +124,7 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: yui-stingray/agent-guard@v0.1.17
         with:
           conformance-profile: recommended
@@ -409,12 +412,16 @@ transport, command basename, package-manager pin status, remote host, env var
 names, filesystem-root presence, and deterministic risk labels for static
 authorization, scope, URL-scheme, package, path, and inline-value review; it
 does not emit raw args, env values, authorization values, scope strings, URLs,
-instruction bodies, or hook bodies. Findings and
-surface risk labels may also include `owasp_agentic_risk_themes`, a static
+instruction bodies, or hook bodies. Static authorization, scope, and URL-scheme
+labels are review evidence over committed configuration only; they do not prove
+that a live OAuth flow is correctly implemented or that an MCP server is safe to
+execute. Findings and surface risk labels may also include
+`owasp_agentic_risk_themes`, a static
 crosswalk to OWASP Agentic Top 10 risk themes. These labels are review context
 for deterministic evidence; they are not runtime vulnerability detection,
-security compliance, or proof that a category is exploitable. Evidence
-coverage records which gates were enabled, missing, clean, or failing without
+live OAuth validation, SLSA/provenance verification, security compliance, or
+proof that a category is exploitable. Evidence coverage records which gates
+were enabled, missing, clean, or failing without
 making missing optional gates a failure. With `--evidence-preset recommended`,
 unset report options expand to
 the current recommended static evidence bundle: path, content, MCP config,
@@ -428,7 +435,8 @@ MCP configuration metadata, such as unpinned package-manager commands or
 secret-shaped inline values, unsafe URL schemes, broad authorization scopes, or
 inline authorization values. The `strict` profile also turns the same v2 surface
 inventory labels into conformance findings. None of these modes execute MCP
-servers, inspect tool results, validate live OAuth flows, or act as an MCP runtime security validator. With
+servers, inspect tool results, validate live OAuth flows, detect MCP
+tool-poisoning behavior, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without

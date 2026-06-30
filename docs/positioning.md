@@ -11,8 +11,10 @@ The short description is:
 
 The project deliberately stays below runtime agent platforms. It does not route
 models, run LLM review, triage issues, manage approvals, provide an execution
-UI, execute MCP servers or skill code, or detect MCP tool poisoning. It also
-does not replace dedicated secret scanners.
+UI, execute MCP servers or skill code, validate live OAuth flows, or detect MCP
+tool poisoning. It also does not replace dedicated secret scanners.
+Its labels and crosswalks are review metadata, not runtime validation,
+vulnerability proof, SLSA/provenance verification, or compliance attestation.
 Those systems can consume `agent-guard` JSON evidence, but they should not move
 into this package.
 
@@ -30,7 +32,7 @@ verification requirements.
 - scan agent context files for unsafe instruction drift;
 - inventory agent-facing repository surfaces without emitting raw content;
 - collect URL/API endpoint pattern evidence without acting as a live API
-  client or API catalog;
+  client, OAuth validator, or API catalog;
 - pin reviewed context and policy files by digest;
 - check that CI still runs the declared guard commands;
 - emit a sanitized report and evidence-pack manifest that reviewers can inspect.

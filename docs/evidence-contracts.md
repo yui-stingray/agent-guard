@@ -54,10 +54,11 @@ snippets, matched URLs, configured regex patterns, policy details, server
 metadata, or other diagnostics. Do not upload raw scanner JSON as a public artifact
 unless a maintainer has reviewed that exact output.
 
-OWASP Agentic Top 10 labels in public artifacts are static risk-theme
-crosswalks attached to deterministic findings. They are not vulnerability
-proofs, runtime prompt/tool poisoning detection, MCP security validation, or
-compliance claims.
+OWASP Agentic Top 10 labels, MCP risk labels, and other public crosswalks are
+static risk-theme metadata attached to deterministic repository findings. They
+are not vulnerability proofs, runtime prompt/tool poisoning detection, runtime
+MCP security validation, live OAuth validation, generic secret scanning,
+SLSA/provenance verification, or compliance attestation.
 
 ## Minimal Adoption Path
 
@@ -125,7 +126,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - Optional `mcp_config` records whether committed MCP configuration metadata had
   parse errors or deterministic risk labels. It omits raw args, env values,
   authorization values, scope strings, URLs, secrets, instruction bodies, and
-  local absolute paths.
+  local absolute paths. Static authorization, scope, and URL-scheme labels are
+  review evidence over committed configuration only; they do not prove that a
+  live OAuth flow is correctly implemented or that an MCP server is safe to run.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
   config files and risky MCP configuration metadata are additionally treated as
@@ -173,6 +176,7 @@ additional repository permissions.
 - a broad replacement for dedicated credential scanners;
 - an agent execution log UI;
 - a runtime prompt-injection, MCP tool-poisoning, or memory-poisoning detector;
+- a live OAuth validator;
 - an MCP server security validator or compliance attestation tool;
 - a large governance framework or semantic proof system.
 
