@@ -4,6 +4,21 @@ Where: `CHANGELOG.md`
 What: release notes for published `yui-agent-guard` versions.  
 Why: keep static guard releases auditable while the package is still alpha.
 
+## 0.1.18 - 2026-06-30
+
+- Kept raw per-scanner JSON out of generated CI artifacts by writing scanner
+  diagnostics to temporary runner storage while publishing only sanitized
+  report, conformance, SARIF, and evidence-pack outputs.
+- Made profile conformance fail closed on malformed surface inventory counts
+  without exposing local report paths in the CLI error envelope.
+- Updated starter, documentation, and repository workflows to the current
+  `actions/checkout@v7` major while keeping uploadable evidence read-only and
+  review-first.
+- Clarified that static MCP labels and risk-theme crosswalks are repository
+  review evidence, not runtime MCP execution, live OAuth validation, MCP
+  tool-poisoning detection, generic secret scanning, SLSA/provenance
+  verification, or compliance attestation.
+
 ## 0.1.17 - 2026-06-30
 
 - Extended the deterministic MCP config gate with sanitized static labels for

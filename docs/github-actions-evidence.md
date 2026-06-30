@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.17
+        uses: yui-stingray/agent-guard@v0.1.18
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -62,7 +62,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.17
+        uses: yui-stingray/agent-guard@v0.1.18
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -159,7 +159,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.17
+  - uses: yui-stingray/agent-guard@v0.1.18
     id: agent-guard
   - name: Upload SARIF
     if: always()
