@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.18` alpha. The current MVP ships seven guard scanners:
+**Status**: `0.1.19` alpha. The current MVP ships seven guard scanners:
 `api`, `content`, `context`, `mcp`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: yui-stingray/agent-guard@v0.1.18
+      - uses: yui-stingray/agent-guard@v0.1.19
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -163,7 +163,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.18"},
+  "tool": {"name": "agent-guard", "version": "0.1.19"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -264,7 +264,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.18
+    rev: v0.1.19
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -394,8 +394,8 @@ agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-rep
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --format markdown
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --drift-base-ref origin/main --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --path-policy .agent-guard/path-policy.yaml --content-policy .agent-guard/content-policy.yaml --content-scan-dir . --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --workflow-policy .agent-guard/workflow-policy.yaml --drift-check --drift-schema-version v2 --drift-base-ref origin/main --surface-inventory-version v2 --conformance-profile recommended --evidence-pack-manifest --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
 Use `agent-guard render-report` in CI when Markdown, SARIF, or GitHub
@@ -435,10 +435,10 @@ report evidence against a named adoption profile. `mcp check` and the
 recommended report preset fail on malformed committed MCP config files or risky
 MCP configuration metadata, such as unpinned package-manager commands or
 secret-shaped inline values, unsafe URL schemes, broad authorization scopes, or
-inline authorization values. Pass `--policy .agent-guard/mcp-policy.yaml` or
-`--mcp-policy .agent-guard/mcp-policy.yaml` when a repository wants that
-deterministic risk-label enforcement to be an explicit reviewed policy. The
-`strict` profile also turns the same v2 surface inventory labels into
+inline authorization values. For recommended and strict evidence, keep the
+reviewed risk-label policy at `.agent-guard/mcp-policy.yaml`; external MCP
+policy files can be used for scanner experiments but do not satisfy conformance.
+The `strict` profile also turns the same v2 surface inventory labels into
 conformance findings. None of these modes execute MCP
 servers, inspect tool results, validate live OAuth flows, detect MCP
 tool-poisoning behavior, or act as an MCP runtime security validator. With
@@ -814,7 +814,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.18"
+version = "0.1.19"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -822,14 +822,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.18-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.1.19-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.18
-gh attestation verify dist-verify/yui_agent_guard-0.1.18.tar.gz \
+  --source-ref refs/tags/v0.1.19
+gh attestation verify dist-verify/yui_agent_guard-0.1.19.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.18
+  --source-ref refs/tags/v0.1.19
 ```
 
 ## License

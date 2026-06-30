@@ -6,9 +6,23 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-- Added an optional static MCP policy file for explicitly reviewing which
-  sanitized MCP risk labels are enforced, without executing MCP servers or
-  exposing raw policy parse content in error payloads.
+- No changes yet.
+
+## 0.1.19 - 2026-06-30
+
+- Tightened `0.1.x` alpha recommended evidence so `report --evidence-preset
+  recommended` expects the reviewed repo-local `.agent-guard/mcp-policy.yaml`
+  by default and reports a sanitized violation when it is missing.
+- Resolved MCP policy paths for `mcp check --policy` and `report --mcp-policy`
+  relative to `--root`, while displaying repo-external policy files as
+  `<external-policy>` in public payloads.
+- Made recommended and strict conformance require the repo-local MCP policy and
+  fail when its `forbidden_risky_patterns` omits any default deterministic MCP
+  risk labels, while leaving direct `mcp check --policy` subset experiments
+  supported.
+- Preserved the static evidence boundary: no runtime MCP execution, live OAuth
+  validation, generic secret scanning, LLM review, or autonomous policy
+  execution was added.
 
 ## 0.1.18 - 2026-06-30
 

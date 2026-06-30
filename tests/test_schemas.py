@@ -208,8 +208,15 @@ def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
 
 
 def test_report_schema_validates_v2_report_cli_payload(tmp_path: Path) -> None:
-    policy = tmp_path / "context_policy.yaml"
-    policy.write_text("{}\n", encoding="utf-8")
+    policy = tmp_path / ".agent-guard" / "context-policy.yaml"
+    write(policy, "{}\n")
+    write(
+        tmp_path / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n",
+    )
     write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
 
     result = run_cli(

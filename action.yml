@@ -29,7 +29,7 @@ inputs:
     required: false
     default: ".agent-guard/content-policy.yaml"
   mcp-policy:
-    description: Optional MCP policy path. It is used only when the file exists.
+    description: Reviewed MCP policy path required for recommended evidence.
     required: false
     default: ".agent-guard/mcp-policy.yaml"
   content-scan-dir:
@@ -223,8 +223,10 @@ runs:
         path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"
         content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"
         mcp_policy=""
+        mcp_policy_arg=""
         if [ -n "$AGENT_GUARD_MCP_POLICY" ]; then
           mcp_policy="$(policy_path "$AGENT_GUARD_MCP_POLICY")"
+          mcp_policy_arg="$AGENT_GUARD_MCP_POLICY"
         fi
         content_scan_dir="$AGENT_GUARD_CONTENT_SCAN_DIR"
         workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"
@@ -246,7 +248,7 @@ runs:
 
         mcp_args=(--root "$root")
         if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
-          mcp_args+=(--policy "$mcp_policy")
+          mcp_args+=(--policy "$mcp_policy_arg")
         fi
         agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
         record_status "$?"
@@ -274,7 +276,7 @@ runs:
           report_args+=(--content-policy "$content_policy" --content-scan-dir "$content_scan_dir")
         fi
         if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
-          report_args+=(--mcp-policy "$mcp_policy")
+          report_args+=(--mcp-policy "$mcp_policy_arg")
         fi
         if path_exists "$workflow_policy"; then
           report_args+=(--workflow-policy "$workflow_policy")

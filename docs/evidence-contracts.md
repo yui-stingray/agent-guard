@@ -123,20 +123,20 @@ The JSON report is a compact statement of what `agent-guard` checked:
   to.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
-- Optional `mcp_config` records whether committed MCP configuration metadata had
+- `mcp_config` records whether committed MCP configuration metadata had
   parse errors or deterministic risk labels. It omits raw args, env values,
   authorization values, scope strings, URLs, secrets, instruction bodies, and
   local absolute paths. Static authorization, scope, and URL-scheme labels are
   review evidence over committed configuration only; they do not prove that a
   live OAuth flow is correctly implemented or that an MCP server is safe to run.
-  When `--policy` or `--mcp-policy` is supplied, the report may include the
-  sanitized policy path and known MCP risk-label names enforced by that reviewed
-  YAML. It uses the policy only to decide which deterministic risk labels are
-  enforced as findings.
+  Recommended and strict evidence require the reviewed repo-local policy at
+  `.agent-guard/mcp-policy.yaml`. External MCP policy files can drive scanner
+  experiments, but conformance reports display them as `<external-policy>` and
+  do not treat them as reviewed repository evidence.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
-  `minimal`, `recommended`, or `strict` profile. In `strict`, malformed MCP
-  config files and risky MCP configuration metadata are additionally treated as
-  deterministic conformance findings.
+  `minimal`, `recommended`, or `strict` profile. Recommended and strict
+  conformance also fail when the reviewed MCP policy omits the default static
+  MCP risk-label set; broader semantic policy weakening remains out of scope.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
   `agent-policy-audit-event`.

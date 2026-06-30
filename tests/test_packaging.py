@@ -5,6 +5,7 @@ Why: keep version drift and typed-package regressions out of the release path.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -530,6 +531,25 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     assert "report-json<<" in output_text
     assert "consumer/.agent-guard/evidence/agent-guard-report.json" in output_text
     assert "report-json=consumer/.agent-guard/evidence/agent-guard-report.json" not in output_text
+
+    mcp_policy_path = consumer / ".agent-guard" / "mcp-policy.yaml"
+    mcp_policy_text = mcp_policy_path.read_text(encoding="utf-8")
+    mcp_policy_path.unlink()
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-missing-mcp-policy.txt")
+    missing_mcp_policy_result = run_action(github_annotations="false")
+    assert missing_mcp_policy_result.returncode == 1
+    missing_mcp_policy_output = f"{missing_mcp_policy_result.stdout}\n{missing_mcp_policy_result.stderr}"
+    assert "policy file not found" not in missing_mcp_policy_output
+    assert str(tmp_path) not in missing_mcp_policy_output
+    missing_mcp_policy_payload = json.loads(
+        (consumer / ".agent-guard" / "evidence" / "agent-guard-report.json").read_text(encoding="utf-8")
+    )
+    assert missing_mcp_policy_payload["mcp_config"]["policy"] == {
+        "path": ".agent-guard/mcp-policy.yaml",
+        "required": True,
+    }
+    assert missing_mcp_policy_payload["mcp_config"]["findings"][0]["rule_id"] == "mcp_policy_missing"
+    mcp_policy_path.write_text(mcp_policy_text, encoding="utf-8")
 
     root_marker = tmp_path / "root-injection-marker"
     malicious_root = f"$(touch {root_marker})"

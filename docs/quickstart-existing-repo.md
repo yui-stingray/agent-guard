@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.18
+        uses: yui-stingray/agent-guard@v0.1.19
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -130,8 +130,10 @@ files for them.
 The recommended report preset already fails on malformed committed MCP config
 files and deterministic risky MCP configuration metadata. Pass
 `--policy .agent-guard/mcp-policy.yaml` to `mcp check`, or
-`--mcp-policy .agent-guard/mcp-policy.yaml` to `report`, when the repository
-wants the enforced risk-label set to be an explicit reviewed policy. Use
+`--mcp-policy .agent-guard/mcp-policy.yaml` to `report`; recommended and strict
+evidence require that reviewed repo-local policy. External policy files can be
+used for scanner experiments, but they are reported as `<external-policy>` and
+do not satisfy conformance. Use
 `--conformance-profile strict` only after reviewing v2 surface inventory output
 and deciding that the same labels should also appear as conformance findings.
 Both modes are static evidence over repository configuration; they do not

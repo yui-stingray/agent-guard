@@ -331,7 +331,13 @@ def main() -> int:
             "policy:\n"
             "  fail_on_parse_error: true\n"
             "  forbidden_risky_patterns:\n"
+            "    - broad_authorization_scope\n"
+            "    - filesystem_root_reference\n"
+            "    - inline_authorization_value\n"
+            "    - inline_env_value\n"
             "    - latest_package\n"
+            "    - secret_shaped_inline_value\n"
+            "    - unsafe_url_scheme\n"
             "    - unpinned_package\n",
             encoding="utf-8",
         )
@@ -503,7 +509,23 @@ def main() -> int:
                             {"gate": "surface_inventory", "status": "ok", "checked_count": 1, "finding_count": 0},
                         ]
                     },
-                    "surface_inventory": {"summary": {"by_surface": {"agent_context": 1}}},
+                    "surface_inventory": {
+                        "summary": {"by_surface": {"agent_context": 1, "policy_file": 2}},
+                        "surfaces": [
+                            {
+                                "surface": "policy_file",
+                                "path": ".agent-guard/context-policy.yaml",
+                                "kind": "context_policy",
+                                "status": "present",
+                            },
+                            {
+                                "surface": "policy_file",
+                                "path": ".agent-guard/workflow-policy.yaml",
+                                "kind": "workflow_policy",
+                                "status": "present",
+                            },
+                        ],
+                    },
                 }
             ),
             encoding="utf-8",

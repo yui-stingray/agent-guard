@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .mcp_guard import mcp_config_findings_from_surfaces
+from .mcp_guard import DEFAULT_FORBIDDEN_RISKY_PATTERNS, mcp_config_findings_from_surfaces
 from .profiles import profile_requirements, normalize_profile_name
 
 
@@ -50,6 +50,22 @@ def surface_counts(surface_inventory: dict[str, object]) -> dict[str, int]:
     return counts
 
 
+def policy_file_paths(surface_inventory: dict[str, object]) -> set[str]:
+    paths: set[str] = set()
+    surfaces = surface_inventory.get("surfaces", [])
+    if not isinstance(surfaces, list):
+        return paths
+    for item in surfaces:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("surface") != "policy_file":
+            continue
+        path = str(item.get("path", "")).strip()
+        if path:
+            paths.add(path)
+    return paths
+
+
 def artifact_roles(report_payload: Mapping[str, object]) -> set[str]:
     manifest = report_payload.get("evidence_pack_manifest", {})
     if not isinstance(manifest, Mapping):
@@ -73,6 +89,16 @@ def strict_mcp_risk_findings(surface_inventory: dict[str, object]) -> tuple[list
     )
 
 
+def mcp_policy_summary(report_payload: Mapping[str, object]) -> Mapping[str, object]:
+    mcp_config = report_payload.get("mcp_config", {})
+    if not isinstance(mcp_config, Mapping):
+        return {}
+    policy = mcp_config.get("policy", {})
+    if not isinstance(policy, Mapping):
+        return {}
+    return policy
+
+
 def build_conformance_report(
     *,
     profile: str,
@@ -84,6 +110,7 @@ def build_conformance_report(
     requirements = profile_requirements(profile_name)
     gates = evidence_gate_map(evidence_coverage)
     surfaces = surface_counts(surface_inventory)
+    policies = policy_file_paths(surface_inventory)
     payload = report_payload or {}
     roles = artifact_roles(payload)
     findings: list[dict[str, object]] = []
@@ -128,6 +155,21 @@ def build_conformance_report(
                 "requirement_id": surface_name,
                 "message": "required agent surface metadata is missing",
                 "reason": "missing_required_surface",
+            }
+        )
+
+    for policy_file in requirements["policy_files"]:
+        checked_count += 1
+        policy_path = str(policy_file)
+        if policy_path in policies:
+            continue
+        findings.append(
+            {
+                "rule_id": "required_policy_file_missing",
+                "severity": "high",
+                "requirement_id": policy_path,
+                "message": "required reviewed policy file metadata is missing",
+                "reason": "missing_required_policy_file",
             }
         )
 
@@ -178,6 +220,44 @@ def build_conformance_report(
         checked_count += mcp_checked_count
         findings.extend(mcp_findings)
 
+    if ".agent-guard/mcp-policy.yaml" in requirements["policy_files"]:
+        checked_count += 1
+        policy_summary = mcp_policy_summary(payload)
+        policy_path = str(policy_summary.get("path", "")).strip()
+        if policy_path != ".agent-guard/mcp-policy.yaml":
+            findings.append(
+                {
+                    "rule_id": "required_mcp_policy_not_reviewed",
+                    "severity": "high",
+                    "requirement_id": ".agent-guard/mcp-policy.yaml",
+                    "message": "recommended and strict evidence require the reviewed repository MCP policy",
+                    "reason": "external_or_missing_mcp_policy",
+                    **({"policy_path": "<external-policy>"} if policy_path == "<external-policy>" else {}),
+                }
+            )
+        raw_patterns = policy_summary.get("forbidden_risky_patterns", [])
+        pattern_set = (
+            {
+                str(value).strip()
+                for value in raw_patterns
+                if isinstance(value, str) and str(value).strip()
+            }
+            if isinstance(raw_patterns, list)
+            else set()
+        )
+        missing_patterns = sorted(DEFAULT_FORBIDDEN_RISKY_PATTERNS - pattern_set)
+        if missing_patterns:
+            findings.append(
+                {
+                    "rule_id": "mcp_policy_weakened",
+                    "severity": "high",
+                    "requirement_id": "mcp_config_policy_default_patterns",
+                    "message": "reviewed MCP policy omits required default risk labels",
+                    "reason": "missing_default_risky_patterns",
+                    "missing_patterns": missing_patterns,
+                }
+            )
+
     return {
         "schema_version": CONFORMANCE_SCHEMA_VERSION,
         "profile": profile_name,
@@ -186,6 +266,7 @@ def build_conformance_report(
         "finding_count": len(findings),
         "required_gates": list(requirements["gates"]),
         "required_surfaces": list(requirements["surfaces"]),
+        "required_policy_files": list(requirements["policy_files"]),
         "required_report_sections": list(requirements["report_sections"]),
         "required_artifact_roles": list(requirements["artifact_roles"]),
         "mcp_config_checked_count": mcp_checked_count,

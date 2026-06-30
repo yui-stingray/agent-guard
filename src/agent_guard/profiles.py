@@ -37,6 +37,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             ".agent-guard/context-policy.yaml",
             ".agent-guard/path-policy.yaml",
             ".agent-guard/content-policy.yaml",
+            ".agent-guard/mcp-policy.yaml",
             ".agent-guard/workflow-policy.yaml",
         ),
         "readme_commands": (
@@ -52,7 +53,10 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
                 "readme_workflow_guard",
                 "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml",
             ),
-            ("readme_mcp_config_guard", "agent-guard mcp check --root ."),
+            (
+                "readme_mcp_config_guard",
+                "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml",
+            ),
             ("readme_drift_guard", "agent-guard drift check --root ."),
             (
                 "readme_report_with_drift",
@@ -98,6 +102,7 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
             ".agent-guard/path-policy.yaml",
             ".agent-guard/content-policy.yaml",
             ".agent-guard/context-digest-policy.yaml",
+            ".agent-guard/mcp-policy.yaml",
             ".agent-guard/workflow-policy.yaml",
         ),
         "readme_commands": (
@@ -121,7 +126,10 @@ PROFILE_REQUIREMENTS: dict[str, dict[str, tuple[Any, ...]]] = {
                 "readme_workflow_guard",
                 "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml",
             ),
-            ("readme_mcp_config_guard", "agent-guard mcp check --root ."),
+            (
+                "readme_mcp_config_guard",
+                "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml",
+            ),
             ("readme_drift_guard", "agent-guard drift check --root ."),
             (
                 "readme_report_with_drift",

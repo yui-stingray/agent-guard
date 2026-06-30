@@ -9,7 +9,7 @@ import argparse
 import json
 import re
 from importlib import metadata
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from typing import Iterable
 
 from . import __version__ as PACKAGE_VERSION
@@ -59,20 +59,30 @@ def tool_version() -> str:
 
 
 def safe_policy_path(raw_policy: str, root: Path) -> str:
-    raw_text = str(raw_policy)
+    raw_text = str(raw_policy).strip()
+    if not raw_text:
+        return ""
     if is_windows_absolute_path(raw_text):
-        return PureWindowsPath(raw_text).name or "<external-policy>"
+        return "<external-policy>"
 
-    raw = Path(str(raw_policy))
-    if not raw.is_absolute():
-        return raw.as_posix()
+    return safe_resolved_policy_path(resolve_policy_arg(raw_text, root), root)
 
+
+def resolve_policy_arg(raw_policy: str, root: Path) -> Path:
+    raw_text = str(raw_policy).strip()
+    raw = Path(raw_text)
+    if raw.is_absolute() or is_windows_absolute_path(raw_text):
+        return raw.resolve(strict=False)
+    return (root / raw).resolve(strict=False)
+
+
+def safe_resolved_policy_path(policy_path: Path, root: Path) -> str:
     resolved_root = root.resolve()
-    resolved_policy = raw.resolve(strict=False)
+    resolved_policy = policy_path.resolve(strict=False)
     try:
         return resolved_policy.relative_to(resolved_root).as_posix()
     except ValueError:
-        return resolved_policy.name or "<external-policy>"
+        return "<external-policy>"
 
 
 def is_windows_absolute_path(raw_path: str) -> bool:
@@ -106,7 +116,7 @@ def scrub_error_message(
     extra_paths: Iterable[str] = (),
 ) -> str:
     safe_policy = safe_policy_path(policy_arg, root)
-    policy_abs = Path(str(policy_arg)).resolve(strict=False)
+    policy_abs = resolve_policy_arg(policy_arg, root)
     scrubbed = message
 
     for raw_path in (policy_arg, str(policy_abs), *extra_paths):
@@ -519,12 +529,35 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def build_missing_mcp_policy_report(*, root: Path, policy_path: str) -> dict[str, object]:
+    report = build_mcp_config_report(root=root, policy=None)
+    existing_findings = report.get("findings", [])
+    finding_items = existing_findings if isinstance(existing_findings, list) else []
+    missing_policy = annotate_finding(
+        "mcp_config",
+        {
+            "rule_id": "mcp_policy_missing",
+            "severity": "high",
+            "message": "reviewed MCP policy is required for recommended evidence",
+            "reason": "missing_required_policy",
+            "surface": "policy_file",
+            "path": policy_path,
+        },
+    )
+    report["findings"] = [missing_policy, *[item for item in finding_items if isinstance(item, dict)]]
+    report["finding_count"] = len(report["findings"])
+    report["status"] = "violation"
+    report["policy"] = {"path": policy_path, "required": True}
+    return report
+
+
 def run_mcp_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_arg = str(args.policy).strip()
-    policy_path = safe_policy_path(policy_arg, root) if policy_arg else ""
+    policy_abs = resolve_policy_arg(policy_arg, root) if policy_arg else None
+    policy_path = safe_resolved_policy_path(policy_abs, root) if policy_abs else ""
     try:
-        policy = load_mcp_policy(Path(policy_arg).resolve()) if policy_arg else None
+        policy = load_mcp_policy(policy_abs) if policy_abs else None
         report = build_mcp_config_report(root=root, policy=policy, policy_path=policy_path)
     except Exception as exc:
         payload = result_payload(
@@ -754,6 +787,8 @@ def apply_report_evidence_preset(args: argparse.Namespace) -> None:
     if not str(args.surface_inventory_version).strip():
         args.surface_inventory_version = "v2"
     args.mcp_config_check = True
+    if not str(args.mcp_policy).strip():
+        args.mcp_policy = ".agent-guard/mcp-policy.yaml"
     if not str(args.conformance_profile).strip():
         args.conformance_profile = RECOMMENDED_EVIDENCE_PRESET
     args.evidence_pack_manifest = True
@@ -1439,6 +1474,7 @@ def annotate_report_findings(scanner: str, report: dict[str, object] | None) -> 
 
 
 def run_report(args: argparse.Namespace) -> int:
+    explicit_mcp_policy_arg = bool(str(args.mcp_policy).strip())
     apply_report_evidence_preset(args)
     apply_report_defaults(args)
     root = Path(args.root).resolve()
@@ -1448,6 +1484,14 @@ def run_report(args: argparse.Namespace) -> int:
     content_scan_dir_arg = str(args.content_scan_dir).strip() or "."
     api_policy_arg = str(args.api_policy).strip()
     mcp_policy_arg = str(args.mcp_policy).strip()
+    mcp_policy_abs = resolve_policy_arg(mcp_policy_arg, root) if mcp_policy_arg else None
+    mcp_policy_path = safe_resolved_policy_path(mcp_policy_abs, root) if mcp_policy_abs else ""
+    implicit_recommended_mcp_policy_missing = (
+        args.evidence_preset == RECOMMENDED_EVIDENCE_PRESET
+        and not explicit_mcp_policy_arg
+        and mcp_policy_abs is not None
+        and not mcp_policy_abs.is_file()
+    )
     if mcp_policy_arg:
         args.mcp_config_check = True
     digest_policy_arg = str(args.digest_policy).strip()
@@ -1480,12 +1524,18 @@ def run_report(args: argparse.Namespace) -> int:
             else None
         )
         api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
-        mcp_policy = load_mcp_policy(Path(mcp_policy_arg).resolve()) if mcp_policy_arg else None
+        mcp_policy = (
+            None
+            if implicit_recommended_mcp_policy_missing or mcp_policy_abs is None
+            else load_mcp_policy(mcp_policy_abs)
+        )
         mcp_report = (
-            build_mcp_config_report(
+            build_missing_mcp_policy_report(root=root, policy_path=mcp_policy_path)
+            if implicit_recommended_mcp_policy_missing
+            else build_mcp_config_report(
                 root=root,
                 policy=mcp_policy,
-                policy_path=safe_policy_path(mcp_policy_arg, root) if mcp_policy_arg else "",
+                policy_path=mcp_policy_path,
             )
             if args.mcp_config_check
             else None

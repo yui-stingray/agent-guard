@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.18
+        uses: yui-stingray/agent-guard@v0.1.19
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -53,8 +53,10 @@ configuration metadata. Set `conformance-profile: strict` only when the
 repository also wants those v2 surface inventory labels to appear as conformance
 findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
 as a runtime MCP tool-poisoning detector or live OAuth validator. The packaged
-action uses `.agent-guard/mcp-policy.yaml` when that file exists; set
-`mcp-policy` to another reviewed path when needed.
+action expects the reviewed repo-local `.agent-guard/mcp-policy.yaml` for
+recommended evidence. Set `mcp-policy` only for scanner experiments or local
+migration checks; an external policy path is reported as `<external-policy>` and
+does not satisfy recommended or strict conformance.
 
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
@@ -64,7 +66,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.18
+        uses: yui-stingray/agent-guard@v0.1.19
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -161,7 +163,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.1.18
+  - uses: yui-stingray/agent-guard@v0.1.19
     id: agent-guard
   - name: Upload SARIF
     if: always()
