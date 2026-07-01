@@ -82,6 +82,13 @@ def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
 
+def test_public_sample_report_matches_pyproject_version() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+
+    assert payload["tool"]["name"] == "agent-guard"
+    assert payload["tool"]["version"] == pyproject_version()
+
+
 def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
     readme = README.read_text(encoding="utf-8")
 
@@ -184,7 +191,13 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert EVIDENCE_SAMPLE_REPORT.is_file()
+    assert "generated from the current package version" in docs
     assert "Adoption Path: Minimal First, Then Recommended" in docs
+    assert "| `minimal` |" in docs
+    assert "| `recommended` |" in docs
+    assert "| `strict` |" in docs
+    assert "Choose the smallest profile that matches the review decision you need" in docs
+    assert "Context policy, workflow policy, and surface inventory evidence." in docs
     assert "Minimal first pass" in docs
     assert "Move to recommended evidence" in docs
     assert "CI artifact" in docs

@@ -36,8 +36,8 @@ and workflow bodies remain outside the contract.
 
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
-is intentionally public-safe and is validated by the test suite against the
-packaged schema.
+is intentionally public-safe, generated from the current package version, and
+validated by the test suite against the packaged schema.
 [`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
 small downstream wrapper pattern that loads the packaged report schema and
 fails closed on incompatible, internally inconsistent, or unsanitized evidence,
@@ -68,6 +68,14 @@ it cannot prove about runtime agent behavior, and how downstream evidence
 consumers should fail closed without treating the report as a merge decision.
 
 ## Adoption Path: Minimal First, Then Recommended
+
+Choose the smallest profile that matches the review decision you need:
+
+| Profile | Use when | Requires |
+| --- | --- | --- |
+| `minimal` | You are introducing `agent-guard` and want a low-friction inventory gate before committing every starter policy. | Context policy, workflow policy, and surface inventory evidence. |
+| `recommended` | You want the reviewed static evidence baseline for CI or release review. | Repo-local `.agent-guard/mcp-policy.yaml`, recommended evidence gates, and conformance. |
+| `strict` | You want publication evidence to include repository-specific context-lock, digest, and evidence-pack expectations. | Reviewed recommended evidence plus strict-only digest/context-lock/evidence-pack coverage. |
 
 Minimal first pass:
 
