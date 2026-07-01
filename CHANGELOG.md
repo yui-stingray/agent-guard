@@ -6,6 +6,20 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.1.23 - 2026-07-02
+
+- Treated URL-like policy arguments as repo-external policy inputs in public
+  evidence so URL-shaped policy values are not displayed as repo paths.
+- Tightened the copyable downstream evidence consumer for recommended and
+  strict MCP policy conformance consistency, including stale or missing MCP
+  policy violation summaries.
+- Clarified recommended GitHub Action and existing-repo adoption guidance, and
+  preserved explicit configuration-error exits when later checks also find
+  policy violations.
+- Kept the bounded static-evidence scope: no runtime MCP execution, live OAuth
+  validation, generic secret scanning, LLM review, or autonomous policy
+  execution was added.
+
 ## 0.1.22 - 2026-07-01
 
 - Added a dedicated threat model and evidence-consumer guidance that clarifies
