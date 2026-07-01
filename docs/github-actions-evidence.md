@@ -218,6 +218,17 @@ success/violation payloads. When `--conformance-profile` and
 those recommended report surfaces plus static MCP configuration evidence while
 leaving repository-specific API and digest policies opt-in.
 
+Automation that consumes the JSON report should fail closed on schema drift,
+missing `surface_inventory`, missing `evidence_coverage`, inconsistent finding
+or gate counts, non-sanitized report metadata, unexpected conformance profiles,
+and forbidden public-evidence fragments such as snippets, token-shaped strings,
+hash values, or absolute local paths. Use the report as reviewer evidence, not
+as proof that runtime prompt injection, MCP tool poisoning, live OAuth flows,
+or secrets are safe. The boundary is summarized in
+[`docs/threat-model.md`](threat-model.md), and
+[`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
+minimal fail-closed consumer.
+
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,
 line, category, status, reason, and OWASP risk-theme labels when a deterministic

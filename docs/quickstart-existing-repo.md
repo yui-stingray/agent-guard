@@ -127,6 +127,21 @@ embedded evidence-pack manifest. It does not enable API or digest policies
 automatically; add those options only when the repository has reviewed policy
 files for them.
 
+### Consume Evidence Safely
+
+Downstream wrappers should read the sanitized report JSON and validate it
+against the packaged `agent-guard.report_evidence.v1` schema before making
+decisions. Fail closed on schema drift, inconsistent counts, missing
+`surface_inventory`, missing `evidence_coverage`, non-sanitized reports,
+unexpected conformance profiles, or forbidden public-evidence fragments such as
+raw snippets, hash values, token-shaped strings, and absolute local paths.
+
+The copyable `examples/evidence_consumer.py` script demonstrates that consumer
+shape. It is still a review wrapper: it does not execute MCP servers, validate
+live OAuth flows, detect prompt/tool poisoning, or approve a pull request.
+See [`docs/threat-model.md`](threat-model.md) for the full static evidence
+boundary.
+
 The recommended report preset already fails on malformed committed MCP config
 files and deterministic risky MCP configuration metadata. Pass
 `--policy .agent-guard/mcp-policy.yaml` to `mcp check`, or

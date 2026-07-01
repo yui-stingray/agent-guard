@@ -33,6 +33,7 @@ EXISTING_REPO_QUICKSTART = REPO_ROOT / "docs" / "quickstart-existing-repo.md"
 GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
+THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 PRE_COMMIT_HOOKS = REPO_ROOT / ".pre-commit-hooks.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -205,6 +206,8 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "live OAuth validator" in docs
     assert "they do not prove" in docs
     assert "live OAuth flow is correctly implemented" in docs
+    assert "docs/threat-model.md" in docs
+    assert "static evidence boundary" in docs
     assert "Review the `init --json` plan before" in docs
     assert "agent-guard init --root . --write" in docs
     assert (
@@ -253,6 +256,9 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "MCP runtime" in quickstart
     assert "MCP tool-poisoning detector" in quickstart
     assert "validate live OAuth flows" in quickstart
+    assert "Consume Evidence Safely" in quickstart
+    assert "examples/evidence_consumer.py" in quickstart
+    assert "docs/threat-model.md" in quickstart
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
@@ -293,6 +299,9 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
         in actions
     )
     assert "does not post pull request comments" in actions
+    assert "examples/evidence_consumer.py" in actions
+    assert "docs/threat-model.md" in actions
+    assert "fail closed on schema drift" in actions
     assert "raw context text" in actions
     assert "OWASP risk-theme labels" in actions
     assert "live OAuth validator" in actions
@@ -670,6 +679,28 @@ def test_positioning_doc_keeps_public_scope_narrow() -> None:
     assert "replace dedicated secret scanners" in docs
     assert "review metadata" in docs
     assert "related independent work" in docs
+
+
+def test_threat_model_doc_keeps_static_boundary() -> None:
+    docs = THREAT_MODEL_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
+
+    assert "deterministic static evidence gate" in docs
+    assert "Public evidence must not disclose" in docs
+    assert "What It Can Catch" in docs
+    assert "What It Cannot Prove" in docs
+    assert "MCP-Specific Boundary" in docs
+    assert "Evidence Consumer Expectations" in docs
+    assert "API keys, access tokens, passwords, private keys" in docs
+    assert "runtime prompt injection" in docs
+    assert "MCP tool poisoning" in docs
+    assert "live OAuth validation" in docs
+    assert "generic secret scanner" not in docs
+    assert "does not execute MCP servers" in docs_single_line
+    assert "do not satisfy reviewed-policy conformance" in docs_single_line
+    assert "examples/evidence_consumer.py" in docs
+    assert "agent-guard.report_evidence.v1" in docs
+    assert "not as runtime safety guarantees" in docs_single_line
 
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:

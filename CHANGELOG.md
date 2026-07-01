@@ -6,7 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-No changes yet.
+- Added a dedicated threat model and evidence-consumer guidance that clarifies
+  the static evidence boundary without adding runtime MCP execution, live OAuth
+  validation, generic secret scanning, or LLM review behavior.
 
 ## 0.1.21 - 2026-07-01
 

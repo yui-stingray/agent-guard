@@ -60,6 +60,11 @@ are not vulnerability proofs, runtime prompt/tool poisoning detection, runtime
 MCP security validation, live OAuth validation, generic secret scanning,
 SLSA/provenance verification, or compliance attestation.
 
+See [`docs/threat-model.md`](threat-model.md) for the static evidence boundary:
+what `agent-guard` can catch in repository files and sanitized artifacts, what
+it cannot prove about runtime agent behavior, and how downstream evidence
+consumers should fail closed without treating the report as a merge decision.
+
 ## Minimal Adoption Path
 
 1. Run `agent-guard init --root . --json` and review the proposed starter
