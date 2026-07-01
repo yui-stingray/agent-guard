@@ -8,6 +8,17 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 - No changes yet.
 
+## 0.1.20 - 2026-07-01
+
+- Clarified README and GitHub Actions evidence guidance so recommended evidence
+  examples pass the reviewed repo-local MCP policy explicitly and avoid implying
+  that MCP policy is optional for recommended or strict conformance.
+- Documented the existing packaged action `root` input for monorepo or
+  subdirectory adoption while keeping policy and evidence paths root-relative.
+- Corrected release wording to describe `vX.Y.Z` version tags and added
+  regression coverage for explicitly empty MCP `forbidden_risky_patterns`
+  weakening.
+
 ## 0.1.19 - 2026-06-30
 
 - Tightened `0.1.x` alpha recommended evidence so `report --evidence-preset
