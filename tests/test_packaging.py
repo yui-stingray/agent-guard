@@ -133,6 +133,7 @@ def test_readme_documents_agent_policy_companion_boundary() -> None:
 
 def test_readme_documents_report_evidence_contract() -> None:
     readme = README.read_text(encoding="utf-8")
+    readme_single_line = " ".join(readme.split())
 
     assert "docs/evidence-contracts.md" in readme
     assert "docs/quickstart-existing-repo.md" in readme
@@ -172,10 +173,14 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "MCP runtime security validator" in readme
     assert "they do not prove" in readme
     assert "live OAuth flow is correctly implemented" in readme
+    assert "Read `recommended` as the reviewed static evidence baseline" in readme
+    assert "recommended conformance does not require those gates" in readme_single_line
+    assert "Use `strict` when context-lock coverage, digest drift" in readme_single_line
 
 
 def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     docs = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
 
     assert EVIDENCE_SAMPLE_REPORT.is_file()
     assert "Minimal Adoption Path" in docs
@@ -200,12 +205,25 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "live OAuth validator" in docs
     assert "they do not prove" in docs
     assert "live OAuth flow is correctly implemented" in docs
+    assert "Review the `init --json` plan before" in docs
+    assert "agent-guard init --root . --write" in docs
+    assert (
+        "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml "
+        "> .agent-guard/context-digest-policy.yaml"
+        in docs
+    )
+    assert "Recommended is the reviewed static evidence baseline" in docs
+    assert "does not require repository-specific digest or context-lock gates" in docs_single_line
+    assert "mcp_config` records `mcp_policy_missing" in docs
+    assert "`mcp_policy_weakened`" in docs
+    assert "do not dump raw YAML content" in docs
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
     actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
+    actions_single_line = " ".join(actions.split())
 
     assert "python3 -m venv .venv" in quickstart
     assert ".agent-guard/context-policy.yaml" in quickstart
@@ -256,6 +274,19 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard evidence-pack manifest --root ." in actions
     assert 'exit "$status"' in actions
     assert "if: always()" in actions
+    assert "Recommended evidence is the default reviewed static baseline" in actions
+    assert "use `conformance-profile: strict` when digest/context-lock" in actions
+    assert "recommended static baseline after `agent-guard init --root . --write`" in actions
+    assert "add `--digest-policy .agent-guard/context-digest-policy.yaml` only after generating" in actions_single_line
+    assert (
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "
+        "--conformance-profile recommended --format json"
+        in actions_single_line
+    )
+    assert "If the reviewed MCP policy is missing" in actions
+    assert "`required_mcp_policy_not_reviewed`" in actions
+    assert "not by pointing recommended evidence at an external policy file" in actions_single_line
     assert (
         "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format github-annotations"
@@ -289,8 +320,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     ]
     assert raw_json_doc_lines
     assert all(">" in line for line in raw_json_doc_lines)
-    assert "Parallel Step Support" in actions
-    assert "actionlint" in actions
+    assert "Parallel Step Support" not in actions
+    assert "step-level `parallel`" not in actions
 
 
 def test_delivery_bridge_files_are_evidence_first() -> None:

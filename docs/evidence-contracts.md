@@ -78,12 +78,16 @@ SLSA/provenance verification, or compliance attestation.
    embed the event body.
 6. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
-Example commands:
+Example commands for a new repository. Review the `init --json` plan before
+writing starter files, and generate the digest policy before checking context
+lock coverage:
 
 ```bash
 agent-guard init --root . --json
+agent-guard init --root . --write
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
+agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
@@ -137,6 +141,10 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `minimal`, `recommended`, or `strict` profile. Recommended and strict
   conformance also fail when the reviewed MCP policy omits the default static
   MCP risk-label set; broader semantic policy weakening remains out of scope.
+  Recommended is the reviewed static evidence baseline. It does not require
+  repository-specific digest or context-lock gates unless those checks are
+  supplied; `strict` is the profile that makes digest/context-lock and
+  evidence-pack expectations part of conformance.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
   `agent-policy-audit-event`.
@@ -149,6 +157,15 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `--base-ref` or `--drift-base-ref` is supplied, it can also flag
   baseline-sensitive guard policy, digest policy, workflow, action metadata, or
   hook metadata changes as review-required evidence.
+
+For failure reading, a missing implicit MCP policy in recommended evidence is a
+sanitized violation report: `mcp_config` records `mcp_policy_missing`, and
+conformance can also report missing required policy evidence. A repo-external MCP
+policy is displayed as `<external-policy>` and does not satisfy reviewed-policy
+conformance. A reviewed policy that omits any default risk label fails as
+`mcp_policy_weakened`. These failure surfaces identify controlled rule ids and
+reasons; they do not dump raw YAML content, token-shaped filenames, URLs, scope
+strings, or absolute local paths.
 
 Report output omits raw context text, snippets, matched text, raw regex
 patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,

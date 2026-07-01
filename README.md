@@ -446,7 +446,17 @@ tool-poisoning behavior, or act as an MCP runtime security validator. With
 `--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
 for pull request review. Add `--agent-policy-audit-event <path>` to include a
 sanitized artifact reference to a companion `agent-policy` audit event without
-reading or embedding the event body. With `--path-policy`, it emits path-name evidence
+reading or embedding the event body.
+
+Read `recommended` as the reviewed static evidence baseline, not as the full
+pin-integrity profile. The recommended preset can emit digest and context-lock
+evidence when `--digest-policy` is supplied, but recommended conformance does not
+require those gates because digest policies are repository-specific. Use
+`strict` when context-lock coverage, digest drift, sanitized evidence-pack
+artifacts, and v2 MCP configuration risk labels should be conformance
+requirements.
+
+With `--path-policy`, it emits path-name evidence
 limited to severity, rule id, and repository-relative path. With
 `--content-policy`, it emits
 registered-mode content evidence limited to severity, rule id,

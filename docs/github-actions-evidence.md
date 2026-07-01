@@ -58,6 +58,20 @@ recommended evidence. Set `mcp-policy` only for scanner experiments or local
 migration checks; an external policy path is reported as `<external-policy>` and
 does not satisfy recommended or strict conformance.
 
+Recommended evidence is the default reviewed static baseline. It leaves
+repository-specific digest and context-lock pinning optional unless the digest
+policy file exists; use `conformance-profile: strict` when digest/context-lock
+evidence, sanitized evidence-pack expectations, and v2 MCP risk metadata should
+all be required conformance evidence.
+
+If the reviewed MCP policy is missing, the action still renders uploadable
+artifacts and then exits non-zero. Read the JSON report's `mcp_config` section
+and the conformance artifact for controlled findings such as
+`mcp_policy_missing`, `required_mcp_policy_not_reviewed`, or
+`mcp_policy_weakened`. Fix those by committing a reviewed repo-local
+`.agent-guard/mcp-policy.yaml` with the default risk-label set, not by pointing
+recommended evidence at an external policy file.
+
 For monorepos or repositories where the reviewed agent-maintained project lives
 in a subdirectory, set `root` to that project root. Policy and evidence paths are
 resolved relative to that root unless they are absolute paths:
@@ -92,7 +106,10 @@ bodies, branch names, or local paths.
 ## Expanded Workflow Step
 
 Use this form when a repository wants the commands visible in workflow review
-instead of using the packaged composite action.
+instead of using the packaged composite action. The example mirrors the
+recommended static baseline after `agent-guard init --root . --write`; add
+`--digest-policy .agent-guard/context-digest-policy.yaml` only after generating
+and reviewing that digest policy file.
 
 ```yaml
 permissions:
@@ -132,7 +149,7 @@ jobs:
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
           code=$?
           if [ "$code" -ne 0 ]; then status=$code; fi
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
@@ -221,18 +238,3 @@ step uses `if: always()` so reviewers can inspect artifacts on failing runs.
 If a repository wants pull request comments, build that as a separate reviewed
 wrapper that consumes the JSON artifact. Keep comments sanitized and avoid
 posting local diagnostics or private data.
-
-## Parallel Step Support
-
-GitHub Actions supports step-level `parallel`, `background`, `wait`,
-`wait-all`, and `cancel` syntax. Use it only for independent guard commands
-that do not write the same output file. Keep `agent-guard report`,
-`agent-guard evidence-pack manifest`, and `actions/upload-artifact` in later
-serial steps so the final evidence pack is produced after every input is
-available.
-
-If the repository runs `actionlint`, verify that the installed actionlint
-version accepts the new syntax before committing a workflow that uses
-`parallel`. Older actionlint versions can reject documented GitHub syntax. In
-that case, keep the workflow serial or split checks into separate jobs with
-`needs` for the final artifact step.
