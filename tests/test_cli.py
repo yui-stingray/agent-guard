@@ -1675,6 +1675,22 @@ def test_conformance_cli_recommended_requires_reviewed_mcp_policy_and_full_defau
     base_payload["mcp_config"] = {
         "policy": {
             "path": ".agent-guard/mcp-policy.yaml",
+            "forbidden_risky_patterns": [],
+        }
+    }
+    report.write_text(json.dumps(base_payload), encoding="utf-8")
+    empty = run_cli("conformance", "check", "--evidence", str(report), "--profile", "recommended", "--json")
+
+    assert empty.returncode == 1
+    empty_payload = json.loads(empty.stdout)
+    empty_finding = next(item for item in empty_payload["findings"] if item["rule_id"] == "mcp_policy_weakened")
+    assert empty_finding["reason"] == "missing_default_risky_patterns"
+    assert empty_finding["missing_patterns"] == sorted(DEFAULT_FORBIDDEN_RISKY_PATTERNS)
+    assert str(tmp_path) not in empty.stdout
+
+    base_payload["mcp_config"] = {
+        "policy": {
+            "path": ".agent-guard/mcp-policy.yaml",
             "forbidden_risky_patterns": sorted(DEFAULT_FORBIDDEN_RISKY_PATTERNS),
         }
     }

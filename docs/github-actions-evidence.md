@@ -58,6 +58,18 @@ recommended evidence. Set `mcp-policy` only for scanner experiments or local
 migration checks; an external policy path is reported as `<external-policy>` and
 does not satisfy recommended or strict conformance.
 
+For monorepos or repositories where the reviewed agent-maintained project lives
+in a subdirectory, set `root` to that project root. Policy and evidence paths are
+resolved relative to that root unless they are absolute paths:
+
+```yaml
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.1.19
+        with:
+          root: services/api
+          conformance-profile: recommended
+```
+
 When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
 

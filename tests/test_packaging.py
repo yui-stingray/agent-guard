@@ -203,6 +203,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
+    readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
     actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
 
@@ -218,6 +219,11 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard report --root ." in quickstart
     assert "agent-guard render-report --root ." in quickstart
     assert "--evidence-preset recommended" in quickstart
+    assert (
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml"
+        in readme
+    )
     assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
     assert "agent-guard conformance check --root ." in quickstart
     assert "agent-guard evidence-pack manifest --root ." in quickstart
@@ -233,6 +239,9 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
     assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
+    assert "root: services/api" in actions
+    assert "Policy and evidence paths are" in actions
+    assert "resolved relative to that root" in actions
     assert "conformance-profile: recommended" in actions
     assert "conformance-profile: strict" in actions
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
@@ -445,6 +454,8 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
     assert f"--source-ref refs/tags/v{pyproject_version()}" in readme
+    assert "version tag triggers" in readme
+    assert "annotated tag triggers" not in readme
     assert "proof of code correctness" in readme
     assert "prove code correctness" in release_criteria
 

@@ -110,7 +110,7 @@ Generate a sanitized evidence report:
 
 ```bash
 mkdir -p .agent-guard/evidence
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 ```
 
@@ -230,9 +230,10 @@ Recommended split:
 - `mcp`: checks committed MCP configuration metadata for parse errors,
   unpinned or `@latest` package-manager server commands, filesystem-root
   references, unsafe URL schemes, broad authorization scopes, and inline
-  authorization values without running MCP servers. A reviewed
-  `.agent-guard/mcp-policy.yaml` can make the enforced risk-label set explicit
-  while keeping the same static metadata boundary.
+  authorization values without running MCP servers. Recommended and strict
+  conformance require the reviewed repo-local `.agent-guard/mcp-policy.yaml`,
+  which makes the enforced static risk-label set explicit while keeping the same
+  metadata boundary.
 - `workflow`: checks that the CI workflow still invokes the declared guard
   commands and still carries the required policy files in the repository.
 - `surface inventory v2`: records documented guard commands, evidence artifact
@@ -384,7 +385,7 @@ The report command renders deterministic review evidence for pull requests,
 review notes, and GitHub Actions annotations:
 
 ```bash
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format markdown
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
@@ -786,7 +787,7 @@ agent-guard drift check --root <repo> [--profile <minimal|recommended|strict>] [
 
 ## Releases
 
-Tag-driven. Pushing a `vX.Y.Z` annotated tag triggers
+Tag-driven. Pushing a `vX.Y.Z` version tag triggers
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which first
 verifies that the tag matches `[project].version` in `pyproject.toml`, checks
 that the version is not already present on PyPI, then builds the sdist + wheel
