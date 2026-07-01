@@ -220,6 +220,8 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "mcp_config` records `mcp_policy_missing" in docs
     assert "`mcp_policy_weakened`" in docs
     assert "do not dump raw YAML content" in docs
+    assert "raw repository/content/digest hash values" in docs_single_line
+    assert "`partialFingerprints` are deterministic hashes of sanitized" in docs_single_line
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
@@ -303,6 +305,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "docs/threat-model.md" in actions
     assert "fail closed on schema drift" in actions
     assert "raw context text" in actions
+    assert "raw repository/content/digest hashes" in actions
+    assert "SARIF `partialFingerprints` derived only" in actions
     assert "OWASP risk-theme labels" in actions
     assert "live OAuth validator" in actions
     assert "raw snippets" in actions

@@ -203,7 +203,10 @@ steps:
 ```
 
 The SARIF file uses repository-relative paths and omits snippets, raw context
-text, raw workflow commands, hashes, secrets, and absolute local paths.
+text, raw workflow commands, raw repository/content/digest hashes, secrets, and
+absolute local paths. It may include SARIF `partialFingerprints` derived only
+from sanitized rule, location, and message metadata for code-scanning
+deduplication.
 
 ## How Maintainers Should Read It
 

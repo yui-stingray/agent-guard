@@ -188,10 +188,12 @@ locations, messages, and fingerprints come from the existing deterministic
 payload.
 
 SARIF output intentionally omits snippets, raw context text, matched text, raw
-regex patterns, raw URLs, raw workflow commands, workflow run bodies, hash
-values, sensitive material, and absolute local paths. Uploading the SARIF file
-to GitHub code scanning is a consumer workflow choice because it requires
-additional repository permissions.
+regex patterns, raw URLs, raw workflow commands, workflow run bodies, raw
+repository/content/digest hash values, sensitive material, and absolute local
+paths. Its `partialFingerprints` are deterministic hashes of sanitized
+rule/location/message fields for code-scanning deduplication. Uploading the
+SARIF file to GitHub code scanning is a consumer workflow choice because it
+requires additional repository permissions.
 
 ## Non-Goals
 

@@ -111,13 +111,88 @@ def test_evidence_consumer_rejects_unsanitized_fragments(tmp_path: Path) -> None
     payload["findings"] = [{"file": "/home/example/private.txt"}]
     payload["finding_count"] = 1
     payload["summary"]["finding_count"] = 1
+    del payload["evidence_pack_manifest"]
     report = tmp_path / "report.json"
     report.write_text(json.dumps(payload), encoding="utf-8")
 
     result = run_consumer(report)
 
     assert result.returncode == 1
-    assert "forbidden public-evidence fragment" in result.stderr
+    assert "contains a raw local path" in result.stderr
+
+
+def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path) -> None:
+    cases = [
+        ("openai_key", "sk-" + ("a" * 24), "secret-shaped value"),
+        ("github_token", "ghp_" + ("a" * 36), "secret-shaped value"),
+        ("sha256_value", "a" * 64, "raw sha256-shaped value"),
+        ("raw_url", "http" + "s://example.com/private", "raw URL"),
+        ("private_key", "-----BEGIN " + "PRIVATE KEY-----", "secret-shaped value"),
+    ]
+
+    for name, value, expected in cases:
+        payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+        payload["tool"]["version"] = value
+        report = tmp_path / f"{name}.json"
+        report.write_text(json.dumps(payload), encoding="utf-8")
+
+        result = run_consumer(report)
+
+        assert result.returncode == 1, name
+        assert expected in result.stderr
+        assert value not in result.stderr
+
+
+def test_evidence_consumer_rejects_secret_shaped_keys(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    secret_like_key = "sk-" + ("a" * 24)
+    payload[secret_like_key] = "redacted"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "secret-shaped value" in result.stderr
+    assert secret_like_key not in result.stderr
+
+
+def test_evidence_consumer_rejects_nested_secret_shaped_extra_keys_without_leak(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    secret_like_key = "sk-" + ("a" * 24)
+    payload["report"][secret_like_key] = "redacted"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.report has 1 extra properties" in result.stderr
+    assert secret_like_key not in result.stderr
+
+
+def test_evidence_consumer_rejects_forbidden_raw_evidence_keys(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["surface_inventory"]["surfaces"][0]["raw_regex"] = "^sk-.+"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "forbidden raw evidence key" in result.stderr
+    assert "^sk-.+" not in result.stderr
+
+
+def test_evidence_consumer_allows_benign_token_substrings(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["surface_inventory"]["surfaces"][0]["path"] = "docs/tokenizer.md"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_evidence_consumer_rejects_missing_conditional_inventory(tmp_path: Path) -> None:
@@ -159,34 +234,6 @@ def test_evidence_consumer_rejects_missing_evidence_coverage(tmp_path: Path) -> 
 def test_evidence_consumer_accepts_v2_inventory_and_manifest(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["surface_inventory"]["schema_version"] = "agent-guard.agent_surface_inventory.v2"
-    payload["conformance"] = {
-        "schema_version": "agent-guard.conformance.v1",
-        "profile": "recommended",
-        "status": "ok",
-        "checked_count": 1,
-        "finding_count": 0,
-        "findings": [],
-    }
-    payload["evidence_pack_manifest"] = {
-        "schema_version": "agent-guard.evidence_pack_manifest.v1",
-        "sanitized": True,
-        "report": {
-            "schema_version": "agent-guard.report_evidence.v1",
-            "format": "json",
-            "scope": "context",
-            "status": "ok",
-            "finding_count": 0,
-        },
-        "summary": {
-            "gate_count": 1,
-            "enabled_gate_count": 1,
-            "missing_gate_count": 0,
-            "failing_gate_count": 0,
-            "surface_count": 1,
-        },
-        "gates": [{"gate": "context", "status": "ok", "finding_count": 0}],
-        "artifacts": [],
-    }
     report = tmp_path / "report.json"
     report.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -195,6 +242,131 @@ def test_evidence_consumer_accepts_v2_inventory_and_manifest(tmp_path: Path) -> 
     assert result.returncode == 0, result.stdout + result.stderr
     summary = json.loads(result.stdout)
     assert summary["conformance_status"] == "ok"
+
+
+def test_evidence_consumer_rejects_inconsistent_conformance_counts(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.conformance.finding_count must match findings length" in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_conformance_with_findings(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "required_mcp_policy_not_reviewed",
+            "severity": "high",
+            "requirement_id": ".agent-guard/mcp-policy.yaml",
+            "message": "reviewed repository MCP policy is required",
+            "reason": "external_or_missing_mcp_policy",
+        }
+    ]
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.conformance.finding_count must be 0 when conformance status is ok" in result.stderr
+
+
+def test_evidence_consumer_rejects_empty_violation_conformance(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["conformance"]["status"] = "violation"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.conformance.finding_count must be non-zero when conformance status is violation" in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_report_with_violation_conformance(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["conformance"]["status"] = "violation"
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "required_mcp_policy_not_reviewed",
+            "severity": "high",
+            "requirement_id": ".agent-guard/mcp-policy.yaml",
+            "message": "reviewed repository MCP policy is required",
+            "reason": "external_or_missing_mcp_policy",
+        }
+    ]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.status must be violation when conformance status is violation" in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_recommended_conformance_with_external_mcp_policy(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["mcp_config"]["policy"]["path"] = "<external-policy>"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.mcp_config.policy.path must be the reviewed repo MCP policy" in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_recommended_conformance_with_weakened_mcp_policy(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["mcp_config"]["policy"]["forbidden_risky_patterns"] = ["inline_authorization_value"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.mcp_config.policy.forbidden_risky_patterns must include the default MCP risk labels" in result.stderr
+
+
+def test_evidence_consumer_summarizes_mcp_policy_conformance_rules(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["conformance"]["status"] = "violation"
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "mcp_policy_weakened",
+            "severity": "high",
+            "requirement_id": "mcp_config_policy_default_patterns",
+            "message": "reviewed MCP policy omits required default risk labels",
+            "reason": "missing_default_risky_patterns",
+        }
+    ]
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["conformance_status"] == "violation"
+    assert summary["mcp_policy_conformance_rules"] == ["mcp_policy_weakened"]
 
 
 def test_evidence_consumer_rejects_missing_report_scope(tmp_path: Path) -> None:
@@ -218,7 +390,7 @@ def test_evidence_consumer_rejects_extra_report_property(tmp_path: Path) -> None
     result = run_consumer(report)
 
     assert result.returncode == 1
-    assert "$.report has extra properties" in result.stderr
+    assert "$.report has 1 extra properties" in result.stderr
 
 
 def test_evidence_consumer_rejects_inconsistent_evidence_coverage_counts(tmp_path: Path) -> None:
@@ -233,10 +405,103 @@ def test_evidence_consumer_rejects_inconsistent_evidence_coverage_counts(tmp_pat
     assert "$.evidence_coverage.failing_count must match gate statuses" in result.stderr
 
 
+def test_evidence_consumer_rejects_inconsistent_evidence_pack_manifest_counts(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["summary"]["gate_count"] += 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.summary.gate_count must match gates length" in result.stderr
+
+
+def test_evidence_consumer_rejects_inconsistent_manifest_gate_status_counts(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["gates"][0]["status"] = "violation"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.summary.failing_gate_count must match gate statuses" in result.stderr
+
+
+def test_evidence_consumer_rejects_inconsistent_manifest_conformance_summary(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.conformance.finding_count must match $.conformance.finding_count" in result.stderr
+
+
+def test_evidence_consumer_rejects_manifest_report_mismatch(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.report.status must match $.status" in result.stderr
+
+
+def test_evidence_consumer_rejects_manifest_gate_mismatch_with_evidence_coverage(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["gates"] = payload["evidence_pack_manifest"]["gates"][:-1]
+    payload["evidence_pack_manifest"]["summary"]["gate_count"] -= 1
+    payload["evidence_pack_manifest"]["summary"]["enabled_gate_count"] -= 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.gates must match $.evidence_coverage.gates" in result.stderr
+
+
+def test_evidence_consumer_rejects_manifest_gate_status_mismatch_without_gate_name_leak(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    secret_like_gate = "sk-" + ("a" * 24)
+    payload["evidence_coverage"]["gates"][0]["gate"] = secret_like_gate
+    payload["evidence_pack_manifest"]["gates"][0]["gate"] = secret_like_gate
+    payload["evidence_pack_manifest"]["gates"][0]["status"] = "violation"
+    payload["evidence_pack_manifest"]["summary"]["failing_gate_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.gates[0].status must match $.evidence_coverage.gates" in result.stderr
+    assert secret_like_gate not in result.stderr
+
+
+def test_evidence_consumer_rejects_missing_manifest_conformance_when_report_has_conformance(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["evidence_pack_manifest"]["conformance"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.evidence_pack_manifest.conformance is required when $.conformance is present" in result.stderr
+
+
 def test_evidence_consumer_rejects_ok_report_with_failing_gate(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_coverage"]["gates"][0]["status"] = "violation"
     payload["evidence_coverage"]["failing_count"] = 1
+    payload["evidence_pack_manifest"]["gates"][0]["status"] = "violation"
+    payload["evidence_pack_manifest"]["summary"]["failing_gate_count"] = 1
     report = tmp_path / "report.json"
     report.write_text(json.dumps(payload), encoding="utf-8")
 

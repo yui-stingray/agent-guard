@@ -10,21 +10,39 @@ import argparse
 from collections.abc import Mapping, Sequence
 from importlib import resources
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 
 REPORT_SCHEMA = "agent-guard.report_evidence.v1.schema.json"
-FORBIDDEN_FRAGMENTS = (
-    "/home/",
-    "/Users/",
-    "C:\\Users\\",
-    "snippet",
-    "matched_text",
-    "raw_regex",
-    "sha256",
-    "token",
+REVIEWED_MCP_POLICY_PATH = ".agent-guard/mcp-policy.yaml"
+REQUIRED_MCP_RISK_LABELS = frozenset(
+    {
+        "broad_authorization_scope",
+        "filesystem_root_reference",
+        "inline_authorization_value",
+        "inline_env_value",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unpinned_package",
+        "unsafe_url_scheme",
+    }
+)
+MCP_POLICY_CONFORMANCE_RULES = frozenset({"required_mcp_policy_not_reviewed", "mcp_policy_weakened"})
+FORBIDDEN_PUBLIC_KEYS = frozenset({"matched_text", "raw_regex", "snippet"})
+LOCAL_PATH_RE = re.compile(r"(?:^|[\s\"'=:])(?:/(?:home|Users)/|[A-Za-z]:[\\/]+Users[\\/]+)")
+RAW_URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+SHA256_VALUE_RE = re.compile(r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{64}(?![A-Fa-f0-9])")
+SECRET_VALUE_RE = re.compile(
+    r"(?:"
+    r"sk-[A-Za-z0-9_-]{20,}"
+    r"|gh[pousr]_[A-Za-z0-9_]{20,}"
+    r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|xox[baprs]-[A-Za-z0-9-]{20,}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r")"
 )
 
 
@@ -87,7 +105,7 @@ def validate_against_schema(schema: Mapping[str, Any], value: Any, *, path: str)
         require(isinstance(properties, Mapping), f"{path}.properties must be an object")
         if schema.get("additionalProperties", True) is False:
             extras = set(value) - set(properties)
-            require(not extras, f"{path} has extra properties: {sorted(extras)!r}")
+            require(not extras, f"{path} has {len(extras)} extra properties")
         for key, item in value.items():
             child = properties.get(key)
             if isinstance(child, Mapping):
@@ -191,6 +209,196 @@ def validate_surface_inventory(surface_inventory: Mapping[str, Any]) -> None:
             )
 
 
+def validate_conformance(conformance: Mapping[str, Any], payload: Mapping[str, Any]) -> set[str]:
+    findings = require_sequence(conformance.get("findings"), "$.conformance.findings")
+    finding_count = require_int(conformance.get("finding_count"), "$.conformance.finding_count")
+    require(finding_count == len(findings), "$.conformance.finding_count must match findings length")
+
+    status = str(conformance.get("status", ""))
+    require(status in {"ok", "violation"}, "$.conformance.status is invalid")
+    if status == "ok":
+        require(finding_count == 0, "$.conformance.finding_count must be 0 when conformance status is ok")
+    if status == "violation":
+        require(finding_count > 0, "$.conformance.finding_count must be non-zero when conformance status is violation")
+
+    tracked_rule_ids: set[str] = set()
+    for index, raw_finding in enumerate(findings):
+        finding = require_mapping(raw_finding, f"$.conformance.findings[{index}]")
+        for key in ("rule_id", "severity", "requirement_id", "message", "reason"):
+            require(
+                isinstance(finding.get(key), str) and bool(str(finding.get(key)).strip()),
+                f"$.conformance.findings[{index}].{key} must be a non-empty string",
+            )
+        rule_id = str(finding.get("rule_id", "")).strip()
+        if rule_id in MCP_POLICY_CONFORMANCE_RULES:
+            tracked_rule_ids.add(rule_id)
+
+    profile = str(conformance.get("profile", ""))
+    if status == "ok" and profile in {"recommended", "strict"}:
+        mcp_config = require_mapping(payload.get("mcp_config"), "$.mcp_config")
+        policy = require_mapping(mcp_config.get("policy"), "$.mcp_config.policy")
+        require(
+            policy.get("path") == REVIEWED_MCP_POLICY_PATH,
+            "$.mcp_config.policy.path must be the reviewed repo MCP policy when conformance is ok",
+        )
+        raw_patterns = require_sequence(
+            policy.get("forbidden_risky_patterns"),
+            "$.mcp_config.policy.forbidden_risky_patterns",
+        )
+        pattern_set = {str(value).strip() for value in raw_patterns if isinstance(value, str) and str(value).strip()}
+        missing = sorted(REQUIRED_MCP_RISK_LABELS - pattern_set)
+        require(
+            not missing,
+            "$.mcp_config.policy.forbidden_risky_patterns must include the default MCP risk labels",
+        )
+
+    return tracked_rule_ids
+
+
+def validate_evidence_pack_manifest(manifest: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
+    manifest_report = require_mapping(manifest.get("report"), "$.evidence_pack_manifest.report")
+    report = require_mapping(payload.get("report"), "$.report")
+    for key in ("schema_version", "format", "scope"):
+        require(
+            manifest_report.get(key) == report.get(key),
+            f"$.evidence_pack_manifest.report.{key} must match $.report.{key}",
+        )
+    require(
+        manifest_report.get("status") == payload.get("status"),
+        "$.evidence_pack_manifest.report.status must match $.status",
+    )
+    require(
+        manifest_report.get("finding_count") == payload.get("finding_count"),
+        "$.evidence_pack_manifest.report.finding_count must match $.finding_count",
+    )
+
+    summary = require_mapping(manifest.get("summary"), "$.evidence_pack_manifest.summary")
+    gates = require_sequence(manifest.get("gates"), "$.evidence_pack_manifest.gates")
+    gate_count = require_int(summary.get("gate_count"), "$.evidence_pack_manifest.summary.gate_count")
+    enabled_count = require_int(
+        summary.get("enabled_gate_count"),
+        "$.evidence_pack_manifest.summary.enabled_gate_count",
+    )
+    missing_count = require_int(
+        summary.get("missing_gate_count"),
+        "$.evidence_pack_manifest.summary.missing_gate_count",
+    )
+    failing_count = require_int(
+        summary.get("failing_gate_count"),
+        "$.evidence_pack_manifest.summary.failing_gate_count",
+    )
+
+    require(gate_count == len(gates), "$.evidence_pack_manifest.summary.gate_count must match gates length")
+    enabled = 0
+    missing = 0
+    failing = 0
+    names: set[str] = set()
+    manifest_gates: dict[str, Mapping[str, Any]] = {}
+    for index, raw_gate in enumerate(gates):
+        gate = require_mapping(raw_gate, f"$.evidence_pack_manifest.gates[{index}]")
+        name = str(gate.get("gate", "")).strip()
+        require(name, f"$.evidence_pack_manifest.gates[{index}].gate is required")
+        require(name not in names, f"$.evidence_pack_manifest.gates[{index}].gate must be unique")
+        names.add(name)
+        manifest_gates[name] = gate
+        status = str(gate.get("status", ""))
+        require(
+            status in {"ok", "violation", "missing", "error"},
+            f"$.evidence_pack_manifest.gates[{index}].status is invalid",
+        )
+        require_int(gate.get("finding_count"), f"$.evidence_pack_manifest.gates[{index}].finding_count")
+        if status == "missing":
+            missing += 1
+        else:
+            enabled += 1
+        if status not in {"ok", "missing"}:
+            failing += 1
+
+    require(enabled_count == enabled, "$.evidence_pack_manifest.summary.enabled_gate_count must match gate statuses")
+    require(missing_count == missing, "$.evidence_pack_manifest.summary.missing_gate_count must match gate statuses")
+    require(failing_count == failing, "$.evidence_pack_manifest.summary.failing_gate_count must match gate statuses")
+
+    evidence_coverage = require_mapping(payload.get("evidence_coverage"), "$.evidence_coverage")
+    evidence_gates = require_sequence(evidence_coverage.get("gates"), "$.evidence_coverage.gates")
+    coverage_gates: dict[str, Mapping[str, Any]] = {}
+    for index, raw_gate in enumerate(evidence_gates):
+        gate = require_mapping(raw_gate, f"$.evidence_coverage.gates[{index}]")
+        name = str(gate.get("gate", "")).strip()
+        if name:
+            coverage_gates[name] = gate
+    require(
+        set(manifest_gates) == set(coverage_gates),
+        "$.evidence_pack_manifest.gates must match $.evidence_coverage.gates",
+    )
+    for index, (gate_name, manifest_gate) in enumerate(manifest_gates.items()):
+        coverage_gate = coverage_gates[gate_name]
+        for key in ("status", "finding_count"):
+            require(
+                manifest_gate.get(key) == coverage_gate.get(key),
+                f"$.evidence_pack_manifest.gates[{index}].{key} must match $.evidence_coverage.gates",
+            )
+
+    conformance = manifest.get("conformance")
+    payload_conformance = payload.get("conformance")
+    require(
+        not (payload_conformance is not None and conformance is None),
+        "$.evidence_pack_manifest.conformance is required when $.conformance is present",
+    )
+    if conformance is not None:
+        conformance_obj = require_mapping(conformance, "$.evidence_pack_manifest.conformance")
+        payload_conformance_obj = require_mapping(payload_conformance, "$.conformance")
+        for key in ("schema_version", "profile", "status", "finding_count"):
+            require(
+                conformance_obj.get(key) == payload_conformance_obj.get(key),
+                f"$.evidence_pack_manifest.conformance.{key} must match $.conformance.{key}",
+            )
+        finding_count = require_int(
+            conformance_obj.get("finding_count"),
+            "$.evidence_pack_manifest.conformance.finding_count",
+        )
+        status = str(conformance_obj.get("status", ""))
+        require(status in {"ok", "violation"}, "$.evidence_pack_manifest.conformance.status is invalid")
+        if status == "ok":
+            require(
+                finding_count == 0,
+                "$.evidence_pack_manifest.conformance.finding_count must be 0 when status is ok",
+            )
+        if status == "violation":
+            require(
+                finding_count > 0,
+                "$.evidence_pack_manifest.conformance.finding_count must be non-zero when status is violation",
+            )
+
+
+def validate_public_text_shape(text: str, *, path: str) -> None:
+    require(not LOCAL_PATH_RE.search(text), f"{path} contains a raw local path")
+    require(not RAW_URL_RE.search(text), f"{path} contains a raw URL")
+    require(not SHA256_VALUE_RE.search(text), f"{path} contains a raw sha256-shaped value")
+    require(not SECRET_VALUE_RE.search(text), f"{path} contains a secret-shaped value")
+
+
+def validate_public_evidence_shape(value: Any, *, path: str = "$") -> None:
+    if isinstance(value, Mapping):
+        for index, (key, item) in enumerate(value.items()):
+            key_text = str(key)
+            key_path = f"{path}.keys[{index}]"
+            child_path = f"{path}.values[{index}]"
+            require(key_text not in FORBIDDEN_PUBLIC_KEYS, f"{key_path} is a forbidden raw evidence key")
+            validate_public_text_shape(key_text, path=key_path)
+            validate_public_evidence_shape(item, path=child_path)
+        return
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for index, item in enumerate(value):
+            validate_public_evidence_shape(item, path=f"{path}[{index}]")
+        return
+
+    if not isinstance(value, str):
+        return
+
+    validate_public_text_shape(value, path=path)
+
+
 def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
     status = str(payload.get("status", ""))
     exit_code = payload.get("exit_code")
@@ -280,9 +488,13 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
         evidence_coverage = raw_evidence_coverage
 
     conformance = payload.get("conformance")
+    tracked_conformance_rules: set[str] = set()
     if conformance is not None:
         require(isinstance(conformance, dict), "conformance must be an object")
         require(conformance.get("schema_version") == "agent-guard.conformance.v1", "conformance.schema_version mismatch")
+        tracked_conformance_rules = validate_conformance(conformance, payload)
+        if conformance.get("status") == "violation":
+            require(status == "violation", "$.status must be violation when conformance status is violation")
 
     manifest = payload.get("evidence_pack_manifest")
     if manifest is not None:
@@ -292,12 +504,11 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
             "evidence_pack_manifest.schema_version mismatch",
         )
         require(manifest.get("sanitized") is True, "evidence_pack_manifest.sanitized must be true")
+        validate_evidence_pack_manifest(manifest, payload)
 
     validate_public_report_consistency(payload)
 
-    serialized = json.dumps(payload, sort_keys=True)
-    for fragment in FORBIDDEN_FRAGMENTS:
-        require(fragment not in serialized, f"forbidden public-evidence fragment found: {fragment}")
+    validate_public_evidence_shape(payload)
 
     return {
         "schema_version": payload["schema_version"],
@@ -308,6 +519,7 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
         "enabled_gate_count": evidence_coverage.get("enabled_count", 0),
         "missing_gate_count": evidence_coverage.get("missing_count", 0),
         **({"conformance_status": conformance.get("status")} if isinstance(conformance, dict) else {}),
+        **({"mcp_policy_conformance_rules": sorted(tracked_conformance_rules)} if tracked_conformance_rules else {}),
     }
 
 

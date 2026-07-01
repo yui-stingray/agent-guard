@@ -9,6 +9,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Added a dedicated threat model and evidence-consumer guidance that clarifies
   the static evidence boundary without adding runtime MCP execution, live OAuth
   validation, generic secret scanning, or LLM review behavior.
+- Hardened the copyable downstream evidence consumer so it checks conformance
+  and evidence-pack consistency, recognizes reviewed MCP policy conformance
+  rule ids, and uses shape-aware public-evidence hygiene checks instead of
+  broad token/hash substrings.
 
 ## 0.1.21 - 2026-07-01
 
