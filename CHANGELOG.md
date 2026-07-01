@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+No changes yet.
+
+## 0.1.21 - 2026-07-01
+
 - Clarified the recommended/strict adoption boundary and MCP policy
   failure-reading guidance without changing runtime behavior or expanding beyond
   deterministic static evidence.

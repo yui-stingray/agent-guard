@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.1.20
+        uses: yui-stingray/agent-guard@v0.1.21
       - uses: actions/upload-artifact@v7
         if: always()
         with:
