@@ -2447,6 +2447,30 @@ def test_render_report_cli_renders_markdown_from_sanitized_json(tmp_path: Path) 
     assert str(tmp_path) not in result.stdout
 
 
+def test_render_report_cli_redacts_secret_shaped_existing_payload_paths(tmp_path: Path) -> None:
+    secret_like = "sk-" + ("a" * 24)
+    sample = ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
+    payload = json.loads(sample.read_text(encoding="utf-8"))
+    payload["surface_inventory"]["surfaces"][0]["path"] = f"docs/{secret_like}/policy.md"
+    report_json = tmp_path / "agent-guard-report.json"
+    report_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0
+    assert secret_like not in result.stdout
+    rendered = json.loads(result.stdout)
+    assert rendered["surface_inventory"]["surfaces"][0]["path"] == "docs/<redacted>/policy.md"
+
+
 def test_render_report_cli_writes_sarif_from_sanitized_json(tmp_path: Path) -> None:
     policy = create_report_violation_fixture_repo(tmp_path)
     report_json = tmp_path / "evidence" / "agent-guard-report.json"
@@ -2659,6 +2683,42 @@ def test_api_cli_json_violation(tmp_path: Path) -> None:
     assert payload["findings"][0]["path"] == "src/bad.py"
 
 
+def test_api_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
+    secret_like = "sk-" + ("a" * 24)
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        "    - '^https://api\\.openai\\.com/'\n",
+        encoding="utf-8",
+    )
+    write(
+        tmp_path / "src" / secret_like / "bad.py",
+        f'URL = "https://api.openai.com/v1/responses?key={secret_like}"\n',
+    )
+
+    json_result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+    text_result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy))
+
+    assert json_result.returncode == 1
+    assert text_result.returncode == 1
+    payload = json.loads(json_result.stdout)
+    assert payload["findings"][0]["path"] == "src/<redacted>/bad.py"
+    assert payload["findings"][0]["line"] == 1
+    assert payload["findings"][0]["category"] == "forbidden_api"
+    assert "url" not in payload["findings"][0]
+    assert "matched_forbidden_pattern" not in payload["findings"][0]
+    for output in (json_result.stdout, text_result.stdout):
+        assert secret_like not in output
+        assert "matched_forbidden_pattern" not in output
+        assert "api.openai.com" not in output
+
+
 def test_api_cli_json_error(tmp_path: Path) -> None:
     result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(tmp_path / "missing.yaml"), "--json")
 
@@ -2707,6 +2767,41 @@ def test_api_cli_json_error_scrubs_external_include_path_with_spaces(tmp_path: P
     assert_shared_envelope(payload, scanner="api", status="error", exit_code=2, finding_count=0)
     assert str(outside) not in payload["error"]
     assert payload["error"].count("<absolute-path>") >= 1
+
+
+def test_api_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/api-policy.yaml"
+    write(
+        repo / policy_arg,
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        "    - '^https://api\\.openai\\.com/'\n",
+    )
+    write(repo / "src" / "ok.py", 'URL = "https://example.com"\n')
+    write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(cwd, "api", "check", "--root", str(repo), "--policy", policy_arg, "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="api",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_count=1,
+        scanned_unit="files",
+    )
+    assert payload["policy"] == {"path": policy_arg}
+    assert str(tmp_path) not in result.stdout
 
 
 def test_content_cli_json_ok(tmp_path: Path) -> None:
@@ -2788,6 +2883,42 @@ def test_content_cli_json_violation(tmp_path: Path) -> None:
     assert payload["findings"][0]["file"] == "skills/bad.md"
 
 
+def test_content_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
+    secret_like = "sk-" + ("a" * 24)
+    policy = tmp_path / "content_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "skills" / secret_like / "bad.md", f"Hardcoded token: {secret_like}\n")
+
+    common_args = (
+        "content",
+        "check",
+        "--repo-root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--mode",
+        "registered",
+        "--scan-dir",
+        "skills",
+    )
+    json_result = run_cli(*common_args, "--json")
+    text_result = run_cli(*common_args)
+
+    assert json_result.returncode == 1
+    assert text_result.returncode == 1
+    payload = json.loads(json_result.stdout)
+    assert payload["findings"][0]["severity"] == "high"
+    assert payload["findings"][0]["rule_id"] == "hardcoded_credential"
+    assert payload["findings"][0]["file"] == "skills/<redacted>/bad.md"
+    assert payload["findings"][0]["line"] == 1
+    assert "snippet" not in payload["findings"][0]
+    assert "message" not in payload["findings"][0]
+    for output in (json_result.stdout, text_result.stdout):
+        assert secret_like not in output
+        assert "snippet" not in output
+        assert "Hardcoded token" not in output
+
+
 def test_content_cli_json_error(tmp_path: Path) -> None:
     result = run_cli(
         "content",
@@ -2839,6 +2970,86 @@ def test_content_cli_json_error_scrubs_absolute_scan_dir(tmp_path: Path) -> None
     assert_shared_envelope(payload, scanner="content", status="error", exit_code=2, finding_count=0)
     assert str(tmp_path) not in payload["error"]
     assert payload["error"] == "scan dir not found: <absolute-path>"
+
+
+def test_direct_cli_text_errors_scrub_policy_paths_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    repo.mkdir()
+    cwd.mkdir()
+    missing_policy = ".agent-guard/missing-policy.yaml"
+    commands = [
+        ("api", "check", "--root", str(repo), "--policy", missing_policy),
+        (
+            "content",
+            "check",
+            "--repo-root",
+            str(repo),
+            "--policy",
+            missing_policy,
+            "--mode",
+            "registered",
+            "--scan-dir",
+            ".",
+        ),
+        ("context", "check", "--root", str(repo), "--policy", missing_policy),
+        ("path", "check", "--root", str(repo), "--policy", missing_policy),
+        ("digest", "check", "--root", str(repo), "--policy", missing_policy),
+        ("workflow", "check", "--root", str(repo), "--policy", missing_policy),
+    ]
+
+    for command in commands:
+        result = run_cli_from(cwd, *command)
+        combined = result.stdout + result.stderr
+
+        assert result.returncode == 2, command
+        assert "ERROR:" in combined
+        assert str(tmp_path) not in combined
+        assert missing_policy in combined
+
+
+def test_content_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/content-policy.yaml"
+    write(
+        repo / policy_arg,
+        "file_globs:\n"
+        "  - '**/*.md'\n"
+        "exclude_globs: []\n"
+        "forbidden_patterns: []\n",
+    )
+    write(repo / "docs" / "safe.md", "safe\n")
+    write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(
+        cwd,
+        "content",
+        "check",
+        "--repo-root",
+        str(repo),
+        "--policy",
+        policy_arg,
+        "--mode",
+        "registered",
+        "--scan-dir",
+        "docs",
+        "--json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="content",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_count=1,
+        scanned_unit="files",
+    )
+    assert payload["policy"] == {"path": policy_arg}
+    assert str(tmp_path) not in result.stdout
 
 
 def test_context_cli_json_ok(tmp_path: Path) -> None:
@@ -2966,6 +3177,82 @@ def test_context_inventory_cli_json_error_uses_shared_envelope(tmp_path: Path) -
     assert payload["command"] == "inventory"
     assert payload["policy"] == {"path": "missing.yaml"}
     assert str(tmp_path) not in payload["error"]
+
+
+def test_context_cli_policy_paths_are_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/context-policy.yaml"
+    digest_policy_arg = ".agent-guard/context-digest-policy.yaml"
+    agent_context = "Require approval before shell writes.\nRun tests locally.\n"
+    write(repo / policy_arg, "{}\n")
+    write(repo / "AGENTS.md", agent_context)
+    write(
+        repo / digest_policy_arg,
+        "checks:\n"
+        "  - id: root_agents_md\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+    )
+    write(cwd / policy_arg, "not: [valid\n")
+    write(cwd / digest_policy_arg, "not: [valid\n")
+
+    check_result = run_cli_from(
+        cwd,
+        "context",
+        "check",
+        "--root",
+        str(repo),
+        "--policy",
+        policy_arg,
+        "--json",
+    )
+    inventory_result = run_cli_from(
+        cwd,
+        "context",
+        "inventory",
+        "--root",
+        str(repo),
+        "--policy",
+        policy_arg,
+        "--json",
+    )
+    lock_result = run_cli_from(
+        cwd,
+        "context",
+        "lock",
+        "--root",
+        str(repo),
+        "--policy",
+        policy_arg,
+        "--check",
+        "--digest-policy",
+        digest_policy_arg,
+        "--json",
+    )
+    surface_result = run_cli_from(
+        cwd,
+        "surface",
+        "inventory",
+        "--root",
+        str(repo),
+        "--context-policy",
+        policy_arg,
+        "--json",
+    )
+
+    for result in (check_result, inventory_result, lock_result, surface_result):
+        assert result.returncode == 0
+        assert str(tmp_path) not in result.stdout
+    check_payload = json.loads(check_result.stdout)
+    inventory_payload = json.loads(inventory_result.stdout)
+    lock_payload = json.loads(lock_result.stdout)
+    surface_payload = json.loads(surface_result.stdout)
+    assert check_payload["policy"] == {"path": policy_arg}
+    assert inventory_payload["policy"] == {"path": policy_arg}
+    assert lock_payload["policy"] == {"path": policy_arg}
+    assert lock_payload["digest_policy"] == {"path": digest_policy_arg}
+    assert surface_payload["policy"] == {"path": policy_arg}
 
 
 def test_context_lock_cli_yaml_feeds_digest_check(tmp_path: Path) -> None:
@@ -4377,6 +4664,169 @@ def test_report_cli_markdown_missing_static_policy_scrubs_path(tmp_path: Path) -
         assert str(tmp_path) not in result.stdout
 
 
+def test_report_cli_policy_paths_are_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    context_policy_arg = ".agent-guard/context-policy.yaml"
+    path_policy_arg = ".agent-guard/path-policy.yaml"
+    content_policy_arg = ".agent-guard/content-policy.yaml"
+    api_policy_arg = ".agent-guard/api-policy.yaml"
+    digest_policy_arg = ".agent-guard/digest-policy.yaml"
+    workflow_policy_arg = ".agent-guard/workflow-policy.yaml"
+    agent_context = "Require approval before shell writes.\nRun tests locally.\n"
+    write(repo / context_policy_arg, "{}\n")
+    write(repo / "AGENTS.md", agent_context)
+    write(
+        repo / path_policy_arg,
+        "scan:\n"
+        "  include:\n"
+        "    - .\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  forbidden_path_patterns: []\n",
+    )
+    write(
+        repo / content_policy_arg,
+        "file_globs:\n"
+        "  - '**/*.md'\n"
+        "exclude_globs: []\n"
+        "forbidden_patterns: []\n",
+    )
+    write(repo / "docs" / "safe.md", "safe\n")
+    write(
+        repo / api_policy_arg,
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        "    - '^https://api\\.openai\\.com/'\n",
+    )
+    write(repo / "src" / "ok.py", 'URL = "https://example.com"\n')
+    write(
+        repo / digest_policy_arg,
+        "checks:\n"
+        "  - id: root_agents_md\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+    )
+    write(
+        repo / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+""",
+    )
+    write(
+        repo / workflow_policy_arg,
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n"
+        "workflow_checks:\n"
+        "  - id: ci_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: context_guard\n"
+        "        command: python -m agent_guard.cli context check\n",
+    )
+    for policy_arg in (
+        context_policy_arg,
+        path_policy_arg,
+        content_policy_arg,
+        api_policy_arg,
+        digest_policy_arg,
+        workflow_policy_arg,
+    ):
+        write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(
+        cwd,
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        context_policy_arg,
+        "--path-policy",
+        path_policy_arg,
+        "--content-policy",
+        content_policy_arg,
+        "--content-scan-dir",
+        "docs",
+        "--api-policy",
+        api_policy_arg,
+        "--digest-policy",
+        digest_policy_arg,
+        "--workflow-policy",
+        workflow_policy_arg,
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["policy"] == {"path": context_policy_arg}
+    assert payload["path"]["policy"] == {"path": path_policy_arg}
+    assert payload["content"]["policy"] == {"path": content_policy_arg}
+    assert payload["api"]["policy"] == {"path": api_policy_arg}
+    assert payload["context_lock"]["policy"] == {"path": digest_policy_arg}
+    assert payload["digest"]["policy"] == {"path": digest_policy_arg}
+    assert payload["workflow"]["policy"] == {"path": workflow_policy_arg}
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_json_redacts_secret_shaped_path_segments(tmp_path: Path) -> None:
+    secret_like = "sk-" + ("a" * 24)
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    content_policy = tmp_path / "content_policy.yaml"
+    content_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "docs" / secret_like / "bad.md", f"Hardcoded token: {secret_like}\n")
+    api_policy = tmp_path / "api_policy.yaml"
+    api_policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        "    - '^https://api\\.openai\\.com/'\n",
+        encoding="utf-8",
+    )
+    write(tmp_path / "src" / secret_like / "bad.py", 'URL = "https://api.openai.com/v1/responses"\n')
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--content-policy",
+        str(content_policy),
+        "--content-scan-dir",
+        "docs",
+        "--api-policy",
+        str(api_policy),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1
+    assert secret_like not in result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["content"]["findings"][0]["file"] == "docs/<redacted>/bad.md"
+    assert payload["api"]["findings"][0]["path"] == "src/<redacted>/bad.py"
+
+
 def test_report_cli_markdown_content_scan_dir_must_stay_under_root(tmp_path: Path) -> None:
     context_policy = tmp_path / "context_policy.yaml"
     context_policy.write_text("{}\n", encoding="utf-8")
@@ -4728,6 +5178,31 @@ def test_path_cli_json_ok(tmp_path: Path) -> None:
     assert payload["findings"] == []
 
 
+def test_path_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/path-policy.yaml"
+    write(
+        repo / policy_arg,
+        "scan:\n"
+        "  include:\n"
+        "    - .\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  forbidden_path_patterns: []\n",
+    )
+    write(repo / "README.md", "safe\n")
+    write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(cwd, "path", "check", "--root", str(repo), "--policy", policy_arg, "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(payload, scanner="path", status="ok", exit_code=0, finding_count=0, scanned_unit="paths")
+    assert payload["policy"] == {"path": policy_arg}
+    assert str(tmp_path) not in result.stdout
+
+
 def test_path_cli_json_error(tmp_path: Path) -> None:
     result = run_cli("path", "check", "--root", str(tmp_path), "--policy", str(tmp_path / "missing.yaml"), "--json")
 
@@ -4797,6 +5272,38 @@ def test_digest_cli_json_ok(tmp_path: Path) -> None:
     assert payload["findings"] == []
 
 
+def test_digest_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/digest-policy.yaml"
+    content = "safe\n"
+    write(repo / "README.md", content)
+    write(
+        repo / policy_arg,
+        "checks:\n"
+        "  - id: readme_pin\n"
+        "    path: README.md\n"
+        f"    sha256: '{sha256_text(content)}'\n",
+    )
+    write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(cwd, "digest", "check", "--root", str(repo), "--policy", policy_arg, "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="digest",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_count=1,
+        scanned_unit="files",
+    )
+    assert payload["policy"] == {"path": policy_arg}
+    assert str(tmp_path) not in result.stdout
+
+
 def test_digest_cli_json_error(tmp_path: Path) -> None:
     result = run_cli("digest", "check", "--root", str(tmp_path), "--policy", str(tmp_path / "missing.yaml"), "--json")
 
@@ -4853,6 +5360,54 @@ jobs:
     assert payload["checked_items"] == 2
     assert payload["policy"] == {"path": "workflow-policy.yaml"}
     assert payload["findings"] == []
+
+
+def test_workflow_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    policy_arg = ".agent-guard/workflow-policy.yaml"
+    write(repo / ".agent-guard" / "context-policy.yaml", "{}\n")
+    write(
+        repo / ".github" / "workflows" / "ci.yml",
+        """
+name: ci
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+""",
+    )
+    write(
+        repo / policy_arg,
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n"
+        "workflow_checks:\n"
+        "  - id: ci_smoke\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: context_guard\n"
+        "        command: python -m agent_guard.cli context check\n",
+    )
+    write(cwd / policy_arg, "not: [valid\n")
+
+    result = run_cli_from(cwd, "workflow", "check", "--root", str(repo), "--policy", policy_arg, "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="workflow",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_count=2,
+        scanned_unit="checks",
+    )
+    assert payload["policy"] == {"path": policy_arg}
+    assert str(tmp_path) not in result.stdout
 
 
 def test_workflow_cli_json_missing_required_file(tmp_path: Path) -> None:

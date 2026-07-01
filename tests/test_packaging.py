@@ -309,12 +309,12 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "SARIF `partialFingerprints` derived only" in actions
     assert "OWASP risk-theme labels" in actions
     assert "live OAuth validator" in actions
-    assert "raw snippets" in actions
+    assert "scanner-specific metadata" in actions
     assert "workflow logs" in actions
     assert "Raw" in actions
-    assert "scanner JSON may include raw snippets" in actions
+    assert "scanner JSON may include scanner-specific metadata" in actions
     assert "do not upload it publicly" in actions
-    assert "unless a maintainer has reviewed" in actions
+    assert "unless a maintainer has reviewed" in actions_single_line
     raw_json_doc_lines = [
         line.strip()
         for line in actions.splitlines()
@@ -385,11 +385,14 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     ]
     assert 'agent-guard report "${report_args[@]}" --format github-annotations' not in action_script
     assert 'policy_path()' in action_script
-    assert 'context_policy="$(policy_path "$AGENT_GUARD_CONTEXT_POLICY")"' in action_script
-    assert 'path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"' in action_script
-    assert 'content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"' in action_script
-    assert 'workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"' in action_script
-    assert 'digest_policy="$(policy_path "$AGENT_GUARD_DIGEST_POLICY")"' in action_script
+    assert 'context_policy_arg="$AGENT_GUARD_CONTEXT_POLICY"' in action_script
+    assert 'context_policy="$(policy_path "$context_policy_arg")"' in action_script
+    assert 'path_policy="$(policy_path "$path_policy_arg")"' in action_script
+    assert 'content_policy="$(policy_path "$content_policy_arg")"' in action_script
+    assert 'workflow_policy="$(policy_path "$workflow_policy_arg")"' in action_script
+    assert 'digest_policy="$(policy_path "$digest_policy_arg")"' in action_script
+    assert 'agent-guard context check --root "$root" --policy "$context_policy_arg"' in action_script
+    assert 'report_args=(--root "$root" --context-policy "$context_policy_arg" --evidence-preset recommended)' in action_script
     assert "${{ inputs." not in action_script
     assert "pull request comment" not in ACTION_METADATA.read_text(encoding="utf-8").lower()
     raw_scanner_lines = [

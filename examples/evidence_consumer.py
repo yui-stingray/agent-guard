@@ -416,6 +416,8 @@ def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
     require(finding_count == len(findings), "$.finding_count must match findings length")
     summary = require_mapping(payload.get("summary"), "$.summary")
     require(summary.get("finding_count") == finding_count, "$.summary.finding_count must match finding_count")
+    if status == "ok":
+        require(finding_count == 0, "$.finding_count must be 0 when status is ok")
 
     if status == "error":
         return
@@ -424,6 +426,19 @@ def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
     validate_surface_inventory(surface_inventory)
     evidence_coverage = require_mapping(payload.get("evidence_coverage"), "$.evidence_coverage")
     validate_gate_counts(evidence_coverage, report_status=status)
+    failing_count = require_int(evidence_coverage.get("failing_count"), "$.evidence_coverage.failing_count")
+    conformance = payload.get("conformance")
+    conformance_finding_count = 0
+    if isinstance(conformance, Mapping):
+        conformance_finding_count = require_int(
+            conformance.get("finding_count"),
+            "$.conformance.finding_count",
+        )
+    if status == "violation":
+        require(
+            finding_count > 0 or failing_count > 0 or conformance_finding_count > 0,
+            "$.status violation must be explained by findings, failing gates, or conformance findings",
+        )
 
     drift = payload.get("policy_spec_drift")
     if isinstance(drift, Mapping):
@@ -506,9 +521,8 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
         require(manifest.get("sanitized") is True, "evidence_pack_manifest.sanitized must be true")
         validate_evidence_pack_manifest(manifest, payload)
 
-    validate_public_report_consistency(payload)
-
     validate_public_evidence_shape(payload)
+    validate_public_report_consistency(payload)
 
     return {
         "schema_version": payload["schema_version"],

@@ -219,9 +219,14 @@ runs:
           fi
         }
 
-        context_policy="$(policy_path "$AGENT_GUARD_CONTEXT_POLICY")"
-        path_policy="$(policy_path "$AGENT_GUARD_PATH_POLICY")"
-        content_policy="$(policy_path "$AGENT_GUARD_CONTENT_POLICY")"
+        context_policy_arg="$AGENT_GUARD_CONTEXT_POLICY"
+        path_policy_arg="$AGENT_GUARD_PATH_POLICY"
+        content_policy_arg="$AGENT_GUARD_CONTENT_POLICY"
+        workflow_policy_arg="$AGENT_GUARD_WORKFLOW_POLICY"
+        digest_policy_arg="$AGENT_GUARD_DIGEST_POLICY"
+        context_policy="$(policy_path "$context_policy_arg")"
+        path_policy="$(policy_path "$path_policy_arg")"
+        content_policy="$(policy_path "$content_policy_arg")"
         mcp_policy=""
         mcp_policy_arg=""
         if [ -n "$AGENT_GUARD_MCP_POLICY" ]; then
@@ -229,20 +234,20 @@ runs:
           mcp_policy_arg="$AGENT_GUARD_MCP_POLICY"
         fi
         content_scan_dir="$AGENT_GUARD_CONTENT_SCAN_DIR"
-        workflow_policy="$(policy_path "$AGENT_GUARD_WORKFLOW_POLICY")"
-        digest_policy="$(policy_path "$AGENT_GUARD_DIGEST_POLICY")"
+        workflow_policy="$(policy_path "$workflow_policy_arg")"
+        digest_policy="$(policy_path "$digest_policy_arg")"
         base_ref="${AGENT_GUARD_BASE_REF:-}"
 
-        agent-guard context check --root "$root" --policy "$context_policy" --json > "$raw_dir/context.json"
+        agent-guard context check --root "$root" --policy "$context_policy_arg" --json > "$raw_dir/context.json"
         record_status "$?"
 
         if path_exists "$path_policy"; then
-          agent-guard path check --root "$root" --policy "$path_policy" --json > "$raw_dir/path.json"
+          agent-guard path check --root "$root" --policy "$path_policy_arg" --json > "$raw_dir/path.json"
           record_status "$?"
         fi
 
         if path_exists "$content_policy"; then
-          agent-guard content check --repo-root "$root" --policy "$content_policy" --mode registered --scan-dir "$content_scan_dir" --json > "$raw_dir/content.json"
+          agent-guard content check --repo-root "$root" --policy "$content_policy_arg" --mode registered --scan-dir "$content_scan_dir" --json > "$raw_dir/content.json"
           record_status "$?"
         fi
 
@@ -253,11 +258,11 @@ runs:
         agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
         record_status "$?"
 
-        agent-guard surface inventory --root "$root" --context-policy "$context_policy" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
+        agent-guard surface inventory --root "$root" --context-policy "$context_policy_arg" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
         record_status "$?"
 
         if path_exists "$workflow_policy"; then
-          agent-guard workflow check --root "$root" --policy "$workflow_policy" --json > "$raw_dir/workflow.json"
+          agent-guard workflow check --root "$root" --policy "$workflow_policy_arg" --json > "$raw_dir/workflow.json"
           record_status "$?"
         fi
 
@@ -268,21 +273,21 @@ runs:
         agent-guard drift check "${drift_args[@]}" --json > "$raw_dir/drift.json"
         record_status "$?"
 
-        report_args=(--root "$root" --context-policy "$context_policy" --evidence-preset recommended)
+        report_args=(--root "$root" --context-policy "$context_policy_arg" --evidence-preset recommended)
         if path_exists "$path_policy"; then
-          report_args+=(--path-policy "$path_policy")
+          report_args+=(--path-policy "$path_policy_arg")
         fi
         if path_exists "$content_policy"; then
-          report_args+=(--content-policy "$content_policy" --content-scan-dir "$content_scan_dir")
+          report_args+=(--content-policy "$content_policy_arg" --content-scan-dir "$content_scan_dir")
         fi
         if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
           report_args+=(--mcp-policy "$mcp_policy_arg")
         fi
         if path_exists "$workflow_policy"; then
-          report_args+=(--workflow-policy "$workflow_policy")
+          report_args+=(--workflow-policy "$workflow_policy_arg")
         fi
         if path_exists "$digest_policy"; then
-          report_args+=(--digest-policy "$digest_policy")
+          report_args+=(--digest-policy "$digest_policy_arg")
         fi
         if [ -n "$base_ref" ]; then
           report_args+=(--drift-base-ref "$base_ref")

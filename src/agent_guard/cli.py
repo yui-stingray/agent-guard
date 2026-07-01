@@ -47,6 +47,21 @@ RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
 REPORT_EVIDENCE_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
 TOOL_NAME = "agent-guard"
 RECOMMENDED_EVIDENCE_PRESET = "recommended"
+SECRET_SHAPED_PUBLIC_TEXT_RE = re.compile(
+    r"(sk-[A-Za-z0-9_-]{16,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"AKIA[0-9A-Z]{16}|"
+    r"ASIA[0-9A-Z]{16}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)"
+)
+SHA256_PUBLIC_TEXT_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
+RAW_URL_PUBLIC_TEXT_RE = re.compile(r"https?://[^\s\"'`<>()]+")
+LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(
+    r"(?:(?:/home|/mnt/c/Users)/(?:[^\s:'\"]+/)*[^\s:'\"]+|"
+    r"[A-Za-z]:[\\/]+Users[\\/]+(?:[^\\/\s:'\"]+[\\/]+)*[^\\/\s:'\"]+)"
+)
 
 
 def tool_version() -> str:
@@ -65,7 +80,34 @@ def safe_policy_path(raw_policy: str, root: Path) -> str:
     if is_windows_absolute_path(raw_text):
         return "<external-policy>"
 
-    return safe_resolved_policy_path(resolve_policy_arg(raw_text, root), root)
+    return redact_public_text(safe_resolved_policy_path(resolve_policy_arg(raw_text, root), root))
+
+
+def redact_public_text(text: str) -> str:
+    redacted = RAW_URL_PUBLIC_TEXT_RE.sub("<redacted-url>", text)
+    redacted = LOCAL_PATH_PUBLIC_TEXT_RE.sub("<absolute-path>", redacted)
+    redacted = SECRET_SHAPED_PUBLIC_TEXT_RE.sub("<redacted>", redacted)
+    return SHA256_PUBLIC_TEXT_RE.sub("<redacted>", redacted)
+
+
+def sanitize_public_value(value: object) -> object:
+    if isinstance(value, str):
+        return redact_public_text(value)
+    if isinstance(value, dict):
+        return {
+            redact_public_text(str(key)): sanitize_public_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_public_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_public_value(item) for item in value]
+    return value
+
+
+def sanitize_public_mapping(value: dict[str, object]) -> dict[str, object]:
+    sanitized = sanitize_public_value(value)
+    return sanitized if isinstance(sanitized, dict) else {}
 
 
 def resolve_policy_arg(raw_policy: str, root: Path) -> Path:
@@ -80,7 +122,7 @@ def safe_resolved_policy_path(policy_path: Path, root: Path) -> str:
     resolved_root = root.resolve()
     resolved_policy = policy_path.resolve(strict=False)
     try:
-        return resolved_policy.relative_to(resolved_root).as_posix()
+        return redact_public_text(resolved_policy.relative_to(resolved_root).as_posix())
     except ValueError:
         return "<external-policy>"
 
@@ -151,7 +193,8 @@ def scrub_error_message(
         ),
         scrubbed,
     )
-    return re.sub(r"[A-Za-z]:\\(?:[^\\\s:'\"]+\\)*[^\\\s:'\"]*", "<absolute-path>", scrubbed)
+    scrubbed = re.sub(r"[A-Za-z]:\\(?:[^\\\s:'\"]+\\)*[^\\\s:'\"]*", "<absolute-path>", scrubbed)
+    return redact_public_text(scrubbed)
 
 
 def scrub_report_error_message(message: str) -> str:
@@ -182,7 +225,10 @@ def result_payload(
     error_paths: Iterable[str] = (),
     extra: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    finding_items = findings or []
+    finding_items = [
+        sanitize_public_mapping(item)
+        for item in (findings or [])
+    ]
     summary: dict[str, object] = {"finding_count": len(finding_items)}
     if scanned_count is not None:
         summary["scanned_count"] = scanned_count
@@ -448,9 +494,11 @@ def run_report_render(args: argparse.Namespace) -> int:
                 },
             },
         )
+        payload = sanitize_public_mapping(payload)
         emit_report_output(render_report_output(payload, args.format), args.output)
         return 2
 
+    payload = sanitize_public_mapping(payload)
     emit_report_output(render_report_output(payload, args.format), args.output)
     exit_code = payload.get("exit_code", 0)
     return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0
@@ -484,8 +532,9 @@ def run_init(args: argparse.Namespace) -> int:
 
 def run_surface_inventory(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
+    policy_path = resolve_policy_arg(args.context_policy, root)
     try:
-        policy = load_context_policy(Path(args.context_policy).resolve())
+        policy = load_context_policy(policy_path)
         inventory = collect_agent_surface_inventory(
             root=root,
             context_policy=policy,
@@ -810,15 +859,35 @@ def print_content_text(*, findings: list, scanned_files: int, mode: str) -> None
 
     print(f"content-security: NG ({len(findings)} findings, mode={mode})")
     for item in findings:
-        print(
-            f"- {item.severity} {item.rule_id} {item.file}:{item.line} "
-            f"{item.message} :: {item.snippet}"
-        )
+        print(f"- {item.severity} {item.rule_id} {redact_public_text(item.file)}:{item.line}")
+
+
+def api_finding_payload(finding: object) -> dict[str, object]:
+    return annotate_finding(
+        "api",
+        {
+            "path": getattr(finding, "path", ""),
+            "line": getattr(finding, "line", 0),
+            "category": "forbidden_api",
+        },
+    )
+
+
+def content_finding_payload(finding: object) -> dict[str, object]:
+    return annotate_finding(
+        "content",
+        {
+            "severity": getattr(finding, "severity", ""),
+            "rule_id": getattr(finding, "rule_id", ""),
+            "file": getattr(finding, "file", ""),
+            "line": getattr(finding, "line", 0),
+        },
+    )
 
 
 def run_api_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_yaml_policy(policy_path)
@@ -843,7 +912,7 @@ def run_api_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     if findings:
@@ -853,7 +922,7 @@ def run_api_check(args: argparse.Namespace) -> int:
             exit_code=1,
             policy_arg=args.policy,
             root=root,
-            findings=[finding.to_dict() for finding in findings],
+            findings=[api_finding_payload(finding) for finding in findings],
             scanned_count=len(api_scan_files),
             scanned_unit="files",
         )
@@ -862,10 +931,7 @@ def run_api_check(args: argparse.Namespace) -> int:
         else:
             print(f"FAILED: {len(findings)} forbidden API endpoint(s) detected")
             for finding in findings:
-                print(
-                    f"  - {finding.path}:{finding.line} {finding.url} "
-                    f"(pattern: {finding.matched_forbidden_pattern})"
-                )
+                print(f"  - {redact_public_text(finding.path)}:{finding.line} forbidden_api")
         return 1
 
     payload = result_payload(
@@ -887,7 +953,7 @@ def run_api_check(args: argparse.Namespace) -> int:
 
 def run_content_check(args: argparse.Namespace) -> int:
     repo_root = Path(args.repo_root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, repo_root)
 
     try:
         policy = load_content_policy(policy_path)
@@ -924,7 +990,7 @@ def run_content_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     exit_code = 0 if not findings else 1
@@ -934,7 +1000,7 @@ def run_content_check(args: argparse.Namespace) -> int:
         exit_code=exit_code,
         policy_arg=args.policy,
         root=repo_root,
-        findings=[item.to_dict() for item in findings],
+        findings=[content_finding_payload(item) for item in findings],
         scanned_count=len(paths),
         scanned_unit="files",
         extra={"mode": args.mode, "scanned_files": len(paths)},
@@ -949,7 +1015,7 @@ def run_content_check(args: argparse.Namespace) -> int:
 
 def run_context_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_context_policy(policy_path)
@@ -966,7 +1032,7 @@ def run_context_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     exit_code = 0 if not findings else 1
@@ -986,7 +1052,10 @@ def run_context_check(args: argparse.Namespace) -> int:
     elif findings:
         print(f"context-guard: NG ({len(findings)} findings)")
         for item in findings:
-            print(f"- {item.severity} {item.rule_id} {item.file}:{item.line} {item.message}")
+            print(
+                f"- {item.severity} {item.rule_id} "
+                f"{redact_public_text(item.file)}:{item.line} {redact_public_text(item.message)}"
+            )
     else:
         print(f"context-guard: OK ({scanned_files} files scanned)")
 
@@ -995,7 +1064,7 @@ def run_context_check(args: argparse.Namespace) -> int:
 
 def run_context_inventory(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_context_policy(policy_path)
@@ -1013,7 +1082,7 @@ def run_context_inventory(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     payload = result_payload(
@@ -1044,7 +1113,7 @@ def run_context_inventory(args: argparse.Namespace) -> int:
 
 def run_context_lock(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
     digest_policy_arg = str(args.digest_policy).strip()
 
     try:
@@ -1082,12 +1151,12 @@ def run_context_lock(args: argparse.Namespace) -> int:
                 for item in finding_items:
                     print(
                         f"- {item['severity']} {item['rule_id']} "
-                        f"{item['file']}:{item['line']}"
+                        f"{redact_public_text(str(item['file']))}:{item['line']}"
                     )
             return 1
         inventory = collect_context_inventory(root=root, policy=policy)
         if args.check:
-            digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
+            digest_policy = load_digest_policy(resolve_policy_arg(digest_policy_arg, root))
             coverage = check_context_digest_coverage(
                 root=root,
                 inventory=inventory,
@@ -1132,7 +1201,7 @@ def run_context_lock(args: argparse.Namespace) -> int:
                 for item in finding_items:
                     print(
                         f"- {item.get('severity', 'high')} {item.get('rule_id', '-')} "
-                        f"{item.get('path', '-')} {item.get('status', '-')}"
+                        f"{redact_public_text(str(item.get('path', '-')))} {item.get('status', '-')}"
                     )
             return exit_code
         digest_policy = build_context_digest_policy(root=root, inventory=inventory)
@@ -1331,7 +1400,7 @@ def build_evidence_coverage(
 
 
 def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
-    policy = load_yaml_policy(Path(policy_arg).resolve())
+    policy = load_yaml_policy(resolve_policy_arg(policy_arg, root))
     scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
     api_scan_files = list(
         iter_api_scan_files(
@@ -1347,15 +1416,7 @@ def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
         "checked_count": len(api_scan_files),
         "finding_count": len(findings),
         "findings": [
-            annotate_finding(
-                "api",
-                {
-                    "path": item.path,
-                    "line": item.line,
-                    "category": "forbidden_api",
-                },
-            )
-            for item in findings
+            api_finding_payload(item) for item in findings
         ],
     }
 
@@ -1369,7 +1430,7 @@ def build_content_report(*, root: Path, policy_arg: str, scan_dir_arg: str) -> d
     except ValueError as exc:
         raise ValueError("content scan dir must stay under report root") from exc
 
-    policy = load_content_policy(Path(policy_arg).resolve())
+    policy = load_content_policy(resolve_policy_arg(policy_arg, root))
     rules = build_rules(policy)
     file_globs = normalize_patterns(policy.get("file_globs", [])) or ["**/*.md"]
     exclude_globs = normalize_patterns(policy.get("exclude_globs", []))
@@ -1383,22 +1444,13 @@ def build_content_report(*, root: Path, policy_arg: str, scan_dir_arg: str) -> d
         "checked_count": len(paths),
         "finding_count": len(findings),
         "findings": [
-            annotate_finding(
-                "content",
-                {
-                    "severity": item.severity,
-                    "rule_id": item.rule_id,
-                    "file": item.file,
-                    "line": item.line,
-                },
-            )
-            for item in findings
+            content_finding_payload(item) for item in findings
         ],
     }
 
 
 def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
-    policy = load_path_policy(Path(policy_arg).resolve())
+    policy = load_path_policy(resolve_policy_arg(policy_arg, root))
     findings, scanned_paths = scan_repo_paths(root=root, policy=policy)
     return {
         "policy": {"path": safe_policy_path(policy_arg, root)},
@@ -1411,7 +1463,7 @@ def build_path_report(*, root: Path, policy_arg: str) -> dict[str, object]:
                 {
                     "severity": item.severity,
                     "rule_id": item.rule_id,
-                    "path": item.path,
+                    "path": redact_public_text(item.path),
                 },
             )
             for item in findings
@@ -1478,7 +1530,7 @@ def run_report(args: argparse.Namespace) -> int:
     apply_report_evidence_preset(args)
     apply_report_defaults(args)
     root = Path(args.root).resolve()
-    policy_path = Path(args.context_policy).resolve()
+    policy_path = resolve_policy_arg(args.context_policy, root)
     path_policy_arg = str(args.path_policy).strip()
     content_policy_arg = str(args.content_policy).strip()
     content_scan_dir_arg = str(args.content_scan_dir).strip() or "."
@@ -1543,7 +1595,7 @@ def run_report(args: argparse.Namespace) -> int:
         context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
-            digest_policy = load_digest_policy(Path(digest_policy_arg).resolve())
+            digest_policy = load_digest_policy(resolve_policy_arg(digest_policy_arg, root))
             context_lock_report = build_context_lock_report(
                 root=root,
                 inventory=inventory,
@@ -1571,7 +1623,7 @@ def run_report(args: argparse.Namespace) -> int:
             }
         workflow_report: dict[str, object] | None = None
         if workflow_policy_arg:
-            workflow_policy = load_workflow_policy(Path(workflow_policy_arg).resolve())
+            workflow_policy = load_workflow_policy(resolve_policy_arg(workflow_policy_arg, root))
             workflow_findings, checked_items = scan_workflow_policy(root=root, policy=workflow_policy)
             workflow_report = {
                 "policy": {"path": safe_policy_path(workflow_policy_arg, root)},
@@ -1898,13 +1950,14 @@ def run_report(args: argparse.Namespace) -> int:
                 root=root,
             )
             payload["evidence_pack_manifest"] = evidence_pack_manifest
+    payload = sanitize_public_mapping(payload)
     emit_report_output(render_report_output(payload, args.format), args.output)
     return exit_code
 
 
 def run_path_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_path_policy(policy_path)
@@ -1921,7 +1974,7 @@ def run_path_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     exit_code = 0 if not findings else 1
@@ -1941,7 +1994,10 @@ def run_path_check(args: argparse.Namespace) -> int:
     elif findings:
         print(f"path-guard: NG ({len(findings)} findings)")
         for item in findings:
-            print(f"- {item.severity} {item.rule_id} {item.path} {item.message}")
+            print(
+                f"- {item.severity} {item.rule_id} "
+                f"{redact_public_text(item.path)} {redact_public_text(item.message)}"
+            )
     else:
         print(f"path-guard: OK ({scanned_paths} paths scanned)")
 
@@ -1950,7 +2006,7 @@ def run_path_check(args: argparse.Namespace) -> int:
 
 def run_digest_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_digest_policy(policy_path)
@@ -1967,7 +2023,7 @@ def run_digest_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     exit_code = 0 if not findings else 1
@@ -1987,7 +2043,10 @@ def run_digest_check(args: argparse.Namespace) -> int:
     elif findings:
         print(f"digest-guard: NG ({len(findings)} findings)")
         for item in findings:
-            print(f"- {item.check_id} {item.path} {item.message}")
+            print(
+                f"- {item.check_id} {redact_public_text(item.path)} "
+                f"{redact_public_text(item.message)}"
+            )
     else:
         print(f"digest-guard: OK ({checked_files} files checked)")
 
@@ -1996,7 +2055,7 @@ def run_digest_check(args: argparse.Namespace) -> int:
 
 def run_workflow_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    policy_path = Path(args.policy).resolve()
+    policy_path = resolve_policy_arg(args.policy, root)
 
     try:
         policy = load_workflow_policy(policy_path)
@@ -2013,7 +2072,7 @@ def run_workflow_check(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(f"ERROR: {exc}")
+            print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
 
     exit_code = 0 if not findings else 1
@@ -2033,7 +2092,10 @@ def run_workflow_check(args: argparse.Namespace) -> int:
     elif findings:
         print(f"workflow-guard: NG ({len(findings)} findings)")
         for item in findings:
-            print(f"- {item.severity} {item.rule_id} {item.file} {item.message}")
+            print(
+                f"- {item.severity} {item.rule_id} "
+                f"{redact_public_text(item.file)} {redact_public_text(item.message)}"
+            )
     else:
         print(f"workflow-guard: OK ({checked_items} checks)")
 

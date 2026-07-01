@@ -38,10 +38,10 @@ jobs:
 
 The action keeps per-scanner JSON in temporary runner storage so scanner
 diagnostics do not appear in workflow logs or uploaded public artifacts. Raw
-scanner JSON may include raw snippets, matched URLs, configured patterns, or
-other policy diagnostics depending on the scanner, so do not upload it publicly
-unless a maintainer has reviewed that exact output. The uploadable files from
-the packaged action are the sanitized report, SARIF report, surface inventory,
+scanner JSON may include scanner-specific metadata or policy diagnostics
+depending on the scanner, so do not upload it publicly unless a maintainer has
+reviewed that exact output. The uploadable files from the packaged action are
+the sanitized report, SARIF report, surface inventory,
 conformance result, and evidence-pack manifest. Markdown, SARIF, and GitHub
 annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
@@ -223,9 +223,10 @@ leaving repository-specific API and digest policies opt-in.
 
 Automation that consumes the JSON report should fail closed on schema drift,
 missing `surface_inventory`, missing `evidence_coverage`, inconsistent finding
-or gate counts, non-sanitized report metadata, unexpected conformance profiles,
-and forbidden public-evidence fragments such as snippets, token-shaped strings,
-hash values, or absolute local paths. Use the report as reviewer evidence, not
+or gate counts, unexplained top-level `status` values, non-sanitized report
+metadata, unexpected conformance profiles, and forbidden public-evidence
+fragments such as snippets, token-shaped strings, hash values, or absolute
+local paths. Use the report as reviewer evidence, not
 as proof that runtime prompt injection, MCP tool poisoning, live OAuth flows,
 or secrets are safe. The boundary is summarized in
 [`docs/threat-model.md`](threat-model.md), and

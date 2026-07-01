@@ -11,8 +11,14 @@ Why: keep static guard releases auditable while the package is still alpha.
   validation, generic secret scanning, or LLM review behavior.
 - Hardened the copyable downstream evidence consumer so it checks conformance
   and evidence-pack consistency, recognizes reviewed MCP policy conformance
-  rule ids, and uses shape-aware public-evidence hygiene checks instead of
-  broad token/hash substrings.
+  rule ids, rejects unexplained top-level report status values, and uses
+  shape-aware public-evidence hygiene checks instead of broad token/hash
+  substrings.
+- Resolved non-MCP policy path arguments relative to the relevant repository
+  root for direct scanner checks and `report`, while keeping public policy path
+  display sanitized and repo-relative.
+- Trimmed direct `api check` and `content check` finding output to public-safe
+  metadata and made direct-check text errors print scrubbed paths.
 
 ## 0.1.21 - 2026-07-01
 

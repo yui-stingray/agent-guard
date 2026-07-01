@@ -116,9 +116,8 @@ Do not treat every `--json` command as a public artifact. The report,
 render-report, conformance, and evidence-pack outputs are the sanitized review
 surfaces. Raw scanner JSON from commands such as `api check --json`, `content
 check --json`, `mcp check --json`, or `workflow check --json` may include
-scanner metadata, snippets, matched URLs, configured patterns, or policy
-diagnostics depending on the scanner and should stay in local automation or
-temporary CI storage unless reviewed.
+scanner-specific metadata or policy diagnostics depending on the scanner and
+should stay in local automation or temporary CI storage unless reviewed.
 
 `--evidence-preset recommended` expands unset report options to the current
 recommended static gate bundle: path, content, MCP config, workflow,
@@ -132,9 +131,10 @@ files for them.
 Downstream wrappers should read the sanitized report JSON and validate it
 against the packaged `agent-guard.report_evidence.v1` schema before making
 decisions. Fail closed on schema drift, inconsistent counts, missing
-`surface_inventory`, missing `evidence_coverage`, non-sanitized reports,
-unexpected conformance profiles, or forbidden public-evidence fragments such as
-raw snippets, hash values, token-shaped strings, and absolute local paths.
+`surface_inventory`, missing `evidence_coverage`, unexplained top-level
+`status` values, non-sanitized reports, unexpected conformance profiles, or
+forbidden public-evidence fragments such as raw snippets, hash values,
+token-shaped strings, and absolute local paths.
 
 The copyable `examples/evidence_consumer.py` script demonstrates that consumer
 shape. It is still a review wrapper: it does not execute MCP servers, validate

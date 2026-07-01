@@ -186,9 +186,9 @@ and `exit_code: 2`.
 
 Raw scanner JSON is for local automation and CI internals, not automatically a
 public artifact. Scanner-specific output may include operational details such
-as snippets, matched URLs, configured patterns, policy paths, or line-level
-diagnostics depending on the scanner and policy. Treat those files as
-repository-private unless a maintainer has reviewed them. Public-safe evidence
+as scanner metadata, policy paths, or line-level diagnostics depending on the
+scanner and policy. Treat those files as repository-private unless a maintainer
+has reviewed them. Public-safe evidence
 claims in this README apply to `agent-guard report`, `agent-guard
 render-report`, GitHub annotations, SARIF rendered from a report, conformance
 output, and evidence-pack manifests.
@@ -794,6 +794,11 @@ agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]
 agent-guard drift check --root <repo> [--profile <minimal|recommended|strict>] [--schema-version <v1|v2>] [--base-ref <ref>] [--json]
 ```
+
+Policy path arguments are resolved relative to the relevant repository root
+(`--root` or `--repo-root`) unless an absolute path is provided. Public report
+payloads keep in-repository policy paths repo-relative and display external
+policy files as `<external-policy>`.
 
 ## Releases
 

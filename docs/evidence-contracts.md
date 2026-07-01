@@ -40,7 +40,9 @@ is intentionally public-safe and is validated by the test suite against the
 packaged schema.
 [`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
 small downstream wrapper pattern that loads the packaged report schema and
-fails closed on incompatible or unsanitized evidence.
+fails closed on incompatible, internally inconsistent, or unsanitized evidence,
+including top-level `status` values that are not explained by findings, failing
+evidence gates, or conformance findings.
 
 ## Public Artifact Boundary
 
@@ -50,9 +52,9 @@ evidence-pack manifests. Raw per-scanner JSON from commands such as
 `agent-guard api check --json`, `content check --json`, `context check --json`,
 `mcp check --json`, or `workflow check --json` is intended for local automation
 and CI internals. Depending on the scanner and policy, raw JSON may include
-snippets, matched URLs, configured regex patterns, policy details, server
-metadata, or other diagnostics. Do not upload raw scanner JSON as a public artifact
-unless a maintainer has reviewed that exact output.
+scanner-specific metadata, policy details, server metadata, or other
+diagnostics. Do not upload raw scanner JSON as a public artifact unless a
+maintainer has reviewed that exact output.
 
 OWASP Agentic Top 10 labels, MCP risk labels, and other public crosswalks are
 static risk-theme metadata attached to deterministic repository findings. They

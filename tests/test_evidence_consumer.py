@@ -496,6 +496,44 @@ def test_evidence_consumer_rejects_missing_manifest_conformance_when_report_has_
     assert "$.evidence_pack_manifest.conformance is required when $.conformance is present" in result.stderr
 
 
+def test_evidence_consumer_rejects_ok_report_with_top_level_findings(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["finding_count"] = 1
+    payload["summary"]["finding_count"] = 1
+    payload["findings"] = [
+        {
+            "file": "AGENTS.md",
+            "line": 1,
+            "rule_id": "approval_bypass",
+            "severity": "high",
+        }
+    ]
+    del payload["evidence_pack_manifest"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.finding_count must be 0 when status is ok" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_unexplained_violation_report(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    del payload["evidence_pack_manifest"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "$.status violation must be explained by findings, failing gates, or conformance findings" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
 def test_evidence_consumer_rejects_ok_report_with_failing_gate(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_coverage"]["gates"][0]["status"] = "violation"
