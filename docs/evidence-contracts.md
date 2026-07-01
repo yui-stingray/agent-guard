@@ -67,23 +67,33 @@ what `agent-guard` can catch in repository files and sanitized artifacts, what
 it cannot prove about runtime agent behavior, and how downstream evidence
 consumers should fail closed without treating the report as a merge decision.
 
-## Minimal Adoption Path
+## Adoption Path: Minimal First, Then Recommended
+
+Minimal first pass:
 
 1. Run `agent-guard init --root . --json` and review the proposed starter
    `.agent-guard` policies and evidence workflow before writing them.
 2. Add repo-local policies under `.agent-guard/`, starting with
-   `context-policy.yaml` and a digest policy for safety-critical context files.
+   `context-policy.yaml`.
 3. Run the context and surface inventories locally and review only
    repository-relative paths, agent context kinds, workflow references, policy
    files, counts, and permission-boundary status.
-4. Add the packaged GitHub Action or `agent-guard report` to CI and store the
-   sanitized report JSON, rendered Markdown, SARIF, conformance, or evidence
-   pack output as a build artifact.
-5. Pair the static report with a runtime admission event from `agent-policy`
+4. Store only sanitized report or rendered report output as a build artifact.
+
+Move to recommended evidence after the starter files are reviewed:
+
+1. Commit a repo-local `.agent-guard/mcp-policy.yaml` with the default static MCP
+   risk-label set.
+2. Enable `--evidence-preset recommended`, surface inventory v2, recommended
+   conformance, and an evidence-pack manifest.
+3. Add digest/context-lock evidence only after generating and reviewing a digest
+   policy for safety-critical context files. Recommended conformance does not
+   require those repository-specific gates unless supplied.
+4. Pair the static report with a runtime admission event from `agent-policy`
    when the repository uses an agent hook or wrapper before side effects. Pass
    that event only as an artifact reference; `agent-guard` does not read or
    embed the event body.
-6. Review the evidence as a maintainer aid, not as a model-generated verdict.
+5. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
 Example commands for a new repository. Review the `init --json` plan before
 writing starter files, and generate the digest policy before checking context

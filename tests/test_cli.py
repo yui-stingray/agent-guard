@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from agent_guard import __version__ as AGENT_GUARD_VERSION
-from agent_guard.cli import scrub_report_error_message
+from agent_guard.cli import safe_policy_path, scrub_report_error_message
 from agent_guard.mcp_guard import DEFAULT_FORBIDDEN_RISKY_PATTERNS
 
 
@@ -980,6 +980,28 @@ def test_mcp_external_policy_path_is_sanitized(tmp_path: Path) -> None:
     assert payload["mcp_config"]["policy"]["path"] == "<external-policy>"
     assert "sk-examplePolicyName12345" not in result.stdout
     assert "../outside" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_mcp_url_like_policy_path_is_sanitized(tmp_path: Path) -> None:
+    url_policy = "https://policy.example.invalid/reviewed/mcp-policy.yaml"
+    write(tmp_path / ".mcp.json", json.dumps({"mcpServers": {}}))
+
+    result = run_cli(
+        "mcp",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        url_policy,
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["policy"] == {"path": "<external-policy>"}
+    assert "policy.example.invalid" not in result.stdout
+    assert "reviewed/mcp-policy" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 
@@ -2213,6 +2235,37 @@ def test_report_cli_recommended_preset_missing_default_mcp_policy_is_violation(t
     assert str(tmp_path) not in result.stdout
 
 
+def test_report_cli_recommended_preset_weakened_default_mcp_policy_is_conformance_violation(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_baseline_ready_repo(repo)
+    write(repo / ".agent-guard" / "mcp-policy.yaml", mcp_policy_text(["inline_authorization_value"]))
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(repo / ".agent-guard" / "context-policy.yaml"),
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["mcp_config"]["status"] == "ok"
+    assert payload["mcp_config"]["policy"]["path"] == ".agent-guard/mcp-policy.yaml"
+    assert payload["conformance"]["status"] == "violation"
+    finding = next(item for item in payload["conformance"]["findings"] if item["rule_id"] == "mcp_policy_weakened")
+    assert finding["requirement_id"] == "mcp_config_policy_default_patterns"
+    assert "inline_authorization_value" not in finding["missing_patterns"]
+    assert str(tmp_path) not in result.stdout
+
+
 def test_report_cli_recommended_preset_fails_risky_mcp_config_without_raw_leak(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     fake_token = "github_pat_" + ("0" * 20)
@@ -3112,6 +3165,26 @@ def test_context_cli_json_error(tmp_path: Path) -> None:
     assert payload["scanner"] == "context"
     assert str(tmp_path) not in payload["error"]
     assert payload["policy"] == {"path": "missing.yaml"}
+
+
+def test_safe_policy_path_treats_url_like_policy_as_external(tmp_path: Path) -> None:
+    url_policy = "https://policy.example.invalid/reviewed/policy.yaml"
+
+    assert safe_policy_path(url_policy, tmp_path) == "<external-policy>"
+
+
+def test_context_cli_json_error_scrubs_url_like_policy_path(tmp_path: Path) -> None:
+    url_policy = "https://policy.example.invalid/reviewed/context-policy.yaml"
+
+    result = run_cli("context", "check", "--root", str(tmp_path), "--policy", url_policy, "--json")
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(payload, scanner="context", status="error", exit_code=2, finding_count=0)
+    assert payload["policy"] == {"path": "<external-policy>"}
+    assert "policy.example.invalid" not in result.stdout
+    assert "reviewed/context-policy" not in result.stdout
+    assert str(tmp_path) not in result.stdout
 
 
 def test_context_inventory_cli_json_redacted_payload(tmp_path: Path) -> None:
@@ -4662,6 +4735,29 @@ def test_report_cli_markdown_missing_static_policy_scrubs_path(tmp_path: Path) -
         assert f"| {label} | {missing_name} |" in result.stdout
         assert missing_name in result.stdout
         assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_url_like_policy_path_is_sanitized(tmp_path: Path) -> None:
+    url_policy = "https://policy.example.invalid/reviewed/context-policy.yaml"
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        url_policy,
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["policy"] == {"path": "<external-policy>"}
+    assert payload["report"]["sanitized"] is True
+    assert "policy.example.invalid" not in result.stdout
+    assert "reviewed/context-policy" not in result.stdout
+    assert str(tmp_path) not in result.stdout
 
 
 def test_report_cli_policy_paths_are_root_relative_from_external_cwd(tmp_path: Path) -> None:

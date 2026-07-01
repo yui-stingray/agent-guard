@@ -261,11 +261,11 @@ def test_evidence_consumer_rejects_ok_conformance_with_findings(tmp_path: Path) 
     payload["conformance"]["finding_count"] = 1
     payload["conformance"]["findings"] = [
         {
-            "rule_id": "required_mcp_policy_not_reviewed",
+            "rule_id": "required_gate_missing",
             "severity": "high",
-            "requirement_id": ".agent-guard/mcp-policy.yaml",
-            "message": "reviewed repository MCP policy is required",
-            "reason": "external_or_missing_mcp_policy",
+            "requirement_id": "workflow",
+            "message": "required evidence gate is missing",
+            "reason": "missing_required_gate",
         }
     ]
     payload["evidence_pack_manifest"]["report"]["status"] = "violation"
@@ -300,11 +300,11 @@ def test_evidence_consumer_rejects_ok_report_with_violation_conformance(tmp_path
     payload["conformance"]["finding_count"] = 1
     payload["conformance"]["findings"] = [
         {
-            "rule_id": "required_mcp_policy_not_reviewed",
+            "rule_id": "required_gate_missing",
             "severity": "high",
-            "requirement_id": ".agent-guard/mcp-policy.yaml",
-            "message": "reviewed repository MCP policy is required",
-            "reason": "external_or_missing_mcp_policy",
+            "requirement_id": "workflow",
+            "message": "required evidence gate is missing",
+            "reason": "missing_required_gate",
         }
     ]
     report = tmp_path / "report.json"
@@ -344,6 +344,7 @@ def test_evidence_consumer_summarizes_mcp_policy_conformance_rules(tmp_path: Pat
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["status"] = "violation"
     payload["exit_code"] = 1
+    payload["mcp_config"]["policy"]["forbidden_risky_patterns"] = ["inline_authorization_value"]
     payload["conformance"]["status"] = "violation"
     payload["conformance"]["finding_count"] = 1
     payload["conformance"]["findings"] = [
@@ -367,6 +368,92 @@ def test_evidence_consumer_summarizes_mcp_policy_conformance_rules(tmp_path: Pat
     summary = json.loads(result.stdout)
     assert summary["conformance_status"] == "violation"
     assert summary["mcp_policy_conformance_rules"] == ["mcp_policy_weakened"]
+
+
+def test_evidence_consumer_rejects_untracked_external_mcp_policy_violation(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["mcp_config"]["policy"]["path"] = "<external-policy>"
+    payload["conformance"]["status"] = "violation"
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "required_gate_missing",
+            "severity": "high",
+            "requirement_id": "workflow",
+            "message": "required evidence gate is missing",
+            "reason": "missing_required_gate",
+        }
+    ]
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "must include required_mcp_policy_not_reviewed" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_untracked_weakened_mcp_policy_violation(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["mcp_config"]["policy"]["forbidden_risky_patterns"] = ["inline_authorization_value"]
+    payload["conformance"]["status"] = "violation"
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "required_gate_missing",
+            "severity": "high",
+            "requirement_id": "workflow",
+            "message": "required evidence gate is missing",
+            "reason": "missing_required_gate",
+        }
+    ]
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "must include mcp_policy_weakened" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_stale_mcp_policy_weakened_violation(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["conformance"]["status"] = "violation"
+    payload["conformance"]["finding_count"] = 1
+    payload["conformance"]["findings"] = [
+        {
+            "rule_id": "mcp_policy_weakened",
+            "severity": "high",
+            "requirement_id": "mcp_config_policy_default_patterns",
+            "message": "reviewed MCP policy omits required default risk labels",
+            "reason": "missing_default_risky_patterns",
+        }
+    ]
+    payload["evidence_pack_manifest"]["report"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["status"] = "violation"
+    payload["evidence_pack_manifest"]["conformance"]["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert "must not report mcp_policy_weakened" in result.stderr
+    assert str(tmp_path) not in result.stderr
 
 
 def test_evidence_consumer_rejects_missing_report_scope(tmp_path: Path) -> None:

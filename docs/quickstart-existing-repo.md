@@ -61,6 +61,25 @@ jobs:
           if-no-files-found: error
 ```
 
+### Monorepos and Subdirectories
+
+If the reviewed agent-maintained project lives below the repository root, set
+`root` to that project directory and keep policy and evidence paths relative to
+that selected root:
+
+```yaml
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.1.22
+        with:
+          root: services/api
+          conformance-profile: recommended
+```
+
+The action and CLI resolve relative policy paths such as
+`.agent-guard/context-policy.yaml` and `.agent-guard/mcp-policy.yaml` under the
+selected root. Use absolute paths only for local experiments; repo-external
+policy files do not satisfy recommended or strict reviewed-policy conformance.
+
 For a local first pass, run the same evidence surfaces directly:
 
 ```bash

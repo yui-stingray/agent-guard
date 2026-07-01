@@ -57,7 +57,7 @@ inputs:
     required: false
     default: "true"
   conformance-profile:
-    description: Conformance profile embedded in the report and checked after rendering.
+    description: Conformance profile checked against the generated recommended evidence report.
     required: false
     default: "recommended"
 outputs:
@@ -214,7 +214,7 @@ runs:
 
         record_status() {
           code="$1"
-          if [ "$code" -ne 0 ]; then
+          if [ "$code" -eq 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then
             status="$code"
           fi
         }
@@ -224,6 +224,7 @@ runs:
         content_policy_arg="$AGENT_GUARD_CONTENT_POLICY"
         workflow_policy_arg="$AGENT_GUARD_WORKFLOW_POLICY"
         digest_policy_arg="$AGENT_GUARD_DIGEST_POLICY"
+        default_mcp_policy_arg=".agent-guard/mcp-policy.yaml"
         context_policy="$(policy_path "$context_policy_arg")"
         path_policy="$(policy_path "$path_policy_arg")"
         content_policy="$(policy_path "$content_policy_arg")"
@@ -252,7 +253,7 @@ runs:
         fi
 
         mcp_args=(--root "$root")
-        if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
+        if [ -n "$mcp_policy_arg" ] && { [ "$mcp_policy_arg" != "$default_mcp_policy_arg" ] || path_exists "$mcp_policy"; }; then
           mcp_args+=(--policy "$mcp_policy_arg")
         fi
         agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
@@ -280,7 +281,7 @@ runs:
         if path_exists "$content_policy"; then
           report_args+=(--content-policy "$content_policy_arg" --content-scan-dir "$content_scan_dir")
         fi
-        if [ -n "$mcp_policy" ] && path_exists "$mcp_policy"; then
+        if [ -n "$mcp_policy_arg" ] && { [ "$mcp_policy_arg" != "$default_mcp_policy_arg" ] || path_exists "$mcp_policy"; }; then
           report_args+=(--mcp-policy "$mcp_policy_arg")
         fi
         if path_exists "$workflow_policy"; then

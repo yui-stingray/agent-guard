@@ -234,23 +234,51 @@ def validate_conformance(conformance: Mapping[str, Any], payload: Mapping[str, A
             tracked_rule_ids.add(rule_id)
 
     profile = str(conformance.get("profile", ""))
-    if status == "ok" and profile in {"recommended", "strict"}:
+    if profile in {"recommended", "strict"}:
         mcp_config = require_mapping(payload.get("mcp_config"), "$.mcp_config")
         policy = require_mapping(mcp_config.get("policy"), "$.mcp_config.policy")
-        require(
-            policy.get("path") == REVIEWED_MCP_POLICY_PATH,
-            "$.mcp_config.policy.path must be the reviewed repo MCP policy when conformance is ok",
-        )
-        raw_patterns = require_sequence(
-            policy.get("forbidden_risky_patterns"),
-            "$.mcp_config.policy.forbidden_risky_patterns",
-        )
-        pattern_set = {str(value).strip() for value in raw_patterns if isinstance(value, str) and str(value).strip()}
-        missing = sorted(REQUIRED_MCP_RISK_LABELS - pattern_set)
-        require(
-            not missing,
-            "$.mcp_config.policy.forbidden_risky_patterns must include the default MCP risk labels",
-        )
+        policy_path = policy.get("path")
+        has_reviewed_policy_rule = "required_mcp_policy_not_reviewed" in tracked_rule_ids
+        has_weakened_policy_rule = "mcp_policy_weakened" in tracked_rule_ids
+
+        if policy_path == REVIEWED_MCP_POLICY_PATH:
+            require(
+                not has_reviewed_policy_rule,
+                "$.conformance.findings must not report the reviewed MCP policy missing when policy path is reviewed",
+            )
+        elif status == "ok":
+            raise ValueError("$.mcp_config.policy.path must be the reviewed repo MCP policy when conformance is ok")
+        else:
+            require(
+                has_reviewed_policy_rule,
+                "$.conformance.findings must include required_mcp_policy_not_reviewed when MCP policy is not reviewed",
+            )
+
+        raw_patterns = policy.get("forbidden_risky_patterns")
+        if isinstance(raw_patterns, Sequence) and not isinstance(raw_patterns, (str, bytes, bytearray)):
+            pattern_set = {str(value).strip() for value in raw_patterns if isinstance(value, str) and str(value).strip()}
+            missing = sorted(REQUIRED_MCP_RISK_LABELS - pattern_set)
+            if missing:
+                if status == "ok":
+                    raise ValueError(
+                        "$.mcp_config.policy.forbidden_risky_patterns must include the default MCP risk labels"
+                    )
+                require(
+                    has_weakened_policy_rule,
+                    "$.conformance.findings must include mcp_policy_weakened when default MCP risk labels are missing",
+                )
+            else:
+                require(
+                    not has_weakened_policy_rule,
+                    "$.conformance.findings must not report mcp_policy_weakened when default MCP risk labels are present",
+                )
+        elif status == "ok":
+            raise ValueError("$.mcp_config.policy.forbidden_risky_patterns must be an array when conformance is ok")
+        else:
+            require(
+                has_weakened_policy_rule,
+                "$.conformance.findings must include mcp_policy_weakened when default MCP risk labels are unavailable",
+            )
 
     return tracked_rule_ids
 

@@ -74,7 +74,8 @@ See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
 SARIF status, and non-goals.
 For adoption in an existing repository, start with
-[`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md), then use
+[`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md) for the
+minimal-to-recommended path and monorepo/subdirectory roots, then use
 [`docs/github-actions-evidence.md`](docs/github-actions-evidence.md) for CI
 artifacts and annotations. Release timing is described in
 [`docs/release-criteria.md`](docs/release-criteria.md). Positioning and

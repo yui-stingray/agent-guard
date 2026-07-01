@@ -8,7 +8,7 @@
 It does not post pull request comments, call an LLM reviewer, or make merge
 decisions. Maintainers should treat the output as deterministic evidence.
 
-## Minimal Action Workflow
+## Recommended Action Workflow
 
 After `agent-guard init --root . --write` has created reviewed `.agent-guard`
 policies, the root GitHub Action runs the recommended evidence preset and
@@ -53,10 +53,13 @@ configuration metadata. Set `conformance-profile: strict` only when the
 repository also wants those v2 surface inventory labels to appear as conformance
 findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
 as a runtime MCP tool-poisoning detector or live OAuth validator. The packaged
-action expects the reviewed repo-local `.agent-guard/mcp-policy.yaml` for
-recommended evidence. Set `mcp-policy` only for scanner experiments or local
-migration checks; an external policy path is reported as `<external-policy>` and
-does not satisfy recommended or strict conformance.
+action always generates the recommended evidence preset; use the CLI commands in
+[`docs/quickstart-existing-repo.md`](quickstart-existing-repo.md) for a
+minimal-first pass before adopting the action. The action expects the reviewed
+repo-local `.agent-guard/mcp-policy.yaml` for recommended evidence. Set
+`mcp-policy` only for scanner experiments or local migration checks; an external
+policy path is reported as `<external-policy>` and does not satisfy recommended
+or strict conformance.
 
 Recommended evidence is the default reviewed static baseline. It leaves
 repository-specific digest and context-lock pinning optional unless the digest

@@ -58,6 +58,7 @@ SECRET_SHAPED_PUBLIC_TEXT_RE = re.compile(
 )
 SHA256_PUBLIC_TEXT_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
 RAW_URL_PUBLIC_TEXT_RE = re.compile(r"https?://[^\s\"'`<>()]+")
+URL_LIKE_POLICY_ARG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(
     r"(?:(?:/home|/mnt/c/Users)/(?:[^\s:'\"]+/)*[^\s:'\"]+|"
     r"[A-Za-z]:[\\/]+Users[\\/]+(?:[^\\/\s:'\"]+[\\/]+)*[^\\/\s:'\"]+)"
@@ -77,7 +78,7 @@ def safe_policy_path(raw_policy: str, root: Path) -> str:
     raw_text = str(raw_policy).strip()
     if not raw_text:
         return ""
-    if is_windows_absolute_path(raw_text):
+    if is_windows_absolute_path(raw_text) or is_url_like_policy_arg(raw_text):
         return "<external-policy>"
 
     return redact_public_text(safe_resolved_policy_path(resolve_policy_arg(raw_text, root), root))
@@ -112,6 +113,8 @@ def sanitize_public_mapping(value: dict[str, object]) -> dict[str, object]:
 
 def resolve_policy_arg(raw_policy: str, root: Path) -> Path:
     raw_text = str(raw_policy).strip()
+    if is_url_like_policy_arg(raw_text):
+        return (root / "<external-policy>").resolve(strict=False)
     raw = Path(raw_text)
     if raw.is_absolute() or is_windows_absolute_path(raw_text):
         return raw.resolve(strict=False)
@@ -129,6 +132,10 @@ def safe_resolved_policy_path(policy_path: Path, root: Path) -> str:
 
 def is_windows_absolute_path(raw_path: str) -> bool:
     return bool(re.match(r"^[A-Za-z]:[\\/]", raw_path)) or raw_path.startswith("\\\\")
+
+
+def is_url_like_policy_arg(raw_path: str) -> bool:
+    return bool(URL_LIKE_POLICY_ARG_RE.match(raw_path))
 
 
 def scrub_error_path(raw_path: str, *, root: Path, policy_abs: Path, safe_policy: str) -> str:

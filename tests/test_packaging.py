@@ -184,7 +184,9 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert EVIDENCE_SAMPLE_REPORT.is_file()
-    assert "Minimal Adoption Path" in docs
+    assert "Adoption Path: Minimal First, Then Recommended" in docs
+    assert "Minimal first pass" in docs
+    assert "Move to recommended evidence" in docs
     assert "CI artifact" in docs
     assert "agent-policy" in docs
     assert "agent-policy-audit-event" in docs
@@ -227,6 +229,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+    quickstart_single_line = " ".join(quickstart.split())
     actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
     actions_single_line = " ".join(actions.split())
 
@@ -261,15 +264,22 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "Consume Evidence Safely" in quickstart
     assert "examples/evidence_consumer.py" in quickstart
     assert "docs/threat-model.md" in quickstart
+    assert "Monorepos and Subdirectories" in quickstart
+    assert "root: services/api" in quickstart
+    assert "selected root" in quickstart
+    assert "repo-external policy files do not satisfy recommended or strict" in quickstart_single_line
+    assert "minimal-to-recommended path and monorepo/subdirectory roots" in readme
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
     assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
+    assert "Recommended Action Workflow" in actions
     assert "root: services/api" in actions
     assert "Policy and evidence paths are" in actions
     assert "resolved relative to that root" in actions
     assert "conformance-profile: recommended" in actions
     assert "conformance-profile: strict" in actions
+    assert "packaged action always generates the recommended evidence preset" in actions_single_line
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
     assert "status=0" in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
@@ -347,6 +357,9 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["inputs"]["package-spec"]["default"] == ""
     assert action["inputs"]["base-ref"]["default"] == ""
     assert action["inputs"]["conformance-profile"]["default"] == "recommended"
+    assert action["inputs"]["conformance-profile"]["description"] == (
+        "Conformance profile checked against the generated recommended evidence report."
+    )
     evidence_step = next(step for step in action["runs"]["steps"] if step.get("id") == "evidence")
     assert evidence_step["env"]["AGENT_GUARD_BASE_REF"] == "${{ inputs.base-ref }}"
     assert evidence_step["env"]["AGENT_GUARD_ROOT"] == "${{ inputs.root }}"
@@ -364,6 +377,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
     assert 'root="${AGENT_GUARD_ROOT:-.}"' in action_script
     assert "minimal|recommended|strict" in action_script
+    assert '[ "$code" -eq 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }' in action_script
     assert "validate_no_control_chars" in action_script
     assert "write_output" in action_script
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
@@ -386,6 +400,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'agent-guard report "${report_args[@]}" --format github-annotations' not in action_script
     assert 'policy_path()' in action_script
     assert 'context_policy_arg="$AGENT_GUARD_CONTEXT_POLICY"' in action_script
+    assert 'default_mcp_policy_arg=".agent-guard/mcp-policy.yaml"' in action_script
     assert 'context_policy="$(policy_path "$context_policy_arg")"' in action_script
     assert 'path_policy="$(policy_path "$path_policy_arg")"' in action_script
     assert 'content_policy="$(policy_path "$content_policy_arg")"' in action_script
@@ -555,6 +570,7 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
         root: str | None = None,
         evidence_dir: str = ".agent-guard/evidence",
         conformance_profile: str = "recommended",
+        mcp_policy: str = ".agent-guard/mcp-policy.yaml",
     ) -> subprocess.CompletedProcess[str]:
         action_env = env.copy()
         action_env["AGENT_GUARD_BASE_REF"] = base_ref
@@ -562,7 +578,7 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
         action_env["AGENT_GUARD_CONTEXT_POLICY"] = ".agent-guard/context-policy.yaml"
         action_env["AGENT_GUARD_PATH_POLICY"] = ".agent-guard/path-policy.yaml"
         action_env["AGENT_GUARD_CONTENT_POLICY"] = ".agent-guard/content-policy.yaml"
-        action_env["AGENT_GUARD_MCP_POLICY"] = ".agent-guard/mcp-policy.yaml"
+        action_env["AGENT_GUARD_MCP_POLICY"] = mcp_policy
         action_env["AGENT_GUARD_CONTENT_SCAN_DIR"] = "."
         action_env["AGENT_GUARD_WORKFLOW_POLICY"] = ".agent-guard/workflow-policy.yaml"
         action_env["AGENT_GUARD_DIGEST_POLICY"] = ".agent-guard/context-digest-policy.yaml"
@@ -609,11 +625,24 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     assert missing_mcp_policy_payload["mcp_config"]["findings"][0]["rule_id"] == "mcp_policy_missing"
     mcp_policy_path.write_text(mcp_policy_text, encoding="utf-8")
 
+    env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-url-mcp-policy.txt")
+    url_mcp_policy = "https://policy.example.invalid/reviewed/mcp-policy.yaml"
+    url_mcp_policy_result = run_action(github_annotations="false", mcp_policy=url_mcp_policy)
+    assert url_mcp_policy_result.returncode == 2
+    url_mcp_policy_output = f"{url_mcp_policy_result.stdout}\n{url_mcp_policy_result.stderr}"
+    assert "policy.example.invalid" not in url_mcp_policy_output
+    assert "reviewed/mcp-policy" not in url_mcp_policy_output
+    assert str(tmp_path) not in url_mcp_policy_output
+    url_mcp_policy_payload = json.loads(
+        (consumer / ".agent-guard" / "evidence" / "agent-guard-report.json").read_text(encoding="utf-8")
+    )
+    assert url_mcp_policy_payload["mcp_config"]["policy"]["path"] == "<external-policy>"
+
     root_marker = tmp_path / "root-injection-marker"
     malicious_root = f"$(touch {root_marker})"
     env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-root.txt")
     malicious_root_result = run_action(github_annotations="false", root=malicious_root)
-    assert malicious_root_result.returncode == 1
+    assert malicious_root_result.returncode == 2
     malicious_root_output = f"{malicious_root_result.stdout}\n{malicious_root_result.stderr}"
     assert not root_marker.exists()
     assert malicious_root not in malicious_root_output
