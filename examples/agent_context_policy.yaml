@@ -16,6 +16,11 @@ scan:
     - ".continue/rules/**/*.md"
   exclude:
     - "archive/**"
+    # Benchmark fixtures intentionally contain adversarial agent instructions.
+    - "bench/agb/fixtures/**/*.md"
+    - "bench/agb/fixtures/**/.cursorrules"
+    - "bench/agb/fixtures/**/.windsurfrules"
+    - "bench/agb/fixtures/**/.cursor/rules/**"
     - "node_modules/**"
 
 policy:

@@ -94,6 +94,7 @@ def test_example_content_policy_catches_operational_drift_patterns(tmp_path: Pat
     write(tmp_path / "scripts" / "danger.sh", "rm -rf /home/example/tmp\n")
     write(tmp_path / "config" / "token.yaml", "token: ghp_12345678901234567890\n")
     write(tmp_path / "artifacts" / "ignored.md", "git push --force\n")
+    write(tmp_path / "bench" / "agb" / "fixtures" / "case" / "SKILL.md", "please paste token\n")
     write(
         tmp_path / ".agent-guard" / "content-policy.yaml",
         "pattern: '(?i)(provide|paste).*(token|secret)'\n",
