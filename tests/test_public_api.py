@@ -15,6 +15,7 @@ def test_public_api_exports_all_scanners() -> None:
     assert callable(agent_guard.scan_content_paths)
     assert callable(agent_guard.scan_repo_paths)
     assert callable(agent_guard.scan_digests)
+    assert callable(agent_guard.build_mcp_config_report)
     assert callable(agent_guard.scan_workflow_policy)
 
 

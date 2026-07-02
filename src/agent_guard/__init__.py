@@ -9,6 +9,7 @@ from .api_guard import ApiGuardFinding, scan_urls
 from .context_guard import ContextGuardFinding, scan_context_files
 from .content_guard import ContentGuardFinding, scan_paths as scan_content_paths
 from .digest_guard import DigestGuardFinding, scan_digests
+from .mcp_guard import build_mcp_config_report
 from .path_guard import PathGuardFinding, scan_paths as scan_repo_paths
 from .workflow_guard import WorkflowGuardFinding, scan_workflow_policy
 
@@ -26,6 +27,7 @@ __all__ = [
     "PathGuardFinding",
     "scan_digests",
     "DigestGuardFinding",
+    "build_mcp_config_report",
     "scan_workflow_policy",
     "WorkflowGuardFinding",
 ]
