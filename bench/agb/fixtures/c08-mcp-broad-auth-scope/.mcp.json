@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "broad-scope": {
+      "command": "node",
+      "args": ["server.js"],
+      "scopes": ["repo"]
+    }
+  }
+}

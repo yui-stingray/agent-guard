@@ -1,0 +1,10 @@
+{
+  "case_id": "b06-skill-powershell-iex-download",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "powershell_iex_download", "path": "skills/windows/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill instruction contains PowerShell download-and-execute."
+}

@@ -1,0 +1,10 @@
+{
+  "case_id": "c05-mcp-secret-shaped-env",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "secret_shaped_inline_value"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP env includes a fake secret-shaped inline value."
+}

@@ -160,3 +160,43 @@ def test_main_writes_result_file(tmp_path: Path, monkeypatch) -> None:
 
     assert agb_run.main(["--repo-root", str(tmp_path), "--fixtures", "fixtures", "--out", str(out_path)]) == 0
     assert json.loads(out_path.read_text(encoding="utf-8"))["case_count"] == 0
+
+
+def test_guard_command_supports_digest_and_drift(tmp_path: Path) -> None:
+    policies = tmp_path / "policies"
+
+    assert agb_run.guard_command(tmp_path, "digest") == [
+        "digest",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(policies / "digest-policy.yaml"),
+        "--json",
+    ]
+    assert agb_run.guard_command(tmp_path, "drift") == [
+        "drift",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--profile",
+        "recommended",
+        "--schema-version",
+        "v2",
+        "--json",
+    ]
+
+
+def test_day2_fixture_corpus_has_expected_group_counts() -> None:
+    fixtures_root = Path(__file__).resolve().parents[1] / "bench" / "agb" / "fixtures"
+    group_counts: dict[str, int] = {}
+    case_ids: set[str] = set()
+    for expected_path in fixtures_root.glob("*/expected.json"):
+        payload = json.loads(expected_path.read_text(encoding="utf-8"))
+        case_id = str(payload["case_id"])
+        assert case_id not in case_ids
+        case_ids.add(case_id)
+        group = str(payload["group"])
+        group_counts[group] = group_counts.get(group, 0) + 1
+
+    assert group_counts == {"A": 10, "B": 10, "C": 8, "D": 6, "E": 6}

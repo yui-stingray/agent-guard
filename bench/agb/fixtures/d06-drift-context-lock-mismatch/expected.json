@@ -1,0 +1,10 @@
+{
+  "case_id": "d06-drift-context-lock-mismatch",
+  "group": "D",
+  "guards": ["drift"],
+  "expected_findings": [
+    {"guard": "drift", "rule": "context_lock_drift", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Context digest lock exists but no longer matches the context file."
+}

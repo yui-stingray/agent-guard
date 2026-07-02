@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_GUARDS = ("context", "content", "path", "mcp")
+DEFAULT_GUARDS = ("context", "content", "path", "mcp", "digest", "drift")
 RESULT_SCHEMA_VERSION = "agent-guard.agb_results.v1"
 
 
@@ -208,6 +208,10 @@ def guard_command(case_root: Path, guard: str) -> list[str]:
         return ["path", "check", "--root", str(case_root), "--policy", str(policies / "path-policy.yaml"), "--json"]
     if guard == "mcp":
         return ["mcp", "check", "--root", str(case_root), "--policy", str(policies / "mcp-policy.yaml"), "--json"]
+    if guard == "digest":
+        return ["digest", "check", "--root", str(case_root), "--policy", str(policies / "digest-policy.yaml"), "--json"]
+    if guard == "drift":
+        return ["drift", "check", "--root", str(case_root), "--profile", "recommended", "--schema-version", "v2", "--json"]
     raise ValueError(f"unsupported AGB guard: {guard}")
 
 

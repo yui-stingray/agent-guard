@@ -1,0 +1,10 @@
+{
+  "case_id": "b08-skill-hardcoded-aws-key",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "hardcoded_credential", "path": "skills/aws/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill documentation includes a fake AWS access-key-shaped value."
+}

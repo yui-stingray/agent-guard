@@ -1,0 +1,10 @@
+{
+  "case_id": "b10-skill-script-pipe-to-shell",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "pipe_to_shell", "path": "skills/install/scripts/install.sh"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Bundled skill script contains pipe-to-shell execution."
+}

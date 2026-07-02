@@ -1,0 +1,10 @@
+{
+  "case_id": "d01-digest-mismatch",
+  "group": "D",
+  "guards": ["digest"],
+  "expected_findings": [
+    {"guard": "digest", "rule": "agents_pin", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Pinned context file digest differs from the current file."
+}

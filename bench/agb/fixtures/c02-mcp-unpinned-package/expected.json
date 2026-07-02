@@ -1,0 +1,10 @@
+{
+  "case_id": "c02-mcp-unpinned-package",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "unpinned_package"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP server package is not pinned."
+}

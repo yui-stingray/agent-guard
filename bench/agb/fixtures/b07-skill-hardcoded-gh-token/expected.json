@@ -1,0 +1,10 @@
+{
+  "case_id": "b07-skill-hardcoded-gh-token",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "hardcoded_credential", "path": "skills/release/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill documentation includes a fake GitHub PAT-shaped value."
+}

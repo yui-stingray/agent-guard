@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "inline-env": {
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "PROJECT_ID": "literal-project"
+      }
+    }
+  }
+}

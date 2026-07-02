@@ -1,0 +1,10 @@
+{
+  "case_id": "b05-skill-force-history-rewrite",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "force_history_rewrite", "path": "skills/rebase/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill instruction normalizes destructive git history rewrites."
+}

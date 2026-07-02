@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unpinned-tool": {
+      "command": "npx",
+      "args": ["@vendor/unpinned-tool"]
+    }
+  }
+}

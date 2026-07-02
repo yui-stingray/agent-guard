@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "secret-env": {
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "OPENAI_API_KEY": "sk-FAKE000000000000000000000000000000"
+      }
+    }
+  }
+}

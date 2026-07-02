@@ -1,0 +1,10 @@
+{
+  "case_id": "d05-drift-context-boundary-missing",
+  "group": "D",
+  "guards": ["drift"],
+  "expected_findings": [
+    {"guard": "drift", "rule": "context_boundary_missing", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Recommended context boundary coverage is missing the secret-handling category."
+}

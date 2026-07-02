@@ -1,0 +1,10 @@
+{
+  "case_id": "c03-mcp-filesystem-root",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "filesystem_root_reference"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP server references filesystem root."
+}

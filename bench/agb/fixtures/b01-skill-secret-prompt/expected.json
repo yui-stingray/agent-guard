@@ -1,0 +1,10 @@
+{
+  "case_id": "b01-skill-secret-prompt",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "secret_prompt", "path": "skills/export/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill instructions ask for plaintext token entry."
+}
