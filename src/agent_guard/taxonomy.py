@@ -21,6 +21,30 @@ OWASP_AGENTIC_TOP10: dict[str, str] = {
     "ASI10": "Rogue Agents",
 }
 
+OWASP_AGENTIC_SKILLS_TOP10: dict[str, str] = {
+    "AST01": "Malicious Skills",
+    "AST02": "Supply Chain Compromise",
+    "AST03": "Over-Privileged Skills",
+    "AST04": "Insecure Metadata",
+    "AST05": "Untrusted External Instructions",
+    "AST06": "Weak Isolation",
+    "AST07": "Update Drift",
+    "AST08": "Poor Scanning",
+    "AST09": "No Governance",
+    "AST10": "Cross-Platform Reuse",
+}
+
+AGENT_GUARD_AST_CAPABILITY_CROSSWALK: dict[str, tuple[str, ...]] = {
+    "context_guard": ("AST05", "AST09"),
+    "surface_inventory": ("AST01", "AST04", "AST10"),
+    "mcp_config_guard": ("AST02", "AST03", "AST06"),
+    "digest_pinning": ("AST02", "AST06", "AST07"),
+    "workflow_guard": ("AST07", "AST09"),
+    "policy_spec_drift": ("AST07", "AST09"),
+    "evidence_pack": ("AST08", "AST09"),
+    "conformance": ("AST08", "AST09"),
+}
+
 CONTEXT_RULE_THEMES: dict[str, tuple[str, ...]] = {
     "approval_bypass": ("ASI01", "ASI09"),
     "secret_prompt": ("ASI03", "ASI09"),
