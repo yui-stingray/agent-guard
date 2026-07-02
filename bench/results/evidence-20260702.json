@@ -1,0 +1,37 @@
+{
+  "checks": [
+    {
+      "message": "report output is stable outside volatile fields",
+      "name": "determinism",
+      "status": "ok"
+    },
+    {
+      "details": {
+        "hits": {}
+      },
+      "message": "seeded sensitive values are absent from evidence artifacts",
+      "name": "redaction",
+      "status": "ok"
+    },
+    {
+      "message": "report and evidence-pack JSON outputs match packaged schemas",
+      "name": "schema_validation",
+      "status": "ok"
+    },
+    {
+      "details": {
+        "golden_count": 1
+      },
+      "message": "golden evidence reports remain accepted",
+      "name": "backward_compat",
+      "status": "ok"
+    }
+  ],
+  "generated_at": "2026-07-02T05:01:40.110402+00:00",
+  "schema_version": "agent-guard.evidence_results.v1",
+  "status": "ok",
+  "summary": {
+    "failed": 0,
+    "passed": 4
+  }
+}
