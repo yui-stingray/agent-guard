@@ -69,6 +69,16 @@ def test_package_version_matches_pyproject() -> None:
     assert agent_guard.__version__ == pyproject_version()
 
 
+def test_dev_extra_includes_benchmark_schema_tools() -> None:
+    with PYPROJECT.open("rb") as fh:
+        pyproject = tomllib.load(fh)
+
+    dev_deps = pyproject["project"]["optional-dependencies"]["dev"]
+
+    assert any(dep.startswith("pytest-cov") for dep in dev_deps)
+    assert any(dep.startswith("jsonschema") for dep in dev_deps)
+
+
 def test_execution_notes_are_not_tracked_or_packaged() -> None:
     with PYPROJECT.open("rb") as fh:
         pyproject = tomllib.load(fh)
