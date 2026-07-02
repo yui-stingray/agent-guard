@@ -1,0 +1,23 @@
+# Where: .yamllint
+# What: repo-local yamllint rules for repository YAML checks.
+# Why: avoid ambient user config drift while preserving the intended lint policy.
+
+extends: default
+
+ignore: |
+  .serena/
+  .git/
+  .venv/
+  .venv312/
+  node_modules/
+  .cache/
+
+rules:
+  indentation:
+    spaces: 2
+    indent-sequences: true
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+  document-start: disable
+  truthy: disable
