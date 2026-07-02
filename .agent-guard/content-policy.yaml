@@ -13,6 +13,8 @@ exclude_globs:
   - "artifacts/**"
   # Benchmark fixtures intentionally contain adversarial sample text.
   - "bench/agb/fixtures/**"
+  # Local scratch reports quote adversarial fixture text for handoff; gitignored, not shipped.
+  - "week-logs/**"
   - "node_modules/**"
   - ".venv/**"
   - ".venv312/**"

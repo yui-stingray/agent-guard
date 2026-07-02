@@ -14,7 +14,7 @@ checks:
     sha256: "d368a15987a9f5125f9040de155e88f86a6839423f48f74d073588e29e4990a8"
   - id: content_policy
     path: .agent-guard/content-policy.yaml
-    sha256: "dbc79046475c81a24982f9ecad8bb62d0bf8eb1052286df392188204c80c9d41"
+    sha256: "81268ec4ee5e638c683a42d61a4777f838f88a967510c7a378dfc18a6ef3600c"
   - id: mcp_policy
     path: .agent-guard/mcp-policy.yaml
     sha256: "771b04f503b387bea4c7f86ad8b7be9039b5eed2902a0435b3a3c775237e2fa5"
