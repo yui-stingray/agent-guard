@@ -13,6 +13,8 @@ scan:
     - "node_modules"
     - "__pycache__"
     - ".pytest_cache"
+    # Benchmark fixtures intentionally model paths that must not affect self-dogfood scans.
+    - "bench/agb/fixtures"
     - "build"
     - "dist"
 

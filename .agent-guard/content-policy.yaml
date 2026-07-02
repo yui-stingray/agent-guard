@@ -11,6 +11,8 @@ file_globs:
 exclude_globs:
   - "archive/**"
   - "artifacts/**"
+  # Benchmark fixtures intentionally contain adversarial sample text.
+  - "bench/agb/fixtures/**"
   - "node_modules/**"
   - ".venv/**"
   - ".venv312/**"
