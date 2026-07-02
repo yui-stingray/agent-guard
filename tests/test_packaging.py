@@ -765,9 +765,13 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
 def test_release_criteria_keep_patch_releases_bounded() -> None:
     docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
-    assert "Patch Release Candidates" in docs
+    assert "Batched Release Cadence" in docs
+    assert "weekly" in docs
+    assert "P0 fix" in docs
+    assert "Do not cut a patch release for every qualifying change" in docs
     assert "Docs-only changes under `docs/` do not need an immediate release" in docs
     assert "packaged JSON Schema" in docs
+    assert "schema/contract stability" in docs
     assert "wheel contract check" in docs
     assert "LLM review" in docs
     assert "model routing" in docs
