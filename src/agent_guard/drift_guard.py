@@ -69,6 +69,11 @@ CONTEXT_RULE_CLASSIFICATIONS = {
     "hidden_action": "auditability_weakened",
     "audit_trail_removal": "auditability_weakened",
     "user_impersonation": "auditability_weakened",
+    "delegate_policy_bypass": "permission_boundary_weakened",
+    "unsafe_tool_auto_allow": "permission_boundary_weakened",
+    "unreviewed_suppression": "permission_boundary_weakened",
+    "unreviewed_agent_output": "verification_removed",
+    "unsafe_background_agent": "auditability_weakened",
     "destructive_command": "destructive_action_boundary_weakened",
 }
 

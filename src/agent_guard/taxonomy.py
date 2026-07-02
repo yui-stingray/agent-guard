@@ -57,8 +57,61 @@ EVIDENCE_CATEGORY_THEMES: dict[str, tuple[str, ...]] = {
     "local_verification": ("ASI08",),
 }
 
+EVIDENCE_RULE_THEMES: dict[str, tuple[str, ...]] = {
+    "approval_boundary_mention": ("ASI09",),
+    "tool_permission_boundary_mention": ("ASI02",),
+    "network_boundary_mention": ("ASI02",),
+    "secret_handling_mention": ("ASI03",),
+    "destructive_action_boundary_mention": ("ASI05",),
+    "local_verification_mention": ("ASI08",),
+}
+
+CONTENT_RULE_THEMES: dict[str, tuple[str, ...]] = {
+    "pipe_to_shell": ("ASI05",),
+    "destructive_rm_root": ("ASI05",),
+    "force_history_rewrite": ("ASI05",),
+    "encoded_exec": ("ASI05",),
+    "powershell_iex_download": ("ASI05",),
+    "secret_prompt": ("ASI03",),
+    "hardcoded_credential": ("ASI03",),
+}
+
+API_CATEGORY_THEMES: dict[str, tuple[str, ...]] = {
+    "forbidden_api": ("ASI02",),
+}
+
+CONTEXT_LOCK_RULE_THEMES: dict[str, tuple[str, ...]] = {
+    "context_lock_missing": ("ASI04", "ASI06"),
+    "context_lock_partial": ("ASI04", "ASI06"),
+    "context_lock_file_missing": ("ASI04", "ASI06"),
+    "context_lock_mismatch": ("ASI04", "ASI06"),
+}
+
+DIGEST_STATUS_THEMES: dict[str, tuple[str, ...]] = {
+    "missing": ("ASI04", "ASI06"),
+    "mismatch": ("ASI04", "ASI06"),
+}
+
+WORKFLOW_REASON_THEMES: dict[str, tuple[str, ...]] = {
+    "missing_required_file": ("ASI04", "ASI08"),
+    "missing_required_workflow_command": ("ASI04", "ASI08"),
+}
+
+CONFORMANCE_RULE_THEMES: dict[str, tuple[str, ...]] = {
+    "required_gate_missing": ("ASI08",),
+    "required_gate_not_ok": ("ASI08",),
+    "required_surface_missing": ("ASI04",),
+    "required_policy_file_missing": ("ASI04",),
+    "required_report_section_not_sanitized": ("ASI09",),
+    "required_report_section_missing": ("ASI09",),
+    "required_artifact_role_missing": ("ASI04",),
+    "required_mcp_policy_not_reviewed": ("ASI04",),
+    "mcp_policy_weakened": ("ASI04",),
+}
+
 DRIFT_CLASSIFICATION_THEMES: dict[str, tuple[str, ...]] = {
     "baseline_review_required": ("ASI04",),
+    "baseline_guard_surface_changed": ("ASI04",),
     "guard_policy_changed": ("ASI04", "ASI06"),
     "digest_policy_changed": ("ASI04", "ASI06"),
     "guard_workflow_changed": ("ASI04", "ASI05"),
@@ -74,6 +127,20 @@ DRIFT_CLASSIFICATION_THEMES: dict[str, tuple[str, ...]] = {
     "context_file_unpinned": ("ASI04", "ASI06"),
     "context_file_partially_pinned": ("ASI04", "ASI06"),
     "context_file_digest_drift": ("ASI04", "ASI06"),
+    "context_lock_drift": ("ASI04", "ASI06"),
+    "unsafe_context_instruction": ("ASI01", "ASI09"),
+    "missing_readme_guard_command": ("ASI08",),
+    "missing_agent_guard_policy": ("ASI04",),
+    "missing_required_file_entry": ("ASI04", "ASI08"),
+    "missing_required_context_boundary": ("ASI09",),
+    "invalid_workflow_policy": ("ASI04", "ASI08"),
+    "missing_required_file": ("ASI04", "ASI08"),
+    "missing_required_workflow_command": ("ASI04", "ASI08"),
+}
+
+MCP_RULE_THEMES: dict[str, tuple[str, ...]] = {
+    "mcp_config_risky_pattern": ("ASI02", "ASI04"),
+    "mcp_policy_missing": ("ASI04",),
 }
 
 MCP_RISK_PATTERN_THEMES: dict[str, tuple[str, ...]] = {
@@ -142,29 +209,36 @@ def risk_themes_for_finding(scanner: str, finding: Mapping[str, object]) -> list
     themes: tuple[str, ...] = ()
 
     if scanner_name == "context":
-        themes = CONTEXT_RULE_THEMES.get(rule_id, ())
+        themes = CONTEXT_RULE_THEMES.get(rule_id) or EVIDENCE_RULE_THEMES.get(rule_id, ())
     elif scanner_name == "path":
         themes = ("ASI03", "ASI04")
     elif scanner_name == "content":
-        lower_rule = rule_id.lower()
-        if any(token in lower_rule for token in ("secret", "credential", "token", "key")):
-            themes = ("ASI03",)
-        elif any(token in lower_rule for token in ("exec", "command", "destructive", "shell")):
-            themes = ("ASI05",)
+        themes = CONTENT_RULE_THEMES.get(rule_id, ())
     elif scanner_name == "api":
-        themes = ("ASI02",)
-    elif scanner_name in {"context_lock", "digest"}:
-        themes = ("ASI04", "ASI06")
+        themes = API_CATEGORY_THEMES.get(category or rule_id, ("ASI02",))
+    elif scanner_name == "context_lock":
+        themes = CONTEXT_LOCK_RULE_THEMES.get(rule_id, ("ASI04", "ASI06"))
+    elif scanner_name == "digest":
+        status = str(finding.get("status") or "")
+        themes = DIGEST_STATUS_THEMES.get(status, ("ASI04", "ASI06"))
     elif scanner_name == "workflow":
-        themes = ("ASI04", "ASI08")
+        themes = WORKFLOW_REASON_THEMES.get(reason, ("ASI04", "ASI08"))
     elif scanner_name == "policy_spec_drift":
         themes = (
             DRIFT_CLASSIFICATION_THEMES.get(reason)
             or DRIFT_CLASSIFICATION_THEMES.get(str(finding.get("classification") or ""))
             or ()
         )
-    elif scanner_name in {"conformance", "mcp_config"} and rule_id == "mcp_config_risky_pattern":
-        themes = tuple(theme["id"] for theme in risk_themes_for_mcp_pattern(reason))
+    elif scanner_name == "mcp_config":
+        if rule_id == "mcp_config_risky_pattern":
+            themes = tuple(theme["id"] for theme in risk_themes_for_mcp_pattern(reason))
+        else:
+            themes = MCP_RULE_THEMES.get(rule_id, ())
+    elif scanner_name == "conformance":
+        if rule_id == "mcp_config_risky_pattern":
+            themes = tuple(theme["id"] for theme in risk_themes_for_mcp_pattern(reason))
+        else:
+            themes = CONFORMANCE_RULE_THEMES.get(rule_id, ())
 
     if not themes and category:
         themes = EVIDENCE_CATEGORY_THEMES.get(category, ())

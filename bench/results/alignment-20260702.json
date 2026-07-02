@@ -1,0 +1,124 @@
+{
+  "checks": [
+    {
+      "emitted_count": 24,
+      "mapped_count": 24,
+      "missing": [],
+      "missing_count": 0,
+      "name": "context_default_rules",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 24,
+      "mapped_count": 24,
+      "missing": [],
+      "missing_count": 0,
+      "name": "drift_context_rule_classifications",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 6,
+      "mapped_count": 6,
+      "missing": [],
+      "missing_count": 0,
+      "name": "context_evidence_categories",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 6,
+      "mapped_count": 6,
+      "missing": [],
+      "missing_count": 0,
+      "name": "context_evidence_rules",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 7,
+      "mapped_count": 7,
+      "missing": [],
+      "missing_count": 0,
+      "name": "content_default_rules",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 1,
+      "mapped_count": 1,
+      "missing": [],
+      "missing_count": 0,
+      "name": "api_categories",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 2,
+      "mapped_count": 2,
+      "missing": [],
+      "missing_count": 0,
+      "name": "mcp_rule_ids",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 9,
+      "mapped_count": 9,
+      "missing": [],
+      "missing_count": 0,
+      "name": "mcp_risk_pattern_labels",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 4,
+      "mapped_count": 4,
+      "missing": [],
+      "missing_count": 0,
+      "name": "context_lock_rule_ids",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 2,
+      "mapped_count": 2,
+      "missing": [],
+      "missing_count": 0,
+      "name": "digest_status_labels",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 2,
+      "mapped_count": 2,
+      "missing": [],
+      "missing_count": 0,
+      "name": "workflow_reason_labels",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 9,
+      "mapped_count": 9,
+      "missing": [],
+      "missing_count": 0,
+      "name": "conformance_rule_ids",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 26,
+      "mapped_count": 26,
+      "missing": [],
+      "missing_count": 0,
+      "name": "drift_classification_labels",
+      "status": "ok"
+    },
+    {
+      "emitted_count": 10,
+      "mapped_count": 10,
+      "missing": [],
+      "missing_count": 0,
+      "name": "taxonomy_theme_references",
+      "status": "ok"
+    }
+  ],
+  "generated_at": "2026-07-02T05:48:45+00:00",
+  "schema_version": "agent-guard.alignment.v1",
+  "status": "ok",
+  "summary": {
+    "check_count": 14,
+    "emitted_count": 132,
+    "missing_count": 0
+  }
+}
