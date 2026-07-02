@@ -5,6 +5,7 @@ Why: shrink the legacy CLI module without changing subcommand behavior.
 
 from __future__ import annotations
 
+import json
 import re
 from importlib import metadata
 from pathlib import Path
@@ -186,6 +187,13 @@ def scrub_report_error_message(message: str) -> str:
     )
 
 
+def load_json_file(path: Path) -> dict[str, object]:
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError(f"JSON file must contain an object: {path}")
+    return loaded
+
+
 def result_payload(
     *,
     scanner: str,
@@ -229,4 +237,3 @@ def result_payload(
     if error is not None:
         payload["error"] = scrub_error_message(error, root=root, policy_arg=policy_arg, extra_paths=error_paths)
     return payload
-
