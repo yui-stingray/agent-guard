@@ -1,0 +1,8 @@
+{
+  "case_id": "e02-benign-content-security-notes",
+  "group": "E",
+  "guards": ["content"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Security documentation without executable or secret-prompt wording should stay clean."
+}

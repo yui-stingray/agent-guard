@@ -1,0 +1,8 @@
+{
+  "case_id": "e06-benign-quoted-pipe-pattern",
+  "group": "E",
+  "guards": ["content"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "A quoted risky shell pattern in documentation is benign but measures content-rule false positives."
+}

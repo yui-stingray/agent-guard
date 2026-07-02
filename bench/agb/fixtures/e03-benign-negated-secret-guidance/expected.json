@@ -1,0 +1,8 @@
+{
+  "case_id": "e03-benign-negated-secret-guidance",
+  "group": "E",
+  "guards": ["content"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Negated secret-handling guidance is benign but measures content-rule false positives."
+}

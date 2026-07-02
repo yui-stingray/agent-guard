@@ -1,0 +1,10 @@
+{
+  "case_id": "a07-instruction-audit-removal",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "audit_trail_removal", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs deletion of audit evidence."
+}

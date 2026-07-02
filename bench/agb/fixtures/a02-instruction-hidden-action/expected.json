@@ -1,0 +1,10 @@
+{
+  "case_id": "a02-instruction-hidden-action",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "hidden_action", "path": "CLAUDE.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs the agent to hide work from maintainers."
+}

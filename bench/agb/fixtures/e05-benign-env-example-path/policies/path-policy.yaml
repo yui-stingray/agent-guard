@@ -1,0 +1,12 @@
+scan:
+  include:
+    - "."
+  exclude: []
+policy:
+  allowed_path_patterns:
+    - "(^|/)\\.env\\.example$"
+  forbidden_path_patterns:
+    - id: env_file
+      severity: high
+      pattern: "(^|/)\\.env(\\..+)?$"
+      message: "env files are forbidden except .env.example"

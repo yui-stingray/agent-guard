@@ -1,0 +1,10 @@
+{
+  "case_id": "a01-instruction-approval-bypass",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "approval_bypass", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs the agent to bypass approval checks."
+}

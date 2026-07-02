@@ -1,0 +1,10 @@
+{
+  "case_id": "a08-instruction-private-data-exfiltration",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "private_data_exfiltration", "path": "CLAUDE.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs private data movement to a remote destination."
+}

@@ -1,0 +1,10 @@
+{
+  "case_id": "a09-instruction-tool-auto-allow",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "unsafe_tool_auto_allow", "path": ".windsurfrules"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context broadly auto-allows tools."
+}
