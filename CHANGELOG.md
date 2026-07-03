@@ -6,6 +6,15 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.2.1 - 2026-07-03
+
+- Fixed recommended preset policy defaults for subdirectory and monorepo roots
+  so root-relative policy paths resolve under the selected repository root.
+- Added the MCP policy weakening conformance matrix to lock expected
+  recommended and strict profile behavior for weakened reviewed policies.
+- Published the `agent-guard` and `agent-audit` comparison doc as local project
+  positioning material after human review.
+
 ## 0.2.0 - 2026-07-03
 
 - Prepared a stable evidence contract compatibility policy for v1 consumers,

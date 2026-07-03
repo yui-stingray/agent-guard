@@ -1,6 +1,6 @@
 {
   "api": {
-    "checked_count": 127,
+    "checked_count": 116,
     "finding_count": 0,
     "findings": [],
     "policy": {
@@ -43,7 +43,7 @@
     "status": "ok"
   },
   "content": {
-    "checked_count": 35,
+    "checked_count": 34,
     "finding_count": 0,
     "findings": [],
     "mode": "registered",
@@ -95,7 +95,7 @@
         "status": "ok"
       },
       {
-        "checked_count": 145,
+        "checked_count": 144,
         "finding_count": 0,
         "gate": "surface_inventory",
         "policy": {
@@ -104,7 +104,7 @@
         "status": "ok"
       },
       {
-        "checked_count": 368,
+        "checked_count": 357,
         "finding_count": 0,
         "gate": "path",
         "policy": {
@@ -113,7 +113,7 @@
         "status": "ok"
       },
       {
-        "checked_count": 35,
+        "checked_count": 34,
         "finding_count": 0,
         "gate": "content",
         "policy": {
@@ -122,7 +122,7 @@
         "status": "ok"
       },
       {
-        "checked_count": 127,
+        "checked_count": 116,
         "finding_count": 0,
         "gate": "api",
         "policy": {
@@ -255,11 +255,11 @@
       "failing_gate_count": 0,
       "gate_count": 10,
       "missing_gate_count": 0,
-      "surface_count": 145
+      "surface_count": 144
     },
     "tool": {
       "name": "agent-guard",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   },
   "exit_code": 0,
@@ -507,7 +507,7 @@
     "surfaces": []
   },
   "path": {
-    "checked_count": 368,
+    "checked_count": 357,
     "finding_count": 0,
     "findings": [],
     "policy": {
@@ -537,11 +537,11 @@
   "schema_version": "agent-guard.result.v1",
   "status": "ok",
   "summary": {
-    "api_checked_count": 127,
+    "api_checked_count": 116,
     "api_finding_count": 0,
     "conformance_checked_count": 17,
     "conformance_finding_count": 0,
-    "content_checked_count": 35,
+    "content_checked_count": 34,
     "content_finding_count": 0,
     "context_file_count": 1,
     "context_lock_checked_count": 1,
@@ -558,11 +558,11 @@
     "finding_count": 0,
     "mcp_config_checked_count": 0,
     "mcp_config_finding_count": 0,
-    "path_checked_count": 368,
+    "path_checked_count": 357,
     "path_finding_count": 0,
     "scanned_count": 1,
     "scanned_unit": "files",
-    "surface_count": 145,
+    "surface_count": 144,
     "workflow_checked_count": 24,
     "workflow_finding_count": 0
   },
@@ -571,14 +571,14 @@
     "summary": {
       "by_surface": {
         "agent_context": 1,
-        "documented_guard_command": 100,
-        "evidence_artifact": 5,
+        "documented_guard_command": 103,
+        "evidence_artifact": 1,
         "evidence_artifact_reference": 5,
         "policy_file": 6,
         "workflow_file": 3,
         "workflow_reference": 25
       },
-      "surface_count": 145
+      "surface_count": 144
     },
     "surfaces": [
       {
@@ -601,34 +601,6 @@
         "size_bytes": 1410,
         "status": "present",
         "surface": "policy_file"
-      },
-      {
-        "kind": "repo_evidence_file",
-        "path": ".agent-guard/evidence/agent-guard-evidence-report.json",
-        "size_bytes": 39452,
-        "status": "present",
-        "surface": "evidence_artifact"
-      },
-      {
-        "kind": "repo_evidence_file",
-        "path": ".agent-guard/evidence/agent-guard-evidence-report.md",
-        "size_bytes": 21975,
-        "status": "present",
-        "surface": "evidence_artifact"
-      },
-      {
-        "kind": "repo_evidence_file",
-        "path": ".agent-guard/evidence/agent-guard-results.sarif",
-        "size_bytes": 231,
-        "status": "present",
-        "surface": "evidence_artifact"
-      },
-      {
-        "kind": "repo_evidence_file",
-        "path": ".agent-guard/evidence/agent-surface-inventory.json",
-        "size_bytes": 28132,
-        "status": "present",
-        "surface": "evidence_artifact"
       },
       {
         "kind": "agent_guard_policy",
@@ -1040,7 +1012,7 @@
           "scanner": "init"
         },
         "kind": "documentation_recipe",
-        "line": 114,
+        "line": 115,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1051,7 +1023,7 @@
           "scanner": "init"
         },
         "kind": "documentation_recipe",
-        "line": 115,
+        "line": 116,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1060,17 +1032,6 @@
         "command": {
           "command": "",
           "scanner": "report"
-        },
-        "kind": "documentation_recipe",
-        "line": 122,
-        "path": "README.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "conformance"
         },
         "kind": "documentation_recipe",
         "line": 123,
@@ -1081,10 +1042,10 @@
       {
         "command": {
           "command": "check",
-          "scanner": "context"
+          "scanner": "conformance"
         },
         "kind": "documentation_recipe",
-        "line": 152,
+        "line": 124,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1092,7 +1053,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "path"
+          "scanner": "context"
         },
         "kind": "documentation_recipe",
         "line": 153,
@@ -1103,7 +1064,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "content"
+          "scanner": "path"
         },
         "kind": "documentation_recipe",
         "line": 154,
@@ -1114,10 +1075,10 @@
       {
         "command": {
           "command": "check",
-          "scanner": "api"
+          "scanner": "content"
         },
         "kind": "documentation_recipe",
-        "line": 160,
+        "line": 155,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1125,7 +1086,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "content"
+          "scanner": "api"
         },
         "kind": "documentation_recipe",
         "line": 161,
@@ -1136,7 +1097,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "context"
+          "scanner": "content"
         },
         "kind": "documentation_recipe",
         "line": 162,
@@ -1146,8 +1107,8 @@
       },
       {
         "command": {
-          "command": "inventory",
-          "scanner": "surface"
+          "command": "check",
+          "scanner": "context"
         },
         "kind": "documentation_recipe",
         "line": 163,
@@ -1157,8 +1118,8 @@
       },
       {
         "command": {
-          "command": "check",
-          "scanner": "path"
+          "command": "inventory",
+          "scanner": "surface"
         },
         "kind": "documentation_recipe",
         "line": 164,
@@ -1169,7 +1130,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "digest"
+          "scanner": "path"
         },
         "kind": "documentation_recipe",
         "line": 165,
@@ -1180,7 +1141,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "workflow"
+          "scanner": "digest"
         },
         "kind": "documentation_recipe",
         "line": 166,
@@ -1191,7 +1152,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "drift"
+          "scanner": "workflow"
         },
         "kind": "documentation_recipe",
         "line": 167,
@@ -1202,10 +1163,10 @@
       {
         "command": {
           "command": "check",
-          "scanner": "path"
+          "scanner": "drift"
         },
         "kind": "documentation_recipe",
-        "line": 212,
+        "line": 168,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1213,7 +1174,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "context"
+          "scanner": "path"
         },
         "kind": "documentation_recipe",
         "line": 213,
@@ -1223,7 +1184,7 @@
       },
       {
         "command": {
-          "command": "lock",
+          "command": "check",
           "scanner": "context"
         },
         "kind": "documentation_recipe",
@@ -1234,8 +1195,8 @@
       },
       {
         "command": {
-          "command": "check",
-          "scanner": "digest"
+          "command": "lock",
+          "scanner": "context"
         },
         "kind": "documentation_recipe",
         "line": 215,
@@ -1246,7 +1207,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "content"
+          "scanner": "digest"
         },
         "kind": "documentation_recipe",
         "line": 216,
@@ -1257,7 +1218,7 @@
       {
         "command": {
           "command": "check",
-          "scanner": "mcp"
+          "scanner": "content"
         },
         "kind": "documentation_recipe",
         "line": 217,
@@ -1268,10 +1229,21 @@
       {
         "command": {
           "command": "check",
-          "scanner": "workflow"
+          "scanner": "mcp"
         },
         "kind": "documentation_recipe",
         "line": 218,
+        "path": "README.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "workflow"
+        },
+        "kind": "documentation_recipe",
+        "line": 219,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1282,7 +1254,7 @@
           "scanner": "surface"
         },
         "kind": "documentation_recipe",
-        "line": 219,
+        "line": 220,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1293,7 +1265,7 @@
           "scanner": "drift"
         },
         "kind": "documentation_recipe",
-        "line": 220,
+        "line": 221,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1304,7 +1276,7 @@
           "scanner": "report"
         },
         "kind": "documentation_recipe",
-        "line": 221,
+        "line": 222,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1315,7 +1287,7 @@
           "scanner": "conformance"
         },
         "kind": "documentation_recipe",
-        "line": 222,
+        "line": 223,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1326,7 +1298,7 @@
           "scanner": "evidence-pack"
         },
         "kind": "documentation_recipe",
-        "line": 223,
+        "line": 224,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1337,7 +1309,7 @@
           "scanner": "context"
         },
         "kind": "documentation_recipe",
-        "line": 361,
+        "line": 362,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1348,18 +1320,7 @@
           "scanner": "context"
         },
         "kind": "documentation_recipe",
-        "line": 362,
-        "path": "README.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "",
-          "scanner": "report"
-        },
-        "kind": "documentation_recipe",
-        "line": 397,
+        "line": 363,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1400,7 +1361,7 @@
       {
         "command": {
           "command": "",
-          "scanner": "render-report"
+          "scanner": "report"
         },
         "kind": "documentation_recipe",
         "line": 401,
@@ -1433,7 +1394,7 @@
       {
         "command": {
           "command": "",
-          "scanner": "report"
+          "scanner": "render-report"
         },
         "kind": "documentation_recipe",
         "line": 404,
@@ -1487,11 +1448,22 @@
       },
       {
         "command": {
+          "command": "",
+          "scanner": "report"
+        },
+        "kind": "documentation_recipe",
+        "line": 409,
+        "path": "README.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
           "command": "references",
           "scanner": "workflow"
         },
         "kind": "documentation_recipe",
-        "line": 420,
+        "line": 421,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1502,7 +1474,7 @@
           "scanner": "context"
         },
         "kind": "documentation_recipe",
-        "line": 776,
+        "line": 777,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1513,7 +1485,7 @@
           "scanner": "context"
         },
         "kind": "documentation_recipe",
-        "line": 778,
+        "line": 779,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1524,7 +1496,7 @@
           "scanner": "digest"
         },
         "kind": "documentation_recipe",
-        "line": 780,
+        "line": 781,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1535,7 +1507,7 @@
           "scanner": "init"
         },
         "kind": "documentation_recipe",
-        "line": 791,
+        "line": 792,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1546,7 +1518,7 @@
           "scanner": "api"
         },
         "kind": "documentation_recipe",
-        "line": 792,
+        "line": 793,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1557,17 +1529,6 @@
           "scanner": "content"
         },
         "kind": "documentation_recipe",
-        "line": 793,
-        "path": "README.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "context"
-        },
-        "kind": "documentation_recipe",
         "line": 794,
         "path": "README.md",
         "status": "documented",
@@ -1575,7 +1536,7 @@
       },
       {
         "command": {
-          "command": "inventory",
+          "command": "check",
           "scanner": "context"
         },
         "kind": "documentation_recipe",
@@ -1586,7 +1547,7 @@
       },
       {
         "command": {
-          "command": "lock",
+          "command": "inventory",
           "scanner": "context"
         },
         "kind": "documentation_recipe",
@@ -1597,11 +1558,22 @@
       },
       {
         "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "kind": "documentation_recipe",
+        "line": 797,
+        "path": "README.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
           "command": "check",
           "scanner": "mcp"
         },
         "kind": "documentation_recipe",
-        "line": 797,
+        "line": 798,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1612,7 +1584,7 @@
           "scanner": "surface"
         },
         "kind": "documentation_recipe",
-        "line": 798,
+        "line": 799,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1623,7 +1595,7 @@
           "scanner": "report"
         },
         "kind": "documentation_recipe",
-        "line": 799,
+        "line": 800,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1634,7 +1606,7 @@
           "scanner": "render-report"
         },
         "kind": "documentation_recipe",
-        "line": 800,
+        "line": 801,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1645,7 +1617,7 @@
           "scanner": "path"
         },
         "kind": "documentation_recipe",
-        "line": 801,
+        "line": 802,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1656,7 +1628,7 @@
           "scanner": "digest"
         },
         "kind": "documentation_recipe",
-        "line": 802,
+        "line": 803,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1667,7 +1639,7 @@
           "scanner": "workflow"
         },
         "kind": "documentation_recipe",
-        "line": 803,
+        "line": 804,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1678,7 +1650,7 @@
           "scanner": "drift"
         },
         "kind": "documentation_recipe",
-        "line": 804,
+        "line": 805,
         "path": "README.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -1691,6 +1663,17 @@
         "kind": "documentation_recipe",
         "line": 28,
         "path": "docs/ast-crosswalk.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "agent-audit",
+          "scanner": "and"
+        },
+        "kind": "documentation_recipe",
+        "line": 1,
+        "path": "docs/comparison.md",
         "status": "documented",
         "surface": "documented_guard_command"
       },
@@ -1851,7 +1834,7 @@
       {
         "kind": "committed_evidence_sample",
         "path": "docs/evidence-samples/agent-guard-report.json",
-        "size_bytes": 58187,
+        "size_bytes": 58476,
         "status": "present",
         "surface": "evidence_artifact"
       },
@@ -2000,121 +1983,11 @@
       },
       {
         "command": {
-          "command": "check",
-          "scanner": "context"
-        },
-        "kind": "documentation_recipe",
-        "line": 86,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "inventory",
-          "scanner": "context"
-        },
-        "kind": "documentation_recipe",
-        "line": 87,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "mcp"
-        },
-        "kind": "documentation_recipe",
-        "line": 88,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "inventory",
-          "scanner": "surface"
-        },
-        "kind": "documentation_recipe",
-        "line": 89,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "lock",
-          "scanner": "context"
-        },
-        "kind": "documentation_recipe",
-        "line": 106,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "lock",
-          "scanner": "context"
-        },
-        "kind": "documentation_recipe",
-        "line": 107,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "workflow"
-        },
-        "kind": "documentation_recipe",
-        "line": 119,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "mcp"
-        },
-        "kind": "documentation_recipe",
-        "line": 120,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "check",
-          "scanner": "drift"
-        },
-        "kind": "documentation_recipe",
-        "line": 121,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
           "command": "",
           "scanner": "report"
         },
         "kind": "documentation_recipe",
-        "line": 122,
-        "path": "docs/quickstart-existing-repo.md",
-        "status": "documented",
-        "surface": "documented_guard_command"
-      },
-      {
-        "command": {
-          "command": "",
-          "scanner": "render-report"
-        },
-        "kind": "documentation_recipe",
-        "line": 123,
+        "line": 88,
         "path": "docs/quickstart-existing-repo.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -2125,7 +1998,139 @@
           "scanner": "conformance"
         },
         "kind": "documentation_recipe",
-        "line": 124,
+        "line": 95,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "context"
+        },
+        "kind": "documentation_recipe",
+        "line": 105,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "inventory",
+          "scanner": "context"
+        },
+        "kind": "documentation_recipe",
+        "line": 106,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "mcp"
+        },
+        "kind": "documentation_recipe",
+        "line": 107,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "inventory",
+          "scanner": "surface"
+        },
+        "kind": "documentation_recipe",
+        "line": 108,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "kind": "documentation_recipe",
+        "line": 125,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "lock",
+          "scanner": "context"
+        },
+        "kind": "documentation_recipe",
+        "line": 126,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "workflow"
+        },
+        "kind": "documentation_recipe",
+        "line": 138,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "mcp"
+        },
+        "kind": "documentation_recipe",
+        "line": 139,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "drift"
+        },
+        "kind": "documentation_recipe",
+        "line": 140,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "",
+          "scanner": "report"
+        },
+        "kind": "documentation_recipe",
+        "line": 141,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "",
+          "scanner": "render-report"
+        },
+        "kind": "documentation_recipe",
+        "line": 142,
+        "path": "docs/quickstart-existing-repo.md",
+        "status": "documented",
+        "surface": "documented_guard_command"
+      },
+      {
+        "command": {
+          "command": "check",
+          "scanner": "conformance"
+        },
+        "kind": "documentation_recipe",
+        "line": 143,
         "path": "docs/quickstart-existing-repo.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -2136,7 +2141,7 @@
           "scanner": "evidence-pack"
         },
         "kind": "documentation_recipe",
-        "line": 125,
+        "line": 144,
         "path": "docs/quickstart-existing-repo.md",
         "status": "documented",
         "surface": "documented_guard_command"
@@ -2145,7 +2150,7 @@
   },
   "tool": {
     "name": "agent-guard",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "workflow": {
     "checked_count": 24,
