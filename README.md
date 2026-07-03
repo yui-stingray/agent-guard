@@ -10,7 +10,7 @@
 > `agent-policy` decides whether an agent should do something.
 > `agent-guard` checks whether the repository content still obeys the rules.
 
-**Status**: `0.1.23` alpha. The current MVP ships seven guard scanners:
+**Status**: `0.2.0` alpha. The current MVP ships seven guard scanners:
 `api`, `content`, `context`, `mcp`, `path`, `digest`, and `workflow`, plus
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: yui-stingray/agent-guard@v0.1.23
+      - uses: yui-stingray/agent-guard@v0.2.0
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -172,7 +172,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.1.23"},
+  "tool": {"name": "agent-guard", "version": "0.2.0"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -274,7 +274,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.1.23
+    rev: v0.2.0
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -839,7 +839,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.1.23"
+version = "0.2.0"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -847,14 +847,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.1.23-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.2.0-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.23
-gh attestation verify dist-verify/yui_agent_guard-0.1.23.tar.gz \
+  --source-ref refs/tags/v0.2.0
+gh attestation verify dist-verify/yui_agent_guard-0.2.0.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.1.23
+  --source-ref refs/tags/v0.2.0
 ```
 
 ## License

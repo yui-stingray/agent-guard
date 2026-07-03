@@ -99,10 +99,10 @@ def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     assert "schema/contract stability" in docs
 
 
-def test_changelog_prepares_unreleased_020_contract_entry() -> None:
+def test_changelog_records_020_contract_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert "## 0.2.0 - Unreleased" in changelog
+    assert "## 0.2.0 - 2026-07-03" in changelog
     assert "stable evidence contract" in changelog
     assert "evidence pack" in changelog
     assert "agent_guard.consumer" in changelog

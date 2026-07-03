@@ -6,7 +6,7 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-## 0.2.0 - Unreleased
+## 0.2.0 - 2026-07-03
 
 - Prepared a stable evidence contract compatibility policy for v1 consumers,
   including a documented compatibility promise, explicit volatile fields, and a
