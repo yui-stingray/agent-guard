@@ -100,6 +100,24 @@ CONTENT_RULE_THEMES: dict[str, tuple[str, ...]] = {
     "hardcoded_credential": ("ASI03",),
 }
 
+CONTENT_SECRET_RULE_KEYWORDS: tuple[str, ...] = ("secret", "credential", "token", "key")
+CONTENT_EXEC_RULE_KEYWORDS: tuple[str, ...] = ("exec", "command", "destructive", "shell")
+
+
+def content_rule_themes(rule_id: str) -> tuple[str, ...]:
+    """Preserve pre-0.2 keyword themes for custom content policy rule ids."""
+    themes = CONTENT_RULE_THEMES.get(rule_id, ())
+    if themes:
+        return themes
+
+    lowered = rule_id.lower()
+    if any(keyword in lowered for keyword in CONTENT_SECRET_RULE_KEYWORDS):
+        return ("ASI03",)
+    if any(keyword in lowered for keyword in CONTENT_EXEC_RULE_KEYWORDS):
+        return ("ASI05",)
+    return ()
+
+
 API_CATEGORY_THEMES: dict[str, tuple[str, ...]] = {
     "forbidden_api": ("ASI02",),
 }
@@ -237,7 +255,7 @@ def risk_themes_for_finding(scanner: str, finding: Mapping[str, object]) -> list
     elif scanner_name == "path":
         themes = ("ASI03", "ASI04")
     elif scanner_name == "content":
-        themes = CONTENT_RULE_THEMES.get(rule_id, ())
+        themes = content_rule_themes(rule_id)
     elif scanner_name == "api":
         themes = API_CATEGORY_THEMES.get(category or rule_id, ("ASI02",))
     elif scanner_name == "context_lock":
