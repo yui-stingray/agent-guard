@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "inline-auth": {
+      "command": "node",
+      "args": ["server.js", "--token", "literal-token"]
+    }
+  }
+}

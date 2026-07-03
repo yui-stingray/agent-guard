@@ -1,0 +1,10 @@
+{
+  "case_id": "a04-instruction-skip-verification",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "skip_verification", "path": "GEMINI.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context normalizes skipping local verification."
+}

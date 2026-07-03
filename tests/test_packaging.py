@@ -69,6 +69,16 @@ def test_package_version_matches_pyproject() -> None:
     assert agent_guard.__version__ == pyproject_version()
 
 
+def test_dev_extra_includes_benchmark_schema_tools() -> None:
+    with PYPROJECT.open("rb") as fh:
+        pyproject = tomllib.load(fh)
+
+    dev_deps = pyproject["project"]["optional-dependencies"]["dev"]
+
+    assert any(dep.startswith("pytest-cov") for dep in dev_deps)
+    assert any(dep.startswith("jsonschema") for dep in dev_deps)
+
+
 def test_execution_notes_are_not_tracked_or_packaged() -> None:
     with PYPROJECT.open("rb") as fh:
         pyproject = tomllib.load(fh)
@@ -755,9 +765,13 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
 def test_release_criteria_keep_patch_releases_bounded() -> None:
     docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
-    assert "Patch Release Candidates" in docs
+    assert "Batched Release Cadence" in docs
+    assert "weekly" in docs
+    assert "P0 fix" in docs
+    assert "Do not cut a patch release for every qualifying change" in docs
     assert "Docs-only changes under `docs/` do not need an immediate release" in docs
     assert "packaged JSON Schema" in docs
+    assert "schema/contract stability" in docs
     assert "wheel contract check" in docs
     assert "LLM review" in docs
     assert "model routing" in docs

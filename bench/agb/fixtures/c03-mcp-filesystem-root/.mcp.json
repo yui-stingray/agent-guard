@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "root-files": {
+      "command": "node",
+      "args": ["server.js", "/"]
+    }
+  }
+}

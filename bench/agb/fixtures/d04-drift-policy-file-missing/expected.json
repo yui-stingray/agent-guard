@@ -1,0 +1,11 @@
+{
+  "case_id": "d04-drift-policy-file-missing",
+  "group": "D",
+  "guards": ["drift"],
+  "expected_findings": [
+    {"guard": "drift", "rule": "agent_guard_policy_missing", "path": ".agent-guard/path-policy.yaml"},
+    {"guard": "drift", "rule": "required_path_policy", "path": ".agent-guard/path-policy.yaml"}
+  ],
+  "forbidden_findings": [],
+  "notes": "A required .agent-guard policy is missing while workflow policy still references it."
+}

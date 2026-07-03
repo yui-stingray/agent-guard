@@ -1,0 +1,10 @@
+{
+  "case_id": "c06-mcp-inline-env-value",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "inline_env_value"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP env uses a literal value instead of an environment reference."
+}

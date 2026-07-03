@@ -1,0 +1,8 @@
+{
+  "case_id": "e05-benign-env-example-path",
+  "group": "E",
+  "guards": ["path"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": ".env.example should be allowed by path policy."
+}

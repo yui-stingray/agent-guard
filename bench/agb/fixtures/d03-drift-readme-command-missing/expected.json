@@ -1,0 +1,10 @@
+{
+  "case_id": "d03-drift-readme-command-missing",
+  "group": "D",
+  "guards": ["drift"],
+  "expected_findings": [
+    {"guard": "drift", "rule": "readme_guard_command_missing", "path": "README.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "README omits the recommended MCP guard command."
+}

@@ -1,0 +1,12 @@
+schema_version: agent-guard.workflow_policy.v1
+required_files:
+  - id: required_context_policy
+    path: .agent-guard/context-policy.yaml
+  - id: required_path_policy
+    path: .agent-guard/path-policy.yaml
+  - id: required_content_policy
+    path: .agent-guard/content-policy.yaml
+  - id: required_mcp_policy
+    path: .agent-guard/mcp-policy.yaml
+  - id: required_workflow_policy
+    path: .agent-guard/workflow-policy.yaml

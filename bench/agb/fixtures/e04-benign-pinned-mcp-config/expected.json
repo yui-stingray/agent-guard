@@ -1,0 +1,8 @@
+{
+  "case_id": "e04-benign-pinned-mcp-config",
+  "group": "E",
+  "guards": ["mcp"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Pinned package and environment references should not produce MCP findings."
+}

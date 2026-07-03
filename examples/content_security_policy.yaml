@@ -11,6 +11,8 @@ file_globs:
 exclude_globs:
   - "archive/**"
   - "artifacts/**"
+  # Benchmark fixtures intentionally contain adversarial sample text.
+  - "bench/agb/fixtures/**"
   - "node_modules/**"
   - ".agent-guard/content-policy.yaml"
   - "examples/content_security_policy.yaml"

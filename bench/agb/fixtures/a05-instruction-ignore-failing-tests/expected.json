@@ -1,0 +1,10 @@
+{
+  "case_id": "a05-instruction-ignore-failing-tests",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "ignore_test_failures", "path": ".github/copilot-instructions.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs the agent to ignore broken verification."
+}

@@ -1,0 +1,155 @@
+{
+  "command_count": 19,
+  "commands": [
+    {
+      "command": "python3 -m venv .venv",
+      "duration_ms": 8537,
+      "exit_code": 0,
+      "index": 1,
+      "output_tail": ""
+    },
+    {
+      "command": ". .venv/bin/activate",
+      "duration_ms": 50,
+      "exit_code": 0,
+      "index": 2,
+      "output_tail": ""
+    },
+    {
+      "command": "python -m pip install yui-agent-guard",
+      "duration_ms": 1719,
+      "exit_code": 0,
+      "index": 3,
+      "output_tail": "Looking in links: <ttfe-work>/wheelhouse\nProcessing <ttfe-work>/wheelhouse/yui_agent_guard-0.1.23-py3-none-any.whl\nProcessing <ttfe-work>/wheelhouse/pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (from yui-agent-guard)\nInstalling collected packages: pyyaml, yui-agent-guard\nSuccessfully installed pyyaml-6.0.3 yui-agent-guard-0.1.23"
+    },
+    {
+      "command": "agent-guard init --root . --json",
+      "duration_ms": 516,
+      "exit_code": 0,
+      "index": 4,
+      "output_tail": "ry.\", \"Run `agent-guard init --write` only after the printed plan is acceptable.\", \"Document the guard commands in README.md before expecting `agent-guard drift check` to pass cleanly.\", \"After context files are reviewed, run `agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml` if digest pinning is required.\", \"Treat raw per-scanner JSON as local or CI-internal; publish only the sanitized report, render-report, or evidence-pack outputs after review.\", \"Do not treat MCP evidence as runtime MCP validation, live OAuth validation, or MCP tool-poisoning detection.\", \"Commit generated evidence only when it is deliberately sanitized sample data; otherwise upload it as a CI artifact.\"], \"schema_version\": \"agent-guard.init_plan.v1\"}"
+    },
+    {
+      "command": "agent-guard init --root . --write",
+      "duration_ms": 421,
+      "exit_code": 0,
+      "index": 5,
+      "output_tail": "ew every planned file before writing it to the repository.\n- Run `agent-guard init --write` only after the printed plan is acceptable.\n- Document the guard commands in README.md before expecting `agent-guard drift check` to pass cleanly.\n- After context files are reviewed, run `agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml` if digest pinning is required.\n- Treat raw per-scanner JSON as local or CI-internal; publish only the sanitized report, render-report, or evidence-pack outputs after review.\n- Do not treat MCP evidence as runtime MCP validation, live OAuth validation, or MCP tool-poisoning detection.\n- Commit generated evidence only when it is deliberately sanitized sample data; otherwise upload it as a CI artifact."
+    },
+    {
+      "command": "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json",
+      "duration_ms": 526,
+      "exit_code": 0,
+      "index": 6,
+      "output_tail": "{\"schema_version\": \"agent-guard.result.v1\", \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}, \"scanner\": \"context\", \"status\": \"ok\", \"exit_code\": 0, \"policy\": {\"path\": \".agent-guard/context-policy.yaml\"}, \"summary\": {\"finding_count\": 0, \"scanned_count\": 1, \"scanned_unit\": \"files\"}, \"finding_count\": 0, \"findings\": [], \"scanned_files\": 1}"
+    },
+    {
+      "command": "agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json",
+      "duration_ms": 650,
+      "exit_code": 0,
+      "index": 7,
+      "output_tail": ", \"category\": \"tool_permission_boundary\", \"rule_id\": \"tool_permission_boundary_mention\", \"line\": 1}], \"line_count\": 3}], \"permission_boundaries\": [{\"category\": \"approval_boundary\", \"status\": \"present\", \"evidence_ids\": [\"approval_boundary:AGENTS.md:1:approval_boundary_mention\"]}, {\"category\": \"tool_permission_boundary\", \"status\": \"present\", \"evidence_ids\": [\"tool_permission_boundary:AGENTS.md:1:tool_permission_boundary_mention\"]}, {\"category\": \"network_boundary\", \"status\": \"missing\", \"evidence_ids\": []}, {\"category\": \"secret_handling\", \"status\": \"present\", \"evidence_ids\": [\"secret_handling:AGENTS.md:2:secret_handling_mention\"]}, {\"category\": \"destructive_action_boundary\", \"status\": \"missing\", \"evidence_ids\": []}, {\"category\": \"local_verification\", \"status\": \"missing\", \"evidence_ids\": []}]}}"
+    },
+    {
+      "command": "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json",
+      "duration_ms": 526,
+      "exit_code": 0,
+      "index": 8,
+      "output_tail": "{\"command\": \"check\", \"exit_code\": 0, \"finding_count\": 0, \"findings\": [], \"mcp_config\": {\"checked_count\": 0, \"finding_count\": 0, \"findings\": [], \"policy\": {\"fail_on_parse_error\": true, \"forbidden_risky_patterns\": [\"broad_authorization_scope\", \"filesystem_root_reference\", \"inline_authorization_value\", \"inline_env_value\", \"latest_package\", \"secret_shaped_inline_value\", \"unpinned_package\", \"unsafe_url_scheme\"], \"path\": \".agent-guard/mcp-policy.yaml\"}, \"status\": \"ok\", \"surfaces\": []}, \"policy\": {\"path\": \".agent-guard/mcp-policy.yaml\"}, \"scanner\": \"mcp\", \"schema_version\": \"agent-guard.result.v1\", \"status\": \"ok\", \"summary\": {\"finding_count\": 0, \"scanned_count\": 0, \"scanned_unit\": \"mcp_config_surfaces\"}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    },
+    {
+      "command": "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json",
+      "duration_ms": 1272,
+      "exit_code": 0,
+      "index": 9,
+      "output_tail": "ed_guard_command\"}, {\"command\": {\"command\": \"check\", \"scanner\": \"mcp\"}, \"kind\": \"documentation_recipe\", \"line\": 4, \"path\": \"README.md\", \"status\": \"documented\", \"surface\": \"documented_guard_command\"}, {\"command\": {\"command\": \"check\", \"scanner\": \"workflow\"}, \"kind\": \"documentation_recipe\", \"line\": 5, \"path\": \"README.md\", \"status\": \"documented\", \"surface\": \"documented_guard_command\"}, {\"command\": {\"command\": \"check\", \"scanner\": \"drift\"}, \"kind\": \"documentation_recipe\", \"line\": 6, \"path\": \"README.md\", \"status\": \"documented\", \"surface\": \"documented_guard_command\"}, {\"command\": {\"command\": \"\", \"scanner\": \"report\"}, \"kind\": \"documentation_recipe\", \"line\": 7, \"path\": \"README.md\", \"status\": \"documented\", \"surface\": \"documented_guard_command\"}]}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    },
+    {
+      "command": "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml",
+      "duration_ms": 795,
+      "exit_code": 0,
+      "index": 10,
+      "output_tail": ""
+    },
+    {
+      "command": "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json",
+      "duration_ms": 662,
+      "exit_code": 0,
+      "index": 11,
+      "output_tail": "{\"schema_version\": \"agent-guard.result.v1\", \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}, \"scanner\": \"context\", \"status\": \"ok\", \"exit_code\": 0, \"policy\": {\"path\": \".agent-guard/context-policy.yaml\"}, \"summary\": {\"finding_count\": 0, \"scanned_count\": 1, \"scanned_unit\": \"context_files\", \"covered_count\": 1, \"coverage_finding_count\": 0}, \"finding_count\": 0, \"findings\": [], \"command\": \"lock\", \"lock_mode\": \"coverage\", \"digest_policy\": {\"path\": \".agent-guard/context-digest-policy.yaml\"}, \"coverage\": {\"schema_version\": \"agent-guard.context_lock_coverage.v1\", \"status\": \"ok\", \"context_file_count\": 1, \"covered_count\": 1, \"covered\": [{\"path\": \"AGENTS.md\", \"kind\": \"agents_md\", \"status\": \"covered\", \"check_id\": \"context_agents_md\"}], \"finding_count\": 0, \"findings\": []}}"
+    },
+    {
+      "command": "mkdir -p .agent-guard/evidence",
+      "duration_ms": 63,
+      "exit_code": 0,
+      "index": 12,
+      "output_tail": ""
+    },
+    {
+      "command": "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json",
+      "duration_ms": 640,
+      "exit_code": 0,
+      "index": 13,
+      "output_tail": "{\"schema_version\": \"agent-guard.result.v1\", \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}, \"scanner\": \"workflow\", \"status\": \"ok\", \"exit_code\": 0, \"policy\": {\"path\": \".agent-guard/workflow-policy.yaml\"}, \"summary\": {\"finding_count\": 0, \"scanned_count\": 16, \"scanned_unit\": \"checks\"}, \"finding_count\": 0, \"findings\": [], \"checked_items\": 16}"
+    },
+    {
+      "command": "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json",
+      "duration_ms": 624,
+      "exit_code": 0,
+      "index": 14,
+      "output_tail": "{\"command\": \"check\", \"exit_code\": 0, \"finding_count\": 0, \"findings\": [], \"mcp_config\": {\"checked_count\": 0, \"finding_count\": 0, \"findings\": [], \"policy\": {\"fail_on_parse_error\": true, \"forbidden_risky_patterns\": [\"broad_authorization_scope\", \"filesystem_root_reference\", \"inline_authorization_value\", \"inline_env_value\", \"latest_package\", \"secret_shaped_inline_value\", \"unpinned_package\", \"unsafe_url_scheme\"], \"path\": \".agent-guard/mcp-policy.yaml\"}, \"status\": \"ok\", \"surfaces\": []}, \"policy\": {\"path\": \".agent-guard/mcp-policy.yaml\"}, \"scanner\": \"mcp\", \"schema_version\": \"agent-guard.result.v1\", \"status\": \"ok\", \"summary\": {\"finding_count\": 0, \"scanned_count\": 0, \"scanned_unit\": \"mcp_config_surfaces\"}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    },
+    {
+      "command": "agent-guard drift check --root . --profile recommended --schema-version v2 --json",
+      "duration_ms": 859,
+      "exit_code": 1,
+      "index": 15,
+      "output_tail": " \"README is missing a recommended guard command\", \"reason\": \"missing_readme_guard_command\", \"requirement_id\": \"readme_surface_inventory\", \"rule_id\": \"readme_guard_command_missing\", \"severity\": \"medium\"}, {\"file\": \"AGENTS.md\", \"message\": \"agent context is missing a required safety boundary category\", \"reason\": \"missing_required_context_boundary\", \"requirement_id\": \"local_verification\", \"rule_id\": \"context_boundary_missing\", \"severity\": \"medium\"}], \"profile\": \"recommended\", \"schema_version\": \"agent-guard.policy_spec_drift.v2\", \"status\": \"violation\"}, \"scanner\": \"drift\", \"schema_version\": \"agent-guard.result.v1\", \"status\": \"violation\", \"summary\": {\"drift_finding_count\": 2, \"finding_count\": 2, \"scanned_count\": 37, \"scanned_unit\": \"checks\"}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    },
+    {
+      "command": "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json",
+      "duration_ms": 2180,
+      "exit_code": 1,
+      "index": 16,
+      "output_tail": ""
+    },
+    {
+      "command": "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md",
+      "duration_ms": 904,
+      "exit_code": 1,
+      "index": 17,
+      "output_tail": ""
+    },
+    {
+      "command": "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json",
+      "duration_ms": 1283,
+      "exit_code": 1,
+      "index": 18,
+      "output_tail": "/workflow-policy.yaml\"], \"required_report_sections\": [], \"required_surfaces\": [\"agent_context\", \"policy_file\", \"workflow_file\", \"workflow_reference\"], \"schema_version\": \"agent-guard.conformance.v1\", \"status\": \"violation\"}, \"exit_code\": 1, \"finding_count\": 1, \"findings\": [{\"message\": \"required evidence gate is not clean\", \"reason\": \"violation\", \"requirement_id\": \"policy_spec_drift\", \"rule_id\": \"required_gate_not_ok\", \"severity\": \"high\"}], \"policy\": {\"path\": \".agent-guard/evidence/agent-guard-report.json\"}, \"scanner\": \"conformance\", \"schema_version\": \"agent-guard.result.v1\", \"status\": \"violation\", \"summary\": {\"conformance_finding_count\": 1, \"finding_count\": 1, \"profile\": \"recommended\", \"scanned_count\": 17, \"scanned_unit\": \"requirements\"}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    },
+    {
+      "command": "agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json",
+      "duration_ms": 1318,
+      "exit_code": 0,
+      "index": 19,
+      "output_tail": " \"violation\"}], \"report\": {\"finding_count\": 0, \"format\": \"json\", \"schema_version\": \"agent-guard.report_evidence.v1\", \"scope\": \"context+path+content+mcp+digest+workflow+drift\", \"status\": \"violation\"}, \"sanitized\": true, \"schema_version\": \"agent-guard.evidence_pack_manifest.v1\", \"summary\": {\"enabled_gate_count\": 9, \"failing_gate_count\": 1, \"gate_count\": 10, \"missing_gate_count\": 1, \"surface_count\": 30}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}, \"exit_code\": 0, \"finding_count\": 0, \"findings\": [], \"policy\": {\"path\": \".agent-guard/evidence/agent-guard-report.json\"}, \"scanner\": \"evidence-pack\", \"schema_version\": \"agent-guard.result.v1\", \"status\": \"ok\", \"summary\": {\"finding_count\": 0, \"scanned_count\": 10, \"scanned_unit\": \"gates\"}, \"tool\": {\"name\": \"agent-guard\", \"version\": \"0.1.23\"}}"
+    }
+  ],
+  "documented_command_count": 19,
+  "elapsed_ms": 27411,
+  "failure_point": null,
+  "first_nonzero": {
+    "command": "agent-guard drift check --root . --profile recommended --schema-version v2 --json",
+    "exit_code": 1,
+    "index": 15
+  },
+  "generated_at": "2026-07-02T07:07:45.073568Z",
+  "reached_recommended_evidence_pack": true,
+  "schema_version": "agent-guard.ttfe_results.v1",
+  "setup": {
+    "detail": "built yui-agent-guard wheel",
+    "status": "local_wheelhouse"
+  },
+  "source_doc": "docs/quickstart-existing-repo.md",
+  "status": "ok"
+}

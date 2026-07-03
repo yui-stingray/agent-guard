@@ -1,0 +1,10 @@
+{
+  "case_id": "b02-skill-pipe-to-shell",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "pipe_to_shell", "path": "skills/bootstrap/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill setup normalizes pipe-to-shell installation."
+}

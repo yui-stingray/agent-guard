@@ -29,6 +29,7 @@ EXPECTED_EXPORTS = {
     "PathGuardFinding",
     "scan_digests",
     "DigestGuardFinding",
+    "build_mcp_config_report",
     "scan_workflow_policy",
     "WorkflowGuardFinding",
 }

@@ -1,0 +1,10 @@
+{
+  "case_id": "a03-instruction-disable-safety-tools",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "disable_safety_tools", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs the agent to disable a safety gate."
+}

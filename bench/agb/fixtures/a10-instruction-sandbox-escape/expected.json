@@ -1,0 +1,10 @@
+{
+  "case_id": "a10-instruction-sandbox-escape",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "sandbox_escape", "path": ".continue/rules/review.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context directs sandbox bypass."
+}

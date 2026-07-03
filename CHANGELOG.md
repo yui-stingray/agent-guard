@@ -6,6 +6,24 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.2.0 - Unreleased
+
+- Prepared a stable evidence contract compatibility policy for v1 consumers,
+  including a documented compatibility promise, explicit volatile fields, and a
+  freeze test for packaged schema file names, `$id` values, and schema-version
+  constants.
+- Added the Agent-Guard Bench, evidence integrity, taxonomy alignment, and TTFE
+  benchmark result pipeline so evidence quality and regression risk are
+  measured before release.
+- Promoted the downstream evidence consumer into `agent_guard.consumer` while
+  keeping `examples/evidence_consumer.py` as a compatibility shim.
+- Fixed the public API surface so the MCP scanner export is covered alongside
+  the other scanners.
+- Completed taxonomy coverage for emitted guard rule ids, labels, statuses, and
+  classifications so evidence metadata cannot silently drift.
+- Switched release guidance toward batched releases for schema/contract
+  stability, with immediate releases reserved for explicit P0 fixes.
+
 ## 0.1.23 - 2026-07-02
 
 - Treated URL-like policy arguments as repo-external policy inputs in public

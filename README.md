@@ -15,6 +15,14 @@
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
 
+### Measured quality
+
+The local AGB benchmark currently reports F1 `0.959` with precision `0.921`
+and recall `1.0`. This is a self-authored 40-case corpus for config-surface
+detection across instruction files, skills, MCP configs, drift, digest, and
+benign cases; it is not an independently validated benchmark. See
+[`bench/`](bench/) for the runner and fixtures.
+
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
 for runtime admission, and see

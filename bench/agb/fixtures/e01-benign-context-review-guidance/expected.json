@@ -1,0 +1,8 @@
+{
+  "case_id": "e01-benign-context-review-guidance",
+  "group": "E",
+  "guards": ["context"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Normal review guidance should stay clean."
+}

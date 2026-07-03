@@ -1,0 +1,10 @@
+{
+  "case_id": "a06-instruction-untrusted-priority",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "untrusted_instruction_priority", "path": ".cursor/rules/project.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Agent context lets an untrusted channel override repository policy."
+}

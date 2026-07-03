@@ -1,0 +1,70 @@
+# Where: src/agent_guard/cli/render_report.py
+# What: render-report CLI parser and runner.
+# Why: isolate sanitized report rendering from the legacy CLI module.
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from ..report_render import emit_report_output, render_report_output
+from .common import (
+    REPORT_EVIDENCE_SCHEMA_VERSION,
+    result_payload,
+    sanitize_public_mapping,
+    scrub_report_error_message,
+)
+
+
+def add_render_report_parser(top) -> None:
+    render_report = top.add_parser(
+        "render-report",
+        help="render an existing sanitized report JSON without rescanning",
+    )
+    render_report.add_argument("--root", default=".", help="repository root used for display-path scrubbing")
+    render_report.add_argument("--input", required=True, help="sanitized agent-guard report JSON path")
+    render_report.add_argument(
+        "--format",
+        choices=("markdown", "json", "github-annotations", "sarif"),
+        default="markdown",
+        help="rendered output format",
+    )
+    render_report.add_argument("--output", default="", help="optional output path; stdout when omitted")
+
+
+def run_report_render(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    input_arg = str(args.input).strip()
+    try:
+        payload = json.loads(Path(input_arg).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("report JSON root must be an object")
+    except Exception as exc:
+        payload = result_payload(
+            scanner="report",
+            status="error",
+            exit_code=2,
+            policy_arg=input_arg,
+            root=root,
+            error=scrub_report_error_message(str(exc)),
+            error_paths=[input_arg],
+            extra={
+                "command": "render-report",
+                "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                    "format": args.format,
+                    "sanitized": True,
+                    "source": "json",
+                },
+            },
+        )
+        payload = sanitize_public_mapping(payload)
+        emit_report_output(render_report_output(payload, args.format), args.output)
+        return 2
+
+    payload = sanitize_public_mapping(payload)
+    emit_report_output(render_report_output(payload, args.format), args.output)
+    exit_code = payload.get("exit_code", 0)
+    return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0
+

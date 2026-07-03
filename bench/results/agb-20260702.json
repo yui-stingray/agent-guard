@@ -1,0 +1,1404 @@
+{
+  "by_guard": {
+    "content": {
+      "f1": 0.909091,
+      "fn": 0,
+      "fp": 2,
+      "precision": 0.833333,
+      "recall": 1.0,
+      "tp": 10
+    },
+    "context": {
+      "f1": 1.0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 10
+    },
+    "digest": {
+      "f1": 1.0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 2
+    },
+    "drift": {
+      "f1": 1.0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 5
+    },
+    "mcp": {
+      "f1": 0.941176,
+      "fn": 0,
+      "fp": 1,
+      "precision": 0.888889,
+      "recall": 1.0,
+      "tp": 8
+    },
+    "path": {
+      "f1": 1.0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 0
+    }
+  },
+  "case_count": 40,
+  "cases": [
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a01-instruction-approval-bypass",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a02-instruction-hidden-action",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a03-instruction-disable-safety-tools",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a04-instruction-skip-verification",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a05-instruction-ignore-failing-tests",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a06-instruction-untrusted-priority",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a07-instruction-audit-removal",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a08-instruction-private-data-exfiltration",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a09-instruction-tool-auto-allow",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "a10-instruction-sandbox-escape",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b01-skill-secret-prompt",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b02-skill-pipe-to-shell",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b03-skill-encoded-exec",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b04-skill-destructive-rm-root",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b05-skill-force-history-rewrite",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b06-skill-powershell-iex-download",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b07-skill-hardcoded-gh-token",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b08-skill-hardcoded-aws-key",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b09-skill-script-hardcoded-token",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "b10-skill-script-pipe-to-shell",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c01-mcp-latest-package",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c02-mcp-unpinned-package",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c03-mcp-filesystem-root",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c04-mcp-inline-auth-value",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c05-mcp-secret-shaped-env",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c06-mcp-inline-env-value",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c07-mcp-unsafe-url-scheme",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "c08-mcp-broad-auth-scope",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "digest": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "d01-digest-mismatch",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "digest"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "digest": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "d02-digest-missing-file",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "digest"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "drift": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "d03-drift-readme-command-missing",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "drift"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "drift": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 2
+        }
+      },
+      "case_id": "d04-drift-policy-file-missing",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 2
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "drift"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 2
+      }
+    },
+    {
+      "by_guard": {
+        "drift": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "d05-drift-context-boundary-missing",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "drift"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "drift": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 1
+        }
+      },
+      "case_id": "d06-drift-context-lock-mismatch",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 1
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "drift"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 1
+      }
+    },
+    {
+      "by_guard": {
+        "context": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e01-benign-context-review-guidance",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "context"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e02-benign-content-security-notes",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e03-benign-negated-secret-guidance",
+      "counts": {
+        "fn": 0,
+        "fp": 1,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [
+        {
+          "guard": "content",
+          "path": "skills/review/SKILL.md",
+          "rule": "secret_prompt"
+        }
+      ],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 0.0,
+        "fn": 0,
+        "fp": 1,
+        "precision": 0.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    },
+    {
+      "by_guard": {
+        "mcp": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e04-benign-pinned-mcp-config",
+      "counts": {
+        "fn": 0,
+        "fp": 1,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [
+        {
+          "guard": "mcp",
+          "path": ".mcp.json",
+          "reason": "unpinned_package",
+          "rule": "mcp_config_risky_pattern"
+        }
+      ],
+      "forbidden_hits": [],
+      "guards": [
+        "mcp"
+      ],
+      "metrics": {
+        "f1": 0.0,
+        "fn": 0,
+        "fp": 1,
+        "precision": 0.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    },
+    {
+      "by_guard": {
+        "path": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e05-benign-env-example-path",
+      "counts": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [],
+      "forbidden_hits": [],
+      "guards": [
+        "path"
+      ],
+      "metrics": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    },
+    {
+      "by_guard": {
+        "content": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": 1.0,
+          "tp": 0
+        }
+      },
+      "case_id": "e06-benign-quoted-pipe-pattern",
+      "counts": {
+        "fn": 0,
+        "fp": 1,
+        "tp": 0
+      },
+      "errors": {},
+      "false_negatives": [],
+      "false_positives": [
+        {
+          "guard": "content",
+          "path": "docs/install.md",
+          "rule": "pipe_to_shell"
+        }
+      ],
+      "forbidden_hits": [],
+      "guards": [
+        "content"
+      ],
+      "metrics": {
+        "f1": 0.0,
+        "fn": 0,
+        "fp": 1,
+        "precision": 0.0,
+        "recall": 1.0,
+        "tp": 0
+      }
+    }
+  ],
+  "generated_at": "2026-07-02T05:02:03.089096+00:00",
+  "overall": {
+    "f1": 0.958904,
+    "fn": 0,
+    "fp": 3,
+    "precision": 0.921053,
+    "recall": 1.0,
+    "tp": 35
+  },
+  "schema_version": "agent-guard.agb_results.v1"
+}

@@ -1,0 +1,10 @@
+{
+  "case_id": "c08-mcp-broad-auth-scope",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "broad_authorization_scope"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP server requests a broad authorization scope."
+}

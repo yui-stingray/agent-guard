@@ -1,0 +1,5 @@
+schema_version: agent-guard.mcp_policy.v1
+policy:
+  fail_on_parse_error: true
+  forbidden_risky_patterns:
+    - unpinned_package

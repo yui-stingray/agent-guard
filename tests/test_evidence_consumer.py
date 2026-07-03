@@ -6,10 +6,13 @@ Why: keep the copyable consumer aligned with packaged report schemas.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from agent_guard.consumer import load_payload, load_report_schema, main as packaged_consumer_main, validate_report
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +46,24 @@ def test_evidence_consumer_accepts_public_sample() -> None:
     assert payload["surface_count"] >= 1
     assert payload["enabled_gate_count"] >= 2
     assert payload["missing_gate_count"] >= 0
+
+
+def test_packaged_consumer_accepts_public_sample_directly() -> None:
+    summary = validate_report(load_payload(SAMPLE), load_report_schema())
+
+    assert summary["status"] == "ok"
+    assert summary["report_schema_version"] == "agent-guard.report_evidence.v1"
+
+
+def test_evidence_consumer_example_shim_exports_packaged_main() -> None:
+    spec = importlib.util.spec_from_file_location("evidence_consumer_shim", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    assert module.main is packaged_consumer_main
 
 
 def test_evidence_consumer_accepts_schema_valid_error_report(tmp_path: Path) -> None:

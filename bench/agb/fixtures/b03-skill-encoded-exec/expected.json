@@ -1,0 +1,10 @@
+{
+  "case_id": "b03-skill-encoded-exec",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "encoded_exec", "path": "skills/decode/SKILL.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Skill instruction contains encoded shell execution."
+}

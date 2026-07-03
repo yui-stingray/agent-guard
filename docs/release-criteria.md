@@ -1,11 +1,16 @@
 # Release Criteria
 
-`agent-guard` is still `0.1.x` alpha. Releases should stay small and evidence
-driven.
+`agent-guard` is still `0.x` alpha. Releases should stay small, batched, and
+evidence driven. The default is to protect schema/contract stability rather
+than publish every isolated change immediately.
 
-## Patch Release Candidates
+## Batched Release Cadence
 
-Consider the next patch release when at least one of these changes lands:
+Do not cut a patch release for every qualifying change. By default, batch
+reviewed release candidates on a weekly cadence. Cut an earlier patch only when
+a P0 fix needs to reach installed users before the next batch.
+
+A release batch may include:
 
 - a CLI behavior change that downstream CI users need from PyPI;
 - a new deterministic evidence surface such as init, surface inventory, or
@@ -18,6 +23,11 @@ Consider the next patch release when at least one of these changes lands:
 Docs-only changes under `docs/` do not need an immediate release unless they
 change the README or are needed by users who only read the packaged project
 page.
+
+The reason for batching is schema/contract stability, not process for its own
+sake. `agent-guard` is an evidence contract; frequent shape changes make
+downstream wrappers and golden-file consumers less trustworthy even when each
+individual change is small.
 
 ## Release Readiness
 

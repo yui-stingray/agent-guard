@@ -1,0 +1,10 @@
+{
+  "case_id": "d02-digest-missing-file",
+  "group": "D",
+  "guards": ["digest"],
+  "expected_findings": [
+    {"guard": "digest", "rule": "missing_agents_pin", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Digest policy pins a missing context file."
+}

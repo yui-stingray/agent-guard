@@ -1,0 +1,10 @@
+{
+  "case_id": "b09-skill-script-hardcoded-token",
+  "group": "B",
+  "guards": ["content"],
+  "expected_findings": [
+    {"guard": "content", "rule": "hardcoded_credential", "path": "skills/sync/scripts/push.sh"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Bundled skill script contains a fake token-shaped value."
+}

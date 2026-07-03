@@ -8,3 +8,4 @@ dist/
 .venv-py312/
 .agent-guard/evidence/
 execution-notes.md
+week-logs/

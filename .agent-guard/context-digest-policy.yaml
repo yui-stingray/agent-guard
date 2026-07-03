@@ -8,13 +8,13 @@ checks:
     sha256: "b247d624eb6ec164a2baf8100fac5144a4a1c43b5d9c7b9fac2c4efb280d53ff"
   - id: path_policy
     path: .agent-guard/path-policy.yaml
-    sha256: "28fda352e90fde02a479ea0f5bd369655488257f73d78ccd883e085557e5f6a7"
+    sha256: "25a58d78386c420cdea67b0ca46f0c572bf31e53c5f6643f5760aff80d426abc"
   - id: context_policy
     path: .agent-guard/context-policy.yaml
-    sha256: "b948800a40fa7c505d8f6dfd18e206b35e58b06787fd549b44b6e04b43556437"
+    sha256: "d368a15987a9f5125f9040de155e88f86a6839423f48f74d073588e29e4990a8"
   - id: content_policy
     path: .agent-guard/content-policy.yaml
-    sha256: "5ce2a9a402bbaeff028afa458376a7f199e99a96089434aa969466a8034553d8"
+    sha256: "81268ec4ee5e638c683a42d61a4777f838f88a967510c7a378dfc18a6ef3600c"
   - id: mcp_policy
     path: .agent-guard/mcp-policy.yaml
     sha256: "771b04f503b387bea4c7f86ad8b7be9039b5eed2902a0435b3a3c775237e2fa5"
