@@ -5,12 +5,28 @@ Why: pin the shared exit-code and JSON envelope contract for wrappers and CI.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
-from agent_guard.cli import safe_policy_path
+from agent_guard.cli import build_parser, safe_policy_path
+from agent_guard.cli_registry import AGENT_GUARD_COMMANDS
 
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
+
+
+def test_agent_guard_command_registry_matches_parser() -> None:
+    parser = build_parser()
+    top_action = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+    actual: dict[str, tuple[str, ...]] = {}
+    for scanner, scanner_parser in top_action.choices.items():
+        sub_actions = [
+            action for action in scanner_parser._actions if isinstance(action, argparse._SubParsersAction)
+        ]
+        actual[scanner] = tuple(sorted(sub_actions[0].choices)) if sub_actions else ("",)
+
+    expected = {scanner: tuple(sorted(commands)) for scanner, commands in AGENT_GUARD_COMMANDS.items()}
+    assert actual == expected
 
 
 def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> None:
@@ -281,5 +297,4 @@ def test_safe_policy_path_treats_url_like_policy_as_external(tmp_path: Path) -> 
     url_policy = "https://policy.example.invalid/reviewed/policy.yaml"
 
     assert safe_policy_path(url_policy, tmp_path) == "<external-policy>"
-
 

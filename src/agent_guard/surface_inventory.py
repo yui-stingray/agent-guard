@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlparse
 
 import yaml
 
+from .cli_registry import is_agent_guard_cli_command
 from .context_guard import collect_context_inventory
 from .workflow_guard import collect_run_lines
 
@@ -143,9 +144,13 @@ def parse_agent_guard_command(command: str) -> dict[str, object] | None:
     )
     if not match:
         return None
+    scanner = match.group(1)
+    command = match.group(2) or ""
+    if not is_agent_guard_cli_command(scanner, command):
+        return None
     return {
-        "scanner": match.group(1),
-        "command": match.group(2) or "",
+        "scanner": scanner,
+        "command": command,
     }
 
 

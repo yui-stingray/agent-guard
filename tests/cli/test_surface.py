@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tests.cli.helpers import assert_shared_envelope, run_cli, write
 
+
 def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")
@@ -67,6 +68,7 @@ def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(tmp_
     assert "fixture marker surface" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
+
 def test_surface_inventory_cli_v2_adds_documented_and_artifact_metadata(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")
@@ -122,6 +124,38 @@ def test_surface_inventory_cli_v2_adds_documented_and_artifact_metadata(tmp_path
     assert raw_windows_command not in result.stdout
     assert r"C:\Users\alice" not in result.stdout
     assert str(tmp_path) not in result.stdout
+
+
+def test_surface_inventory_cli_v2_ignores_prose_agent_guard_comparison(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(
+        tmp_path / "README.md",
+        "between agent-guard and agent-audit tools\n"
+        "agent-guard context check --root .\n",
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0
+    surfaces = json.loads(result.stdout)["surface_inventory"]["surfaces"]
+    documented_commands = [
+        item["command"] for item in surfaces if item["surface"] == "documented_guard_command"
+    ]
+    assert documented_commands == [{"scanner": "context", "command": "check"}]
+    assert {"scanner": "and", "command": "agent-audit"} not in documented_commands
+
 
 def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
