@@ -80,6 +80,25 @@ The action and CLI resolve relative policy paths such as
 selected root. Use absolute paths only for local experiments; repo-external
 policy files do not satisfy recommended or strict reviewed-policy conformance.
 
+The equivalent local command keeps `--root` on the reviewed project, keeps
+policy paths relative to that root, and writes evidence under the selected
+project directory:
+
+```bash
+agent-guard report \
+  --root services/api \
+  --context-policy .agent-guard/context-policy.yaml \
+  --evidence-preset recommended \
+  --mcp-policy .agent-guard/mcp-policy.yaml \
+  --format json \
+  --output services/api/.agent-guard/evidence/agent-guard-report.json
+agent-guard conformance check \
+  --root services/api \
+  --evidence services/api/.agent-guard/evidence/agent-guard-report.json \
+  --profile recommended \
+  --json
+```
+
 For a local first pass, run the same evidence surfaces directly:
 
 ```bash
@@ -202,6 +221,20 @@ Common first fixes:
 - Regenerate the digest policy after an intentional context-file change.
 - Keep raw transcripts, local artifacts, private fixtures, and generated
   evidence out of tracked paths.
+
+Common rule ids map to these first checks:
+
+| Rule or section | First thing to inspect | Usual fix |
+| --- | --- | --- |
+| `mcp_policy_missing` | `mcp_config.policy.path` and `.agent-guard/mcp-policy.yaml` | Commit a reviewed repo-local MCP policy, then rerun `report --evidence-preset recommended`. |
+| `required_mcp_policy_not_reviewed` | `conformance.findings` and MCP policy path | Move the reviewed policy under the selected `--root`; do not satisfy recommended or strict evidence with an external policy. |
+| `mcp_policy_weakened` | `mcp_config.policy.forbidden_risky_patterns` | Restore the default MCP risk-label set unless you intentionally stay on `minimal`. |
+| `required_gate_missing` | `evidence_coverage.gates` | Enable the missing gate in CI or use the adoption profile that matches the repository's current readiness. |
+| `required_gate_not_ok` | the named gate section and its findings | Fix the underlying scanner finding before treating conformance as clean. |
+| `required_policy_file_missing` | `surface_inventory.surfaces` entries with `surface: policy_file` | Commit the reviewed policy file under the selected `--root` and rerun surface inventory/report. |
+| `context_lock` or `digest` findings | `context_lock` and `digest` sections | Regenerate reviewed digest policy only after intentional context or pinned-file changes. |
+| `workflow` findings | `workflow.findings` and `.agent-guard/workflow-policy.yaml` | Update the workflow command or the reviewed workflow policy so they agree. |
+| `policy_spec_drift` findings | `policy_spec_drift.findings` | Review README, workflow-policy, and guard-policy drift together; it is review evidence, not automatic approval. |
 
 ## What This Does Not Add
 

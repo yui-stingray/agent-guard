@@ -290,7 +290,16 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "Monorepos and Subdirectories" in quickstart
     assert "root: services/api" in quickstart
     assert "selected root" in quickstart
+    assert "policy paths relative to that root" in quickstart
+    assert "--root services/api" in quickstart
+    assert "--output services/api/.agent-guard/evidence/agent-guard-report.json" in quickstart
     assert "repo-external policy files do not satisfy recommended or strict" in quickstart_single_line
+    assert "Common rule ids map to these first checks" in quickstart
+    assert "`mcp_policy_missing`" in quickstart
+    assert "`required_mcp_policy_not_reviewed`" in quickstart
+    assert "`mcp_policy_weakened`" in quickstart
+    assert "`required_policy_file_missing`" in quickstart
+    assert "`policy_spec_drift` findings" in quickstart
     assert "minimal-to-recommended path and monorepo/subdirectory roots" in readme
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart

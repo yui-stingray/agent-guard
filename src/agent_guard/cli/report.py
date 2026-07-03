@@ -113,14 +113,12 @@ def add_report_parser(top) -> None:
 def apply_report_evidence_preset(args: argparse.Namespace) -> None:
     if args.evidence_preset != RECOMMENDED_EVIDENCE_PRESET:
         return
-    root = Path(args.root)
-    policy_dir = root / ".agent-guard"
     if not str(args.path_policy).strip():
-        args.path_policy = str(policy_dir / "path-policy.yaml")
+        args.path_policy = ".agent-guard/path-policy.yaml"
     if not str(args.content_policy).strip():
-        args.content_policy = str(policy_dir / "content-policy.yaml")
+        args.content_policy = ".agent-guard/content-policy.yaml"
     if not str(args.workflow_policy).strip():
-        args.workflow_policy = str(policy_dir / "workflow-policy.yaml")
+        args.workflow_policy = ".agent-guard/workflow-policy.yaml"
     args.drift_check = True
     if not str(args.drift_profile).strip():
         args.drift_profile = RECOMMENDED_EVIDENCE_PRESET

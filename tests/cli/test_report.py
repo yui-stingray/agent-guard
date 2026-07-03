@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.cli.helpers import ROOT, mcp_policy_text, run_cli, run_git, write, write_baseline_ready_repo
+from tests.cli.helpers import ROOT, mcp_policy_text, run_cli, run_cli_from, run_git, write, write_baseline_ready_repo
 
 def test_report_cli_embeds_sanitized_base_ref_drift(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -170,6 +170,87 @@ def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path
     assert payload["workflow"]["policy"]["path"] == ".agent-guard/workflow-policy.yaml"
     assert payload["mcp_config"]["policy"]["path"] == ".agent-guard/mcp-policy.yaml"
     assert payload["mcp_config"]["status"] == "ok"
+    assert str(tmp_path) not in result.stdout
+
+def test_report_cli_recommended_preset_defaults_are_root_relative_for_relative_subdir_root(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    project = workspace / "services" / "api"
+    write_baseline_ready_repo(project)
+
+    result = run_cli_from(
+        workspace,
+        "report",
+        "--root",
+        "services/api",
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+        "--output",
+        "services/api/.agent-guard/evidence/agent-guard-report.json",
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert result.stdout == ""
+    payload = json.loads((project / ".agent-guard" / "evidence" / "agent-guard-report.json").read_text())
+    assert payload["status"] == "ok"
+    assert payload["path"]["policy"]["path"] == ".agent-guard/path-policy.yaml"
+    assert payload["content"]["policy"]["path"] == ".agent-guard/content-policy.yaml"
+    assert payload["workflow"]["policy"]["path"] == ".agent-guard/workflow-policy.yaml"
+    assert payload["mcp_config"]["policy"]["path"] == ".agent-guard/mcp-policy.yaml"
+    assert str(tmp_path) not in json.dumps(payload, sort_keys=True)
+
+    conformance = run_cli_from(
+        workspace,
+        "conformance",
+        "check",
+        "--root",
+        "services/api",
+        "--evidence",
+        "services/api/.agent-guard/evidence/agent-guard-report.json",
+        "--profile",
+        "recommended",
+        "--json",
+    )
+
+    assert conformance.returncode == 0, conformance.stdout
+    conformance_payload = json.loads(conformance.stdout)
+    assert conformance_payload["conformance"]["status"] == "ok"
+    assert str(tmp_path) not in conformance.stdout
+
+
+def test_report_cli_recommended_preset_defaults_are_root_relative_from_external_cwd(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    write_baseline_ready_repo(repo)
+
+    result = run_cli_from(
+        cwd,
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["path"]["policy"]["path"] == ".agent-guard/path-policy.yaml"
+    assert payload["content"]["policy"]["path"] == ".agent-guard/content-policy.yaml"
+    assert payload["workflow"]["policy"]["path"] == ".agent-guard/workflow-policy.yaml"
+    assert payload["mcp_config"]["policy"]["path"] == ".agent-guard/mcp-policy.yaml"
     assert str(tmp_path) not in result.stdout
 
 def test_report_cli_recommended_preset_missing_default_mcp_policy_is_violation(tmp_path: Path) -> None:
