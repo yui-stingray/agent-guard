@@ -45,7 +45,9 @@ inputs:
     required: false
     default: ".agent-guard/context-digest-policy.yaml"
   base-ref:
-    description: Optional git ref used to flag baseline-sensitive guard changes. The caller must fetch this ref before running the action.
+    description: >-
+      Optional git ref used to flag baseline-sensitive guard changes. The caller
+      must fetch this ref before running the action.
     required: false
     default: ""
   evidence-dir:
@@ -219,6 +221,12 @@ runs:
           fi
         }
 
+        should_use_mcp_policy() {
+          [ -n "$mcp_policy_arg" ] && {
+            [ "$mcp_policy_arg" != "$default_mcp_policy_arg" ] || path_exists "$mcp_policy"
+          }
+        }
+
         context_policy_arg="$AGENT_GUARD_CONTEXT_POLICY"
         path_policy_arg="$AGENT_GUARD_PATH_POLICY"
         content_policy_arg="$AGENT_GUARD_CONTENT_POLICY"
@@ -248,18 +256,27 @@ runs:
         fi
 
         if path_exists "$content_policy"; then
-          agent-guard content check --repo-root "$root" --policy "$content_policy_arg" --mode registered --scan-dir "$content_scan_dir" --json > "$raw_dir/content.json"
+          agent-guard content check \
+            --repo-root "$root" \
+            --policy "$content_policy_arg" \
+            --mode registered \
+            --scan-dir "$content_scan_dir" \
+            --json > "$raw_dir/content.json"
           record_status "$?"
         fi
 
         mcp_args=(--root "$root")
-        if [ -n "$mcp_policy_arg" ] && { [ "$mcp_policy_arg" != "$default_mcp_policy_arg" ] || path_exists "$mcp_policy"; }; then
+        if should_use_mcp_policy; then
           mcp_args+=(--policy "$mcp_policy_arg")
         fi
         agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
         record_status "$?"
 
-        agent-guard surface inventory --root "$root" --context-policy "$context_policy_arg" --schema-version v2 --json > "${evidence_dir%/}/agent-surface-inventory.json"
+        agent-guard surface inventory \
+          --root "$root" \
+          --context-policy "$context_policy_arg" \
+          --schema-version v2 \
+          --json > "${evidence_dir%/}/agent-surface-inventory.json"
         record_status "$?"
 
         if path_exists "$workflow_policy"; then
@@ -281,7 +298,7 @@ runs:
         if path_exists "$content_policy"; then
           report_args+=(--content-policy "$content_policy_arg" --content-scan-dir "$content_scan_dir")
         fi
-        if [ -n "$mcp_policy_arg" ] && { [ "$mcp_policy_arg" != "$default_mcp_policy_arg" ] || path_exists "$mcp_policy"; }; then
+        if should_use_mcp_policy; then
           report_args+=(--mcp-policy "$mcp_policy_arg")
         fi
         if path_exists "$workflow_policy"; then
@@ -305,10 +322,18 @@ runs:
         agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif"
         record_status "$?"
 
-        agent-guard conformance check --root "$root" --evidence "$report_json" --profile "$conformance_profile" --json > "${evidence_dir%/}/agent-guard-conformance.json"
+        agent-guard conformance check \
+          --root "$root" \
+          --evidence "$report_json" \
+          --profile "$conformance_profile" \
+          --json > "${evidence_dir%/}/agent-guard-conformance.json"
         record_status "$?"
 
-        agent-guard evidence-pack manifest --root "$root" --report "$report_json" --artifact "$report_json" --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"
+        agent-guard evidence-pack manifest \
+          --root "$root" \
+          --report "$report_json" \
+          --artifact "$report_json" \
+          --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"
         record_status "$?"
 
         if [ "$github_annotations" = "true" ]; then

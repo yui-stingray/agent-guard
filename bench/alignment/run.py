@@ -15,9 +15,11 @@ from types import ModuleType
 from typing import Any
 
 from agent_guard import conformance, context_guard, content_guard, drift_guard, mcp_guard, taxonomy
+from agent_guard.report_sarif import render_sarif_report
 
 
 ALIGNMENT_SCHEMA_VERSION = "agent-guard.alignment.v1"
+SARIF_SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "sarif-schema-2.1.0.json"
 DRIFT_BASELINE_CLASSIFICATION_PATHS = {
     ".agent-guard/content-policy.yaml",
     ".agent-guard/context-digest-policy.yaml",
@@ -125,6 +127,73 @@ def _check_theme_references() -> dict[str, object]:
     return _check_mapping("taxonomy_theme_references", emitted, theme_ids)
 
 
+def load_official_sarif_schema() -> dict[str, Any]:
+    loaded = json.loads(SARIF_SCHEMA_PATH.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError("official SARIF schema must be a JSON object")
+    return loaded
+
+
+def official_sarif_schema_errors(payload: object) -> list[str]:
+    try:
+        import jsonschema  # type: ignore[import-not-found]
+    except Exception as exc:  # pragma: no cover - dev dependency is present in CI.
+        return [f"jsonschema unavailable: {type(exc).__name__}"]
+
+    schema = load_official_sarif_schema()
+    validator = jsonschema.Draft4Validator(schema)
+    errors = sorted(validator.iter_errors(payload), key=lambda error: (list(error.path), error.message))
+    return [f"{_json_path(error.path)}: {error.message}" for error in errors]
+
+
+def _json_path(parts: object) -> str:
+    path = "$"
+    for part in parts:
+        if isinstance(part, int):
+            path += f"[{part}]"
+        else:
+            path += f".{part}"
+    return path
+
+
+def _sarif_sample_report_payload() -> dict[str, object]:
+    return {
+        "tool": {"name": "agent-guard"},
+        "status": "violation",
+        "findings": [
+            {
+                "rule_id": "approval_bypass",
+                "severity": "high",
+                "file": "AGENTS.md",
+                "line": 1,
+            }
+        ],
+        "mcp_config": {
+            "findings": [
+                {
+                    "rule_id": "mcp_config_risky_pattern",
+                    "severity": "high",
+                    "path": ".mcp.json",
+                    "reason": "unpinned_package",
+                }
+            ]
+        },
+    }
+
+
+def _check_sarif_schema_validation() -> dict[str, object]:
+    sarif_payload = json.loads(render_sarif_report(_sarif_sample_report_payload()))
+    errors = official_sarif_schema_errors(sarif_payload)
+    return {
+        "name": "sarif_official_schema_validation",
+        "status": "ok" if not errors else "violation",
+        "emitted_count": 1,
+        "mapped_count": 0 if errors else 1,
+        "missing_count": len(errors),
+        "missing": errors,
+    }
+
+
 def _drift_classification_labels() -> set[str]:
     labels = {
         *drift_guard.CONTEXT_RULE_CLASSIFICATIONS.values(),
@@ -181,6 +250,7 @@ def build_alignment_result(*, repo_root: Path | str = ".") -> dict[str, Any]:
             set(taxonomy.DRIFT_CLASSIFICATION_THEMES),
         ),
         _check_theme_references(),
+        _check_sarif_schema_validation(),
     ]
     missing_count = sum(int(check["missing_count"]) for check in checks)
     emitted_count = sum(int(check["emitted_count"]) for check in checks)

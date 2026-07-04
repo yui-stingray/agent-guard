@@ -60,6 +60,23 @@ def action_run_scripts() -> list[str]:
     return [str(step["run"]) for step in action["runs"]["steps"] if isinstance(step, dict) and "run" in step]
 
 
+def normalize_shell_continuations(script: str) -> str:
+    normalized: list[str] = []
+    pending = ""
+    for raw_line in script.splitlines():
+        line = raw_line.strip()
+        if pending:
+            line = f"{pending} {line}"
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip()
+            continue
+        normalized.append(line)
+        pending = ""
+    if pending:
+        normalized.append(pending)
+    return "\n".join(normalized)
+
+
 def pyproject_version() -> str:
     with PYPROJECT.open("rb") as fh:
         return tomllib.load(fh)["project"]["version"]
@@ -404,6 +421,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'python -m pip install "$AGENT_GUARD_PACKAGE_SPEC"' in action_text
     assert all("${{ inputs." not in script for script in action_run_scripts())
     action_script = action_evidence_script()
+    normalized_action_script = normalize_shell_continuations(action_script)
     assert "--evidence-preset recommended" in action_script
     assert 'report_args+=(--conformance-profile "$conformance_profile")' in action_script
     assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
@@ -415,7 +433,10 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
     assert 'report_args+=(--drift-base-ref "$base_ref")' in action_script
     assert "agent-guard conformance check" in action_script
-    assert 'agent-guard conformance check --root "$root" --evidence "$report_json" --profile "$conformance_profile" --json' in action_script
+    assert (
+        'agent-guard conformance check --root "$root" --evidence "$report_json" '
+        '--profile "$conformance_profile" --json'
+    ) in normalized_action_script
     assert "agent-guard evidence-pack manifest" in action_script
     assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
     assert "render_report_output" not in action_script
@@ -444,7 +465,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert "pull request comment" not in ACTION_METADATA.read_text(encoding="utf-8").lower()
     raw_scanner_lines = [
         line.strip()
-        for line in action_script.splitlines()
+        for line in normalized_action_script.splitlines()
         if line.strip().startswith("agent-guard ")
         and "--json" in line
         and any(
@@ -461,8 +482,8 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     ]
     assert raw_scanner_lines
     assert all('> "$raw_dir/' in line for line in raw_scanner_lines)
-    assert '> "${evidence_dir%/}/agent-guard-conformance.json"' in action_script
-    assert '> "${evidence_dir%/}/agent-guard-evidence-pack.json"' in action_script
+    assert '> "${evidence_dir%/}/agent-guard-conformance.json"' in normalized_action_script
+    assert '> "${evidence_dir%/}/agent-guard-evidence-pack.json"' in normalized_action_script
     assert 'echo "report-json=$report_json"' not in action_script
     assert 'write_output "report-json" "$report_json"' in action_script
 
@@ -492,10 +513,11 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
 def test_ci_self_dogfood_renders_from_single_json_report() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     self_dogfood = workflow.split("Run self-dogfood evidence gates", 1)[1]
+    normalized_self_dogfood = normalize_shell_continuations(self_dogfood)
 
     report_lines = [
         line.strip()
-        for line in self_dogfood.splitlines()
+        for line in normalized_self_dogfood.splitlines()
         if "python -m agent_guard.cli report " in line
     ]
     assert report_lines == [
@@ -504,18 +526,21 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
     assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
         "--format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md"
-        in self_dogfood
+        in normalized_self_dogfood
     )
-    assert "python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json" in self_dogfood
+    assert (
+        "python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json"
+        in normalized_self_dogfood
+    )
     assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
         "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
-        in self_dogfood
+        in normalized_self_dogfood
     )
     assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
         "--format github-annotations"
-        in self_dogfood
+        in normalized_self_dogfood
     )
 
 

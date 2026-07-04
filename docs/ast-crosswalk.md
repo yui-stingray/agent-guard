@@ -1,11 +1,11 @@
 # OWASP Agentic Skills Top 10 Crosswalk
 
-This crosswalk is documentation-first and additive. `agent-guard` still emits
-the existing `owasp_agentic_risk_themes` ASI labels in findings; AST labels are
-not a required finding field and are not a claim of runtime exploit detection.
+This crosswalk is review metadata and additive. `agent-guard` still emits the
+existing `owasp_agentic_risk_themes` ASI labels in findings; AST labels are not
+a required finding field and are not runtime exploit detection.
 
 The OWASP Agentic Skills Top 10 is still incubator-stage, with a v1.0 release
-candidate expected in Q3 2026. Treat this page as review context until the AST
+candidate expected in Q3 2026. Treat this page as review metadata until the AST
 taxonomy is final.
 
 ## AST Categories
@@ -40,4 +40,4 @@ taxonomy is final.
 
 `agent-guard` does not execute skills, inspect live tool calls, verify OAuth
 scopes, evaluate model behavior, or decide that a skill is exploitable. AST
-coverage remains static repository evidence only.
+coverage remains static review metadata only.

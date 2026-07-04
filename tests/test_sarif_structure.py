@@ -1,6 +1,6 @@
 # Where: tests/test_sarif_structure.py
-# What: structural SARIF 2.1.0 checks for rendered agent-guard reports.
-# Why: cover SARIF shape offline until the official schema can be vendored.
+# What: official SARIF 2.1.0 schema checks for rendered agent-guard reports.
+# Why: catch SARIF drift offline before code-scanning consumers see it.
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from bench.alignment.run import official_sarif_schema_errors
 from tests.cli.helpers import create_report_violation_fixture_repo, run_cli
 
 
-def test_report_sarif_has_core_2_1_0_structure(tmp_path: Path) -> None:
-    # Full official-schema validation is a follow-up once the SARIF schema file is vendored.
+def test_report_sarif_validates_against_official_2_1_0_schema(tmp_path: Path) -> None:
     policy = create_report_violation_fixture_repo(tmp_path)
 
     result = run_cli(
@@ -27,6 +27,7 @@ def test_report_sarif_has_core_2_1_0_structure(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     payload = json.loads(result.stdout)
+    assert official_sarif_schema_errors(payload) == []
     assert payload["version"] == "2.1.0"
     assert isinstance(payload["runs"], list)
     assert payload["runs"]

@@ -37,24 +37,50 @@ workflow_checks:
       - id: context_lock_self
         command: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml
       - id: context_lock_coverage_self
-        command: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml
+        command: >-
+          python -m agent_guard.cli context lock --root .
+          --policy .agent-guard/context-policy.yaml --check
+          --digest-policy .agent-guard/context-digest-policy.yaml
       - id: digest_guard_self
         command: python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml
       - id: content_guard_self
-        command: python -m agent_guard.cli content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir .
+        command: >-
+          python -m agent_guard.cli content check --repo-root .
+          --policy .agent-guard/content-policy.yaml --mode registered --scan-dir .
       - id: mcp_config_guard_self
         command: python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml
       - id: workflow_guard_self
         command: python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: surface_inventory_self
-        command: python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2
+        command: >-
+          python -m agent_guard.cli surface inventory --root .
+          --context-policy .agent-guard/context-policy.yaml --schema-version v2
       - id: drift_guard_self
         command: python -m agent_guard.cli drift check --root . --profile recommended --schema-version v2
       - id: evidence_report_self
-        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml
+        command: >-
+          python -m agent_guard.cli report --root .
+          --context-policy .agent-guard/context-policy.yaml
+          --evidence-preset recommended
+          --api-policy examples/architecture_policy.yaml
+          --mcp-policy .agent-guard/mcp-policy.yaml
+          --digest-policy .agent-guard/context-digest-policy.yaml
       - id: evidence_report_json_artifact_self
-        command: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json
+        command: >-
+          python -m agent_guard.cli report --root .
+          --context-policy .agent-guard/context-policy.yaml
+          --evidence-preset recommended
+          --api-policy examples/architecture_policy.yaml
+          --mcp-policy .agent-guard/mcp-policy.yaml
+          --digest-policy .agent-guard/context-digest-policy.yaml
+          --format json
+          --output .agent-guard/evidence/agent-guard-evidence-report.json
       - id: conformance_self
-        command: python -m agent_guard.cli conformance check --root . --evidence .agent-guard/evidence/agent-guard-evidence-report.json --profile recommended
+        command: >-
+          python -m agent_guard.cli conformance check --root .
+          --evidence .agent-guard/evidence/agent-guard-evidence-report.json
+          --profile recommended
       - id: evidence_pack_manifest_self
-        command: python -m agent_guard.cli evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-evidence-report.json
+        command: >-
+          python -m agent_guard.cli evidence-pack manifest --root .
+          --report .agent-guard/evidence/agent-guard-evidence-report.json

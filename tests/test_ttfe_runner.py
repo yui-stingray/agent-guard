@@ -5,7 +5,11 @@ Why: keep the Day 4 onboarding benchmark deterministic and diffable.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from bench.ttfe import run as ttfe_run
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_extract_bash_commands_skips_yaml_and_preserves_order() -> None:
@@ -55,3 +59,13 @@ def test_build_result_payload_records_failure_and_pack_reach() -> None:
     assert payload["failure_point"] is None
     assert payload["reached_recommended_evidence_pack"] is True
     assert payload["elapsed_ms"] == 1234
+
+
+def test_quickstart_golden_path_stays_short_and_fixture_runnable() -> None:
+    quickstart = (REPO_ROOT / "docs" / "quickstart-existing-repo.md").read_text(encoding="utf-8")
+
+    commands = ttfe_run.extract_bash_commands(quickstart)
+
+    assert len(commands) <= 5
+    assert any(ttfe_run.PACK_COMMAND_MARKER in command for command in commands)
+    assert not any("--root services/api" in command for command in commands)

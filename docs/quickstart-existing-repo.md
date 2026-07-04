@@ -4,40 +4,49 @@ This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
 `AGENTS.md`, `CLAUDE.md`, or a tool-specific rule file.
 
-## 1. Install
+## 1. Golden Path
 
-Use the Python environment that your CI job will use:
+Run these commands from the repository root. They create an isolated Python
+environment, write starter guard files, produce the recommended sanitized
+report, check recommended conformance, and build the evidence-pack manifest:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install yui-agent-guard
+python3 -m venv .venv && \
+  . .venv/bin/activate && \
+  python -m pip install yui-agent-guard
+agent-guard init --root . --write
+agent-guard report \
+  --root . \
+  --context-policy .agent-guard/context-policy.yaml \
+  --evidence-preset recommended \
+  --mcp-policy .agent-guard/mcp-policy.yaml \
+  --format json \
+  --output .agent-guard/evidence/agent-guard-report.json
+agent-guard conformance check --root . \
+  --evidence .agent-guard/evidence/agent-guard-report.json \
+  --profile recommended \
+  --json
+agent-guard evidence-pack manifest --root . \
+  --report .agent-guard/evidence/agent-guard-report.json \
+  --artifact .agent-guard/evidence/agent-guard-report.json \
+  --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json \
+  --json
 ```
 
-## 2. Review Starter Guard Files
+Existing files are not overwritten unless `--force` is used. To review the
+starter plan before writing files, run this dry-run command outside the golden
+path:
 
-Print the planned starter files first:
-
-```bash
+```text
 agent-guard init --root . --json
 ```
-
-The default mode writes nothing. Review the proposed `.agent-guard` policies
-and `.github/workflows/agent-guard.yml`, then write them only when they fit the
-repository:
-
-```bash
-agent-guard init --root . --write
-```
-
-Existing files are not overwritten unless `--force` is used.
 
 Before treating `agent-guard drift check` as a clean gate, document the chosen
 guard commands in the repository README. The drift gate intentionally reports
 missing README guard-command guidance so reviewers can compare the documented
 CI recipe with the actual workflow and `.agent-guard` policies.
 
-## 3. Run The First Evidence Pass
+## 2. GitHub Actions
 
 The shortest CI path is the packaged GitHub Action. It runs the recommended
 evidence preset and leaves artifact upload to the caller:
@@ -61,7 +70,7 @@ jobs:
           if-no-files-found: error
 ```
 
-### Monorepos and Subdirectories
+## 3. Monorepos and Subdirectories
 
 If the reviewed agent-maintained project lives below the repository root, set
 `root` to that project directory and keep policy and evidence paths relative to
@@ -84,7 +93,7 @@ The equivalent local command keeps `--root` on the reviewed project, keeps
 policy paths relative to that root, and writes evidence under the selected
 project directory:
 
-```bash
+```text
 agent-guard report \
   --root services/api \
   --context-policy .agent-guard/context-policy.yaml \
@@ -99,9 +108,11 @@ agent-guard conformance check \
   --json
 ```
 
-For a local first pass, run the same evidence surfaces directly:
+## 4. Optional Review Commands
 
-```bash
+For a local guard-by-guard pass, run the same evidence surfaces directly:
+
+```text
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
@@ -117,11 +128,9 @@ file sizes, and permission-boundary status. They should not emit raw
 instructions, raw workflow commands, MCP args, env values, snippets, matched
 text, secrets, hook bodies, or local paths.
 
-## 4. Pin Agent Context Files
-
 Generate a digest policy for the discovered context files:
 
-```bash
+```text
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
 ```
@@ -129,26 +138,20 @@ agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --ch
 Commit the digest policy only after reviewing the context files. Regenerate it
 after intentional changes to those files.
 
-## 5. Store Review Evidence
+Render Markdown, SARIF, or GitHub annotations from the JSON report when you need
+additional surfaces; avoid rerunning `agent-guard report` just to change output
+format:
 
-Create an evidence directory and write a sanitized report:
-
-```bash
-mkdir -p .agent-guard/evidence
+```text
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard drift check --root . --profile recommended --schema-version v2 --json
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
-agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
-agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
 
 Keep generated evidence out of source control unless it is a deliberately
 sanitized sample. In CI, upload it as a build artifact instead.
-Render Markdown, SARIF, or GitHub annotations from the JSON report when you need
-additional surfaces; avoid rerunning `agent-guard report` just to change output
-format.
 
 Do not treat every `--json` command as a public artifact. The report,
 render-report, conformance, and evidence-pack outputs are the sanitized review

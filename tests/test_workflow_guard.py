@@ -9,12 +9,26 @@ from pathlib import Path
 
 import pytest
 
-from agent_guard.workflow_guard import command_line_matches_required, scan_workflow_policy
+from agent_guard.workflow_guard import command_line_matches_required, iter_active_shell_lines, scan_workflow_policy
 
 
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_iter_active_shell_lines_joins_shell_continuations() -> None:
+    run_text = (
+        "python -m agent_guard.cli report \\\n"
+        "  --root . \\\n"
+        "  --context-policy .agent-guard/context-policy.yaml \\\n"
+        "  --format json\n"
+    )
+
+    assert iter_active_shell_lines(run_text) == [
+        "python -m agent_guard.cli report --root . "
+        "--context-policy .agent-guard/context-policy.yaml --format json"
+    ]
 
 
 def test_scan_workflow_policy_ok_with_multiline_run(tmp_path: Path) -> None:

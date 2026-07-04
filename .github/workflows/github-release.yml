@@ -64,7 +64,10 @@ jobs:
 
       - name: Extract release notes
         if: steps.tag.outputs.publish == 'true'
-        run: python scripts/check_changelog.py --version "${{ steps.tag.outputs.version }}" --write-notes release-notes.md
+        run: >-
+          python scripts/check_changelog.py
+          --version "${{ steps.tag.outputs.version }}"
+          --write-notes release-notes.md
 
       - name: Create or update GitHub release
         if: steps.tag.outputs.publish == 'true'

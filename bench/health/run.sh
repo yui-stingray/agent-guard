@@ -10,8 +10,8 @@ cd "$repo_root"
 
 python_bin="${PYTHON:-}"
 if [[ -z "$python_bin" ]]; then
-  if [[ -x "/home/yui/.cache/agent-safety-toolkit-example-venv/bin/python" ]]; then
-    python_bin="/home/yui/.cache/agent-safety-toolkit-example-venv/bin/python"
+  if [[ -x "$repo_root/.venv312/bin/python" ]]; then
+    python_bin="$repo_root/.venv312/bin/python"
   elif command -v python >/dev/null 2>&1; then
     python_bin="$(command -v python)"
   else
@@ -40,30 +40,47 @@ while IFS= read -r file; do
 done < <(find bench tests -name "*.py" -type f | sort)
 
 echo "health: pytest"
-PYTHONPATH=src:. "$python_bin" -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD="${PYTEST_DISABLE_PLUGIN_AUTOLOAD:-1}" PYTHONPATH=src:. "$python_bin" -m pytest -q
 pytest_status=$?
 
 echo "health: coverage"
-if "$python_bin" -c "import pytest_cov" >/dev/null 2>&1; then
-  PYTHONPATH=src:. "$python_bin" -m pytest -q --cov=agent_guard --cov-report=json
-  coverage_status=$?
-else
-  echo "coverage_unavailable: pytest-cov is not installed for $python_bin"
-  trace_dir="${TMPDIR:-/tmp}/agent-guard-agb-trace-$$"
-  rm -rf "$trace_dir"
-  if PYTHONPATH=src:. "$python_bin" -m trace --count --missing --coverdir "$trace_dir" --module pytest tests/test_agb_runner.py -q >/tmp/agent-guard-agb-trace.out 2>&1; then
-    awk 'BEGIN{total=0;hit=0} /^[ ]*[0-9]+:/ {hit++; total++; next} /^[ ]*>>>>>>/ {total++} END{printf "agb_runner_trace_line_coverage: %.2f%% (%d/%d)\n", total ? hit*100/total : 0, hit, total}' "$trace_dir/bench.agb.run.cover"
+coverage_status=0
+coverage_file="${COVERAGE_FILE:-$repo_root/.coverage}"
+rm -f "$coverage_file" "$coverage_file".* "$repo_root/coverage.json"
+if "$python_bin" -c "import coverage" >/dev/null 2>&1; then
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD="${PYTEST_DISABLE_PLUGIN_AUTOLOAD:-1}" \
+    COVERAGE_FILE="$coverage_file" \
+    COVERAGE_PROCESS_START="$repo_root/.coveragerc" \
+    PYTHONPATH=src:. \
+    "$python_bin" -m pytest -q
+  coverage_test_status=$?
+  if [[ "$coverage_test_status" -eq 0 ]]; then
+    COVERAGE_FILE="$coverage_file" "$python_bin" -m coverage combine
+    coverage_combine_status=$?
   else
-    echo "agb_runner_trace_line_coverage_unavailable"
-    tail -20 /tmp/agent-guard-agb-trace.out
+    coverage_combine_status="$coverage_test_status"
   fi
-  rm -rf "$trace_dir" /tmp/agent-guard-agb-trace.out
-  coverage_status=0
+  if [[ "$coverage_test_status" -eq 0 && "$coverage_combine_status" -eq 0 ]]; then
+    COVERAGE_FILE="$coverage_file" "$python_bin" -m coverage json -o coverage.json
+    coverage_json_status=$?
+    COVERAGE_FILE="$coverage_file" "$python_bin" -m coverage report
+    coverage_report_status=$?
+    if [[ "$coverage_json_status" -ne 0 || "$coverage_report_status" -ne 0 ]]; then
+      coverage_status=1
+    fi
+  else
+    coverage_status=1
+  fi
+else
+  echo "coverage_unavailable: coverage.py is not installed for $python_bin"
+  coverage_status=1
 fi
 
 echo "health: yamllint"
+yamllint_status=0
 if command -v yamllint >/dev/null 2>&1; then
-  yamllint -s . || true
+  yamllint -s .
+  yamllint_status=$?
 else
   echo "yamllint_unavailable"
 fi
@@ -75,6 +92,6 @@ else
   echo "actionlint_unavailable"
 fi
 
-if [[ "$pytest_status" -ne 0 || "$coverage_status" -ne 0 ]]; then
+if [[ "$pytest_status" -ne 0 || "$coverage_status" -ne 0 || "$yamllint_status" -ne 0 ]]; then
   exit 1
 fi
