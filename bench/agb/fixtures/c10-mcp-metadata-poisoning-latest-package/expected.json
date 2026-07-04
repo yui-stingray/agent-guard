@@ -1,0 +1,10 @@
+{
+  "case_id": "c10-mcp-metadata-poisoning-latest-package",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "latest_package"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP metadata-poisoning wording appears beside an unreviewed @latest package reference."
+}

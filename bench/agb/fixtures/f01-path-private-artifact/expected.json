@@ -1,0 +1,11 @@
+{
+  "case_id": "f01-path-private-artifact",
+  "group": "F",
+  "guards": ["path"],
+  "expected_findings": [
+    {"guard": "path", "rule": "private_artifacts", "path": "artifacts/private"},
+    {"guard": "path", "rule": "private_artifacts", "path": "artifacts/private/review-pack.json"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Path guard positive for private artifact directories and contents."
+}

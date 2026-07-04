@@ -1,0 +1,10 @@
+{
+  "case_id": "a15-instruction-paraphrased-hidden-action",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "hidden_action", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Paraphrased hidden-action instruction asks the agent to withhold command details from review."
+}

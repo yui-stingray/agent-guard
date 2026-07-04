@@ -1,0 +1,10 @@
+{
+  "case_id": "f04-path-red-session-log",
+  "group": "F",
+  "guards": ["path"],
+  "expected_findings": [
+    {"guard": "path", "rule": "red_session_log", "path": "logs/red_session_20260704.log"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Path guard positive for red-team session logs in repository paths."
+}

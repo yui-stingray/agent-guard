@@ -1,0 +1,10 @@
+{
+  "case_id": "c12-mcp-metadata-poisoning-filesystem-root",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "filesystem_root_reference"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP metadata-poisoning prose appears with a filesystem root reference."
+}

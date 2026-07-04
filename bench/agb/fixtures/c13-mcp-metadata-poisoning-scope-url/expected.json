@@ -1,0 +1,11 @@
+{
+  "case_id": "c13-mcp-metadata-poisoning-scope-url",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "broad_authorization_scope"},
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "unsafe_url_scheme"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP metadata-poisoning prose appears with broad scopes and an unsafe URL scheme."
+}
