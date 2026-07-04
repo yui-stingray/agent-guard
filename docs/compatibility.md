@@ -47,7 +47,8 @@ surrounding packaged report schema until a standalone schema is added.
 
 The stabilization benchmark suite writes local JSON result artifacts under
 `bench/results/`. These are deterministic measurement artifacts, not packaged
-runtime schemas.
+runtime schemas. Current AGB benchmark metrics, known gaps, and scope caveats
+are reported in [Benchmark Results](benchmark-results.md).
 
 | Artifact | Schema version | Runner | Volatile fields | Stable consumer surface |
 | --- | --- | --- | --- | --- |
