@@ -8,6 +8,8 @@ scan:
   exclude:
     - ".git"
     - ".venv"
+    # AGB fixtures are quarantined adversarial samples scanned only by the bench runner per-fixture.
+    - "bench/agb/fixtures"
     - "node_modules"
 
 policy:

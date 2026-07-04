@@ -13,7 +13,7 @@ scan:
     - "node_modules"
     - "__pycache__"
     - ".pytest_cache"
-    # Benchmark fixtures intentionally model paths that must not affect self-dogfood scans.
+    # AGB fixtures are quarantined adversarial samples scanned only by the bench runner per-fixture.
     - "bench/agb/fixtures"
     - "build"
     - "dist"
