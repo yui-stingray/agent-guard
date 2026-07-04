@@ -43,6 +43,9 @@ small downstream wrapper pattern that loads the packaged report schema and
 fails closed on incompatible, internally inconsistent, or unsanitized evidence,
 including top-level `status` values that are not explained by findings, failing
 evidence gates, or conformance findings.
+[`docs/evidence-consumer-contracts.md`](evidence-consumer-contracts.md) adds
+copyable CI examples for missing/invalid/stale report checks, public-artifact
+linting, and strict release gates using the same packaged consumer path.
 
 ## Public Artifact Boundary
 

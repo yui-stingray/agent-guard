@@ -200,6 +200,9 @@ token-shaped strings, and absolute local paths.
 The copyable `examples/evidence_consumer.py` script demonstrates that consumer
 shape. It is still a review wrapper: it does not execute MCP servers, validate
 live OAuth flows, detect prompt/tool poisoning, or approve a pull request.
+For CI jobs that consume an existing report, lint public evidence artifacts, or
+gate releases with the strict profile, use
+[`docs/evidence-consumer-contracts.md`](evidence-consumer-contracts.md).
 See [`docs/threat-model.md`](threat-model.md) for the full static evidence
 boundary.
 

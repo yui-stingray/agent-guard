@@ -85,7 +85,10 @@ for a small public demo that wires the two tools together.
 
 See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
-SARIF status, and non-goals.
+SARIF status, and non-goals. Downstream CI consumers that need fail-closed
+missing/invalid/stale checks, public-artifact linting, or strict release gates
+can start from
+[`docs/evidence-consumer-contracts.md`](docs/evidence-consumer-contracts.md).
 For adoption in an existing repository, start with
 [`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md) for the
 minimal-to-recommended path and monorepo/subdirectory roots, then use
