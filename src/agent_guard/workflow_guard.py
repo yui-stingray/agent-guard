@@ -233,6 +233,7 @@ def load_workflow_file(path: Path, *, workflow_id: str) -> dict[str, Any]:
 def iter_active_shell_lines(run_text: str) -> list[str]:
     active: list[str] = []
     heredoc_delimiter: str | None = None
+    pending = ""
     for raw_line in run_text.splitlines():
         line = raw_line.strip()
         if heredoc_delimiter is not None:
@@ -241,10 +242,18 @@ def iter_active_shell_lines(run_text: str) -> list[str]:
             continue
         if not line or line.startswith("#"):
             continue
+        if pending:
+            line = f"{pending} {line}"
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip()
+            continue
         active.append(line)
+        pending = ""
         heredoc_match = HEREDOC_RE.search(line)
         if heredoc_match:
             heredoc_delimiter = heredoc_match.group(1)
+    if pending:
+        active.append(pending)
     return active
 
 

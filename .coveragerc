@@ -1,0 +1,18 @@
+# Where: .coveragerc
+# What: coverage.py configuration for local and subprocess test measurement.
+# Why: make CLI subprocess execution count toward repository coverage evidence.
+
+[run]
+branch = True
+parallel = True
+relative_files = True
+source =
+    agent_guard
+
+[paths]
+source =
+    src/agent_guard
+    */src/agent_guard
+
+[report]
+show_missing = True

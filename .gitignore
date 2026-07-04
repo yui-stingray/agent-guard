@@ -6,6 +6,9 @@ dist/
 *.egg-info/
 .venv312/
 .venv-py312/
+.coverage
+.coverage.*
+coverage.json
 .agent-guard/evidence/
 execution-notes.md
 week-logs/
