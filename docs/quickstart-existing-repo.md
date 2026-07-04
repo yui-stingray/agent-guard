@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.1
+        uses: yui-stingray/agent-guard@v0.2.2
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -78,7 +78,7 @@ that selected root:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.1
+        uses: yui-stingray/agent-guard@v0.2.2
         with:
           root: services/api
           conformance-profile: recommended

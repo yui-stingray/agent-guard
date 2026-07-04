@@ -6,6 +6,18 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.2.2 - 2026-07-04
+
+- Validated documented `agent-guard` command references against the CLI
+  registry so bogus command surfaces are dropped from evidence.
+- Split report and surface-inventory renderers into focused modules without
+  changing rendered output.
+- Added subprocess-aware coverage measurement, completed the yamllint burn-down,
+  and made the health gate fail closed on lint errors.
+- Shortened the existing-repo quickstart to a five-command golden path.
+- Validated SARIF output against the vendored official OASIS SARIF 2.1.0
+  errata01 schema in the alignment bench.
+
 ## 0.2.1 - 2026-07-03
 
 - Fixed recommended preset policy defaults for subdirectory and monorepo roots
