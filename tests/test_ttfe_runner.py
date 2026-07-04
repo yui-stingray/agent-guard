@@ -69,3 +69,17 @@ def test_quickstart_golden_path_stays_short_and_fixture_runnable() -> None:
     assert len(commands) <= 5
     assert any(ttfe_run.PACK_COMMAND_MARKER in command for command in commands)
     assert not any("--root services/api" in command for command in commands)
+
+
+def test_quickstart_splits_diagnostic_and_green_ci_paths() -> None:
+    quickstart = (REPO_ROOT / "docs" / "quickstart-existing-repo.md").read_text(encoding="utf-8")
+    quickstart_single_line = " ".join(quickstart.split())
+
+    assert "Initial Diagnostic Path" in quickstart
+    assert "Green CI Path" in quickstart
+    assert "report` or `conformance` exits `1`" in quickstart_single_line
+    assert "expected, correct fail-closed behavior" in quickstart_single_line
+    assert "everything exits `0`" in quickstart_single_line
+    assert "| `0` |" in quickstart
+    assert "| `1` |" in quickstart
+    assert "| `>=2` |" in quickstart

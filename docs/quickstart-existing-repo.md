@@ -4,11 +4,13 @@ This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
 `AGENTS.md`, `CLAUDE.md`, or a tool-specific rule file.
 
-## 1. Golden Path
+## 1. Initial Diagnostic Path
 
-Run these commands from the repository root. They create an isolated Python
-environment, write starter guard files, produce the recommended sanitized
-report, check recommended conformance, and build the evidence-pack manifest:
+Run these commands from the repository root on the first pass through an
+un-onboarded repository. This five-command golden path creates an isolated
+Python environment, writes starter guard files, produces the recommended
+sanitized report, checks recommended conformance, and builds the evidence-pack
+manifest:
 
 ```bash
 python3 -m venv .venv && \
@@ -33,9 +35,21 @@ agent-guard evidence-pack manifest --root . \
   --json
 ```
 
+On this initial diagnostic path, findings and drift are useful output. If
+`report` or `conformance` exits `1` on an un-onboarded repository, that is the
+expected, correct fail-closed behavior: the command completed, found static
+evidence gaps, and refused to report a clean gate. It is not the same as a
+usage error.
+
+The diagnostic pass is done when the starter files exist, the sanitized report
+was written, and every finding has an owner or an explicit onboarding decision.
+Do not hide exit `1` in CI; use it locally to decide which policy files, README
+guard-command guidance, workflows, digest locks, or MCP policy reviews must be
+added before the repository is green.
+
 Existing files are not overwritten unless `--force` is used. To review the
-starter plan before writing files, run this dry-run command outside the golden
-path:
+starter plan before writing files, run this dry-run command outside the
+five-command golden path:
 
 ```text
 agent-guard init --root . --json
@@ -46,10 +60,16 @@ guard commands in the repository README. The drift gate intentionally reports
 missing README guard-command guidance so reviewers can compare the documented
 CI recipe with the actual workflow and `.agent-guard` policies.
 
-## 2. GitHub Actions
+## 2. Green CI Path
 
-The shortest CI path is the packaged GitHub Action. It runs the recommended
-evidence preset and leaves artifact upload to the caller:
+Use the green CI path after the diagnostic findings have been resolved and the
+reviewed `.agent-guard` policies, README guard-command guidance, and workflow
+references are committed. In this path, the same report and conformance gates
+run under automation and everything exits `0`. Any later exit `1` means the
+repository has new findings or drift and CI should fail closed.
+
+The shortest green CI path is the packaged GitHub Action. It runs the
+recommended evidence preset and leaves artifact upload to the caller:
 
 ```yaml
 permissions:
@@ -202,13 +222,15 @@ base branch in CI and add `--base-ref <ref>` to `drift check` or
 baseline-sensitive changes in sanitized evidence. It is not an approval system
 and does not replace digest or context-lock checks.
 
-## 6. Read Failures
+## 6. Reading Exit Codes
 
 `agent-guard` uses these exit classes:
 
-- `0`: the enabled check completed and found no violations.
-- `1`: the enabled check completed and found safety drift or policy violations.
-- `2`: configuration or runtime error.
+| Exit code | Meaning | What to do |
+| --- | --- | --- |
+| `0` | The enabled check completed and found no violations. | This is the expected green CI result after onboarding. |
+| `1` | The enabled check completed and found safety drift or policy violations. | Expected during initial diagnostics on an un-onboarded repo; fail closed in CI and fix or explicitly review the finding. |
+| `>=2` | Usage, configuration, or runtime error. | Fix the command, policy path, environment, or invocation before interpreting findings. |
 
 Start with the `scanner`, `status`, `finding_count`, and `findings` fields.
 For report output, also check `inventory`, `surface_inventory`,
