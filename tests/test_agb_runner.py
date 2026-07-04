@@ -187,7 +187,7 @@ def test_guard_command_supports_digest_and_drift(tmp_path: Path) -> None:
     ]
 
 
-def test_day2_fixture_corpus_has_expected_group_counts() -> None:
+def test_sprint3_fixture_corpus_has_expected_group_counts() -> None:
     fixtures_root = Path(__file__).resolve().parents[1] / "bench" / "agb" / "fixtures"
     group_counts: dict[str, int] = {}
     case_ids: set[str] = set()
@@ -199,4 +199,4 @@ def test_day2_fixture_corpus_has_expected_group_counts() -> None:
         group = str(payload["group"])
         group_counts[group] = group_counts.get(group, 0) + 1
 
-    assert group_counts == {"A": 10, "B": 10, "C": 8, "D": 6, "E": 6}
+    assert group_counts == {"A": 16, "B": 10, "C": 13, "D": 6, "E": 10, "F": 5}
