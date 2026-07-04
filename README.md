@@ -31,7 +31,11 @@ for a public demo that wires both tools together.
 
 ## Why
 
-`agent-guard` exists to enforce fail-closed static checks around agent-operated repositories without pulling in a full control plane. It is model- and provider-agnostic: it checks the repository tree and configured policy files, so the same static gate can be used for repos touched by single-model coding agents, MoA-style multi-model agent loops, or persistent agent sessions.
+`agent-guard` exists to provide fail-closed static checks around agent-operated
+repositories without pulling in a full control plane. It is model- and
+provider-agnostic: it checks the repository tree and configured policy files,
+so the same static gate can be used for repos touched by single-model coding
+agents, MoA-style multi-model agent loops, or persistent agent sessions.
 
 The current extracted scanners are intentionally narrow:
 - `api`: scan repository text files for URL/API endpoint references, allow approved endpoint patterns, fail on forbidden endpoint patterns
@@ -68,7 +72,7 @@ The intended split is:
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
 | Runtime admission | `agent-policy` | Decide whether a normalized agent action is `deny`, `require_approval`, or `auto_allow`. |
-| Static repository gate | `agent-guard` | Scan paths, text, URL/API endpoint references, pinned digests, and workflow gates for repository safety drift. |
+| Static repository gate | `agent-guard` | Scan paths, text, URL/API endpoint references, pinned digests, and workflow gates for static repository drift. |
 
 A practical setup uses `agent-policy` in a shell hook or wrapper before an
 agent performs a side effect, then runs `agent-guard` in CI or pre-release
@@ -198,10 +202,9 @@ Raw scanner JSON is for local automation and CI internals, not automatically a
 public artifact. Scanner-specific output may include operational details such
 as scanner metadata, policy paths, or line-level diagnostics depending on the
 scanner and policy. Treat those files as repository-private unless a maintainer
-has reviewed them. Public-safe evidence
-claims in this README apply to `agent-guard report`, `agent-guard
-render-report`, GitHub annotations, SARIF rendered from a report, conformance
-output, and evidence-pack manifests.
+has reviewed them. Public-safe evidence statements apply to `agent-guard report`,
+`agent-guard render-report`, GitHub annotations, SARIF rendered from a report,
+conformance output, and evidence-pack manifests.
 
 ## CI gate recipe
 
@@ -426,14 +429,14 @@ names, filesystem-root presence, and deterministic risk labels for static
 authorization, scope, URL-scheme, package, path, and inline-value review; it
 does not emit raw args, env values, authorization values, scope strings, URLs,
 instruction bodies, or hook bodies. Static authorization, scope, and URL-scheme
-labels are review evidence over committed configuration only; they do not prove
+labels are review metadata over committed configuration only; they do not prove
 that a live OAuth flow is correctly implemented or that an MCP server is safe to
 execute. Findings and surface risk labels may also include
-`owasp_agentic_risk_themes`, a static
-crosswalk to OWASP Agentic Top 10 risk themes. These labels are review context
-for deterministic evidence; they are not runtime vulnerability detection,
-live OAuth validation, SLSA/provenance verification, security compliance, or
-proof that a category is exploitable. Evidence coverage records which gates
+`owasp_agentic_risk_themes`, a static crosswalk to OWASP Agentic Top 10 risk
+themes. These labels are review metadata for deterministic evidence; they are
+not runtime vulnerability detection, live OAuth validation,
+SLSA/provenance verification, or proof that a category is exploitable.
+Evidence coverage records which gates
 were enabled, missing, clean, or failing without
 making missing optional gates a failure. With `--evidence-preset recommended`,
 unset report options expand to
@@ -502,10 +505,10 @@ The Markdown headings for these review sections include `Evidence Coverage`,
 and `Context Lock Coverage Evidence`.
 
 Report output omits raw context contents, snippets, matched text, raw regex
-patterns, URLs, hashes, secrets, and absolute local paths. These public-safe
-claims apply to report/render-report/evidence artifacts, not to raw per-scanner
-JSON captured for local automation. Markdown table cells escape HTML and
-Markdown control characters before output.
+patterns, URLs, hashes, secrets, and absolute local paths. This public-safe
+scope applies to report/render-report/evidence artifacts, not to raw
+per-scanner JSON captured for local automation. Markdown table cells escape
+HTML and Markdown control characters before output.
 
 Use `--format json` to emit the same sanitized evidence payload inside the
 shared `agent-guard.result.v1` envelope. This is the machine-readable report
@@ -616,7 +619,7 @@ agent-guard.workflow_policy.v1` and at least one `required_files` or
 Typical use cases:
 - catch CI drift where `context`, `digest`, `path`, or `content` guard commands
   are removed from the release gate
-- make policy-file presence explicit before a workflow claims to run a guard
+- make policy-file presence explicit before a workflow declares guard coverage
 - keep static guard coverage reviewable through deterministic JSON output
 
 Command matching only inspects active `jobs.*.steps[*].run` lines. Blank lines,
@@ -825,10 +828,10 @@ it from a branch fails before build.
 The release build also creates GitHub artifact attestations for the generated
 `dist/*` wheel and sdist before upload to the publish job. PyPI Trusted
 Publishing and the PyPA publish action provide PyPI-side distribution
-attestations for the uploaded files. These attestations are provenance and
-integrity evidence for a specific artifact and workflow identity; they are not
-proof of code correctness, dependency safety, maintainer approval, or absence
-of secrets.
+attestations for the uploaded files. These attestations are provenance metadata
+and integrity evidence for a specific artifact and workflow identity; they are
+not proof of code correctness, dependency safety, maintainer approval, or
+absence of secrets.
 
 To verify the GitHub provenance for a downloaded release artifact, install the
 GitHub CLI and check the tag, repository, and signer workflow explicitly:

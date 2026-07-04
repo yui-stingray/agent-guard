@@ -16,7 +16,7 @@ The main assets are:
 - durable agent instructions such as `AGENTS.md`, `CLAUDE.md`, Copilot
   instructions, Cursor rules, Windsurf rules, and similar context files;
 - reviewed `.agent-guard` policies and digest pins;
-- workflow gates that claim to run static guard commands;
+- workflow gates that reference static guard commands;
 - committed MCP configuration metadata;
 - sanitized report, render-report, conformance, SARIF, and evidence-pack
   artifacts used in pull requests or release review.
@@ -75,12 +75,12 @@ downstream runtime policy wrapper.
   or scope minimization;
 - sandbox quality, runtime privilege separation, filesystem isolation, network
   egress controls, or tool output sanitization;
-- artifact security, dependency safety, maintainer approval, branch protection,
-  SLSA level, or compliance certification;
+- artifact integrity, dependency safety, maintainer approval, branch
+  protection, or release provenance;
 - that an OWASP risk-theme label is exploitable in the current repository.
 
-Those claims require runtime controls, dedicated credential scanners,
-provenance verification, human review, or domain-specific security testing.
+Those questions require runtime controls, dedicated credential scanners,
+provenance checks, human review, or domain-specific security testing.
 
 ## MCP-Specific Boundary
 
@@ -115,11 +115,9 @@ without adding runtime enforcement to `agent-guard`.
 
 ## External Risk Context
 
-Current MCP documentation describes tools as powerful execution paths and
-places consent, authorization, OAuth, elicitation, sandboxing, and output
-handling responsibilities on MCP implementers. OWASP agentic risk material and
-research on indirect prompt injection, AgentDojo, and MCP tool poisoning show
-that runtime agent behavior can fail even when static metadata looks plausible.
+MCP, OWASP agentic risk material, and research on indirect prompt injection,
+AgentDojo, and MCP tool poisoning describe runtime failure modes that static
+metadata cannot settle.
 
-`agent-guard` uses that context to keep static repository evidence explicit and
-sanitized. It should not absorb the runtime layers those sources describe.
+`agent-guard` uses that context to keep repository evidence explicit and
+sanitized. It should not absorb runtime validation layers.
