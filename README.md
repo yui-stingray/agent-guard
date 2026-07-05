@@ -85,9 +85,10 @@ for a small public demo that wires the two tools together.
 
 See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
-SARIF status, and non-goals. Downstream CI consumers that need fail-closed
-missing/invalid/stale checks, public-artifact linting, or strict release gates
-can start from
+SARIF status, and non-goals. For the static evidence threat model and explicit
+runtime/security non-goals, see [`docs/threat-model.md`](docs/threat-model.md).
+Downstream CI consumers that need fail-closed missing/invalid/stale checks,
+public-artifact linting, or strict release gates can start from
 [`docs/evidence-consumer-contracts.md`](docs/evidence-consumer-contracts.md).
 For adoption in an existing repository, start with
 [`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md) for the
@@ -509,10 +510,11 @@ The Markdown headings for these review sections include `Evidence Coverage`,
 and `Context Lock Coverage Evidence`.
 
 Report output omits raw context contents, snippets, matched text, raw regex
-patterns, URLs, hashes, secrets, and absolute local paths. This public-safe
-scope applies to report/render-report/evidence artifacts, not to raw
-per-scanner JSON captured for local automation. Markdown table cells escape
-HTML and Markdown control characters before output.
+patterns, raw evidence URLs, raw repository/content/digest hashes, secrets, and
+absolute local paths. This public-safe scope applies to
+report/render-report/evidence artifacts, not to raw per-scanner JSON captured
+for local automation. Markdown table cells escape HTML and Markdown control
+characters before output.
 
 Use `--format json` to emit the same sanitized evidence payload inside the
 shared `agent-guard.result.v1` envelope. This is the machine-readable report
@@ -520,9 +522,10 @@ contract for wrappers, CI checks, and downstream tooling. Add `--output <path>`
 when CI should store the rendered Markdown, JSON, GitHub annotation, or SARIF
 evidence as an artifact instead of writing it to stdout. SARIF is a thin
 adapter over the sanitized report payload: it emits SARIF 2.1.0 rules,
-locations, severity levels, and fingerprints, but not snippets, raw context
-text, raw workflow commands, hash values, URLs, secrets, or absolute local
-paths.
+locations, severity levels, and fingerprints derived from sanitized rule,
+location, and message metadata, but not snippets, raw context text, raw
+workflow commands, raw repository/content/digest hash values, raw evidence
+URLs, secrets, or absolute local paths.
 
 Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean

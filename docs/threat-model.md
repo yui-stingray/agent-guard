@@ -22,8 +22,11 @@ The main assets are:
   artifacts used in pull requests or release review.
 
 Public evidence must not disclose raw repository contents, snippets, raw regex
-patterns, raw URLs, authorization values, scope strings, hash values, secrets,
-raw YAML content, workflow run bodies, or absolute local paths.
+patterns, raw evidence URLs, authorization values, scope strings, raw
+repository/content/digest hash values, secrets, raw YAML content, workflow run
+bodies, or absolute local paths. Standard SARIF schema/tool URIs and SARIF
+`partialFingerprints` derived only from sanitized rule, location, and message
+metadata are allowed for code-scanning interoperability.
 
 ## Trust Boundaries
 
@@ -106,7 +109,8 @@ JSON. A fail-closed consumer should at least:
 - check the selected conformance profile and relevant rule ids such as
   `required_mcp_policy_not_reviewed` and `mcp_policy_weakened`;
 - reject forbidden public-evidence fragments such as local home-directory
-  paths, raw snippets, raw regex markers, hash values, or token-shaped strings;
+  paths, raw snippets, raw regex markers, raw repository/content/digest hash
+  values, or token-shaped strings;
 - treat `minimal`, `recommended`, and `strict` as adoption profiles, not as
   runtime safety guarantees.
 

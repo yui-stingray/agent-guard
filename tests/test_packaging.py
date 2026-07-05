@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -58,6 +60,41 @@ def action_evidence_script() -> str:
 def action_run_scripts() -> list[str]:
     action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
     return [str(step["run"]) for step in action["runs"]["steps"] if isinstance(step, dict) and "run" in step]
+
+
+def run_bash_script(
+    script: str,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        ["bash", "-c", script],
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        raise subprocess.TimeoutExpired(process.args, timeout, output=stdout, stderr=stderr) from exc
+    return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
 
 
 def normalize_shell_continuations(script: str) -> str:
@@ -171,6 +208,7 @@ def test_readme_documents_report_evidence_contract() -> None:
     readme_single_line = " ".join(readme.split())
 
     assert "docs/evidence-contracts.md" in readme
+    assert "docs/threat-model.md" in readme
     assert "docs/quickstart-existing-repo.md" in readme
     assert "docs/github-actions-evidence.md" in readme
     assert "docs/release-criteria.md" in readme
@@ -191,7 +229,7 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "Conformance Evidence" in readme
     assert "Evidence Pack Manifest" in readme
     assert "does not emit context text" in readme
-    assert "hash values" in readme
+    assert "raw repository/content/digest hash values" in readme
     assert "SARIF is a thin adapter" in readme
     assert "Raw scanner JSON is for local automation and CI internals" in readme
     assert "Public-safe evidence" in readme
@@ -579,7 +617,12 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "prove code correctness" in release_criteria
 
 
-def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path: Path) -> None:
+def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path: Path, request) -> None:
+    if str(tmp_path).startswith("/mnt/c/") and Path("/tmp").is_dir():
+        local_tmp = tempfile.TemporaryDirectory(prefix="agent-guard-action-", dir="/tmp")
+        request.addfinalizer(local_tmp.cleanup)
+        tmp_path = Path(local_tmp.name)
+
     consumer = tmp_path / "consumer"
     consumer.mkdir()
     subprocess.run(
@@ -642,12 +685,10 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
         action_env["AGENT_GUARD_EVIDENCE_DIR"] = evidence_dir
         action_env["AGENT_GUARD_GITHUB_ANNOTATIONS"] = github_annotations
         action_env["AGENT_GUARD_CONFORMANCE_PROFILE"] = conformance_profile
-        return subprocess.run(
-            ["bash", "-c", render_action_script(github_annotations=github_annotations)],
+        return run_bash_script(
+            render_action_script(github_annotations=github_annotations),
             cwd=tmp_path,
             env=action_env,
-            text=True,
-            capture_output=True,
             timeout=60,
         )
 
@@ -696,7 +737,7 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
     assert url_mcp_policy_payload["mcp_config"]["policy"]["path"] == "<external-policy>"
 
     root_marker = tmp_path / "root-injection-marker"
-    malicious_root = f"$(touch {root_marker})"
+    malicious_root = "$(touch root-injection-marker)"
     env["GITHUB_OUTPUT"] = str(tmp_path / "github-output-root.txt")
     malicious_root_result = run_action(github_annotations="false", root=malicious_root)
     assert malicious_root_result.returncode == 2
@@ -780,6 +821,10 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
 
     assert "deterministic static evidence gate" in docs
     assert "Public evidence must not disclose" in docs
+    assert "raw evidence URLs" in docs
+    assert "raw repository/content/digest hash values" in docs_single_line
+    assert "Standard SARIF schema/tool URIs" in docs
+    assert "`partialFingerprints` derived only from sanitized" in docs_single_line
     assert "What It Can Catch" in docs
     assert "What It Cannot Prove" in docs
     assert "MCP-Specific Boundary" in docs
