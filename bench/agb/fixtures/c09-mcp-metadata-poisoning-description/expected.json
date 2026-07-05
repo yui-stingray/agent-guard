@@ -1,0 +1,10 @@
+{
+  "case_id": "c09-mcp-metadata-poisoning-description",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_metadata_poisoning", "path": ".mcp.json", "reason": "instruction_like_description"}
+  ],
+  "forbidden_findings": [],
+  "notes": "MCP server description carries instruction-like text without another risky metadata signal."
+}

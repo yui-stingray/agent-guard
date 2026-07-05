@@ -1,0 +1,10 @@
+{
+  "case_id": "a12-instruction-obfuscated-approval-bypass",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "approval_bypass", "path": ".github/copilot-instructions.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Obfuscated approval-bypass wording checks whether token-splitting evades static context patterns."
+}

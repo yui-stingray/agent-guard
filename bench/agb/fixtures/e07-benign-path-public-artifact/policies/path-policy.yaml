@@ -1,0 +1,28 @@
+scan:
+  include:
+    - "."
+  exclude: []
+policy:
+  allowed_path_patterns:
+    - "(^|/)\\.env\\.example$"
+  forbidden_path_patterns:
+    - id: private_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/private(/|$)"
+      message: "private artifact directory must stay outside published/tracked paths"
+    - id: local_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/local(/|$)"
+      message: "local-only artifact directory must stay outside published/tracked paths"
+    - id: bypass_corpus
+      severity: high
+      pattern: "(^|/)bypass_.*\\.(jsonl|ndjson)$"
+      message: "bypass corpus material must not be placed in repository paths"
+    - id: red_session_log
+      severity: high
+      pattern: "(^|/)red_session_.*\\.(log|jsonl)$"
+      message: "red-team session logs must not be placed in repository paths"
+    - id: env_file
+      severity: high
+      pattern: "(^|/)\\.env(\\..+)?$"
+      message: "env files are forbidden except .env.example"

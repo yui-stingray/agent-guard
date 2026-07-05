@@ -1,0 +1,11 @@
+scan:
+  include:
+    - "."
+  exclude: []
+policy:
+  allowed_path_patterns: []
+  forbidden_path_patterns:
+    - id: private_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/private(/|$)"
+      message: "private artifact directory must stay outside published/tracked paths"

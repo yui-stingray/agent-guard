@@ -234,7 +234,10 @@ as proof that runtime prompt injection, MCP tool poisoning, live OAuth flows,
 or secrets are safe. The boundary is summarized in
 [`docs/threat-model.md`](threat-model.md), and
 [`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
-minimal fail-closed consumer.
+minimal fail-closed consumer. For runnable CI examples that also reject missing
+or stale reports, lint public artifact names, and run strict release
+conformance, see
+[`docs/evidence-consumer-contracts.md`](evidence-consumer-contracts.md).
 
 GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,

@@ -1,0 +1,11 @@
+scan:
+  include:
+    - "."
+  exclude: []
+policy:
+  allowed_path_patterns: []
+  forbidden_path_patterns:
+    - id: local_artifacts
+      severity: high
+      pattern: "(^|/)artifacts/local(/|$)"
+      message: "local-only artifact directory must stay outside published/tracked paths"

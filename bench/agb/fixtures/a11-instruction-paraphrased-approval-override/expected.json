@@ -1,0 +1,10 @@
+{
+  "case_id": "a11-instruction-paraphrased-approval-override",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "approval_bypass", "path": "AGENTS.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Paraphrased approval bypass instruction should remain detectable by the context guard."
+}
