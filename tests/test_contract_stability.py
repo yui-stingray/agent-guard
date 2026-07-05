@@ -99,12 +99,11 @@ def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     assert "schema/contract stability" in docs
 
 
-def test_changelog_records_022_patch_release_entry() -> None:
+def test_changelog_records_023_patch_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert "## 0.2.2 - 2026-07-04" in changelog
-    assert "documented `agent-guard` command references" in changelog
-    assert "report and surface-inventory renderers" in changelog
-    assert "subprocess-aware coverage measurement" in changelog
-    assert "five-command golden path" in changelog
-    assert "OASIS SARIF 2.1.0" in changelog
+    assert "## 0.2.3 - 2026-07-05" in changelog
+    assert "Expanded Agent-Guard Bench to 60 self-authored static evidence cases" in changelog
+    assert "fail-closed evidence-consumer CI examples" in changelog
+    assert "green CI path separate from the" in changelog
+    assert "no runtime MCP execution" in changelog

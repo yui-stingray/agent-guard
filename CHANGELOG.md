@@ -6,6 +6,22 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.2.3 - 2026-07-05
+
+- Expanded Agent-Guard Bench to 60 self-authored static evidence cases across
+  context, MCP metadata, path, digest, and workflow drift checks, with the
+  current metrics, known gaps, and scope caveats documented in
+  `docs/benchmark-results.md`.
+- Added fail-closed evidence-consumer CI examples and a package entry point for
+  `python -m agent_guard.consumer` so downstream repos can validate sanitized
+  recommended evidence contracts directly.
+- Locked README, quickstart, policy-pin, and benchmark documentation contracts
+  with regression tests while keeping the green CI path separate from the
+  diagnostic adoption pass.
+- Kept the bounded static-evidence scope intact: no runtime MCP execution, live
+  OAuth validation, generic secret scanning, LLM review, or autonomous policy
+  execution was added.
+
 ## 0.2.2 - 2026-07-04
 
 - Validated documented `agent-guard` command references against the CLI
