@@ -1,0 +1,8 @@
+{
+  "case_id": "e08-benign-context-japanese-safety-guidance",
+  "group": "E",
+  "guards": ["context"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Benign Japanese guidance reinforces approval and verification instead of bypassing them."
+}

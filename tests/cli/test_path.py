@@ -7,7 +7,29 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
+from tests.cli.helpers import ROOT, assert_shared_envelope, run_cli, run_cli_from, write
+
+
+def test_repo_root_path_policies_match_ci_self_dogfood() -> None:
+    for policy_arg in (
+        ".agent-guard/path-policy.yaml",
+        "examples/ai_resilience_path_policy.yaml",
+    ):
+        result = run_cli("path", "check", "--root", str(ROOT), "--policy", policy_arg, "--json")
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert_shared_envelope(
+            payload,
+            scanner="path",
+            status="ok",
+            exit_code=0,
+            finding_count=0,
+            scanned_unit="paths",
+        )
+        assert payload["findings"] == []
+        assert payload["scanned_paths"] == payload["summary"]["scanned_count"]
+
 
 def test_path_cli_json_violation(tmp_path: Path) -> None:
     policy = tmp_path / "path_policy.yaml"

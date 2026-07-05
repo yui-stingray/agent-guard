@@ -1,0 +1,10 @@
+{
+  "case_id": "c11-mcp-metadata-poisoning-inline-auth",
+  "group": "C",
+  "guards": ["mcp"],
+  "expected_findings": [
+    {"guard": "mcp", "rule": "mcp_config_risky_pattern", "path": ".mcp.json", "reason": "inline_authorization_value"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Instruction-like MCP metadata is paired with an inline authorization literal."
+}

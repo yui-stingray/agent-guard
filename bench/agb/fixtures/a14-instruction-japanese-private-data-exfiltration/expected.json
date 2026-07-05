@@ -1,0 +1,10 @@
+{
+  "case_id": "a14-instruction-japanese-private-data-exfiltration",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "private_data_exfiltration", "path": "CLAUDE.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Japanese-language instruction directs private data and tokens to an external URL."
+}

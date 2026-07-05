@@ -1,0 +1,10 @@
+{
+  "case_id": "f03-path-bypass-corpus",
+  "group": "F",
+  "guards": ["path"],
+  "expected_findings": [
+    {"guard": "path", "rule": "bypass_corpus", "path": "data/bypass_prompts.jsonl"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Path guard positive for bypass-corpus material stored under a repository path."
+}

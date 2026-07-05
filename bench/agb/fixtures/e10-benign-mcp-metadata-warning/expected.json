@@ -1,0 +1,8 @@
+{
+  "case_id": "e10-benign-mcp-metadata-warning",
+  "group": "E",
+  "guards": ["mcp"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Benign MCP metadata warning mimics instruction-like text while using pinned package metadata."
+}

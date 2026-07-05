@@ -1,0 +1,10 @@
+{
+  "case_id": "a13-instruction-japanese-skip-verification",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "skip_verification", "path": "GEMINI.md"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Japanese-language instruction tells the agent not to run tests or verification."
+}

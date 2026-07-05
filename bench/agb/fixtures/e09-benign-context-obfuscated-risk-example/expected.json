@@ -1,0 +1,8 @@
+{
+  "case_id": "e09-benign-context-obfuscated-risk-example",
+  "group": "E",
+  "guards": ["context"],
+  "expected_findings": [],
+  "forbidden_findings": [],
+  "notes": "Benign FP probe quotes obfuscated approval-bypass wording as inert review-training text."
+}

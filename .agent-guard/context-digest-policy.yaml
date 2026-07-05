@@ -8,7 +8,7 @@ checks:
     sha256: "b247d624eb6ec164a2baf8100fac5144a4a1c43b5d9c7b9fac2c4efb280d53ff"
   - id: path_policy
     path: .agent-guard/path-policy.yaml
-    sha256: "25a58d78386c420cdea67b0ca46f0c572bf31e53c5f6643f5760aff80d426abc"
+    sha256: "1a8b016701266b064f01bc3e1029a43e7315bea0013d02f013214faad0621251"
   - id: context_policy
     path: .agent-guard/context-policy.yaml
     sha256: "d368a15987a9f5125f9040de155e88f86a6839423f48f74d073588e29e4990a8"

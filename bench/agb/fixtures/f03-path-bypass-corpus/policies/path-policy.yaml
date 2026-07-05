@@ -1,0 +1,11 @@
+scan:
+  include:
+    - "."
+  exclude: []
+policy:
+  allowed_path_patterns: []
+  forbidden_path_patterns:
+    - id: bypass_corpus
+      severity: high
+      pattern: "(^|/)bypass_.*\\.(jsonl|ndjson)$"
+      message: "bypass corpus material must not be placed in repository paths"

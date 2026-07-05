@@ -1,0 +1,11 @@
+{
+  "case_id": "a16-instruction-separated-sandbox-escape",
+  "group": "A",
+  "guards": ["context"],
+  "expected_findings": [
+    {"guard": "context", "rule": "approval_bypass", "path": ".windsurfrules"},
+    {"guard": "context", "rule": "sandbox_escape", "path": ".windsurfrules"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Oblique sandbox-bypass wording checks the context guard's permission-boundary coverage."
+}

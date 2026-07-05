@@ -17,11 +17,12 @@ profile conformance, and evidence-pack manifests.
 
 ### Measured quality
 
-The local AGB benchmark currently reports F1 `0.959` with precision `0.921`
-and recall `1.0`. This is a self-authored 40-case corpus for config-surface
-detection across instruction files, skills, MCP configs, drift, digest, and
-benign cases; it is not an independently validated benchmark. See
-[`bench/`](bench/) for the runner and fixtures.
+Current Agent-Guard Bench (AGB) details live in
+[`docs/benchmark-results.md`](docs/benchmark-results.md). That page keeps the
+population, family mix, false-positive and false-negative counts, per-guard
+table, independent-verification status, and scope limits with the metric
+claim. Treat AGB as local deterministic regression evidence, not as an
+independently verified quality benchmark.
 
 **Paired demo**: `agent-guard` is the static repository gate half of the
 toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
@@ -84,7 +85,10 @@ for a small public demo that wires the two tools together.
 
 See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
-SARIF status, and non-goals.
+SARIF status, and non-goals. Downstream CI consumers that need fail-closed
+missing/invalid/stale checks, public-artifact linting, or strict release gates
+can start from
+[`docs/evidence-consumer-contracts.md`](docs/evidence-consumer-contracts.md).
 For adoption in an existing repository, start with
 [`docs/quickstart-existing-repo.md`](docs/quickstart-existing-repo.md) for the
 minimal-to-recommended path and monorepo/subdirectory roots, then use

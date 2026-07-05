@@ -1,0 +1,11 @@
+{
+  "case_id": "f02-path-local-artifact",
+  "group": "F",
+  "guards": ["path"],
+  "expected_findings": [
+    {"guard": "path", "rule": "local_artifacts", "path": "artifacts/local"},
+    {"guard": "path", "rule": "local_artifacts", "path": "artifacts/local/agent-policy-decisions.jsonl"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Path guard positive for local-only artifact directories and files."
+}

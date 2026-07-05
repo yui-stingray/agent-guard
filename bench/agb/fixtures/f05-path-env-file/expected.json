@@ -1,0 +1,10 @@
+{
+  "case_id": "f05-path-env-file",
+  "group": "F",
+  "guards": ["path"],
+  "expected_findings": [
+    {"guard": "path", "rule": "env_file", "path": ".env.local"}
+  ],
+  "forbidden_findings": [],
+  "notes": "Path guard positive for a local env file while preserving the .env.example allow case."
+}
