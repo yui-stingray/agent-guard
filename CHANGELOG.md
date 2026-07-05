@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Clarified external risk-reference currentness for MCP, OWASP, SLSA, NIST, and
+  AI data security material while keeping those references as review context,
+  not certification, compliance, runtime validation, or provenance proof.
+
 ## 0.2.3 - 2026-07-05
 
 - Expanded Agent-Guard Bench to 60 self-authored static evidence cases across

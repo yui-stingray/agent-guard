@@ -119,9 +119,19 @@ without adding runtime enforcement to `agent-guard`.
 
 ## External Risk Context
 
-MCP, OWASP agentic risk material, and research on indirect prompt injection,
-AgentDojo, and MCP tool poisoning describe runtime failure modes that static
-metadata cannot settle.
+Reference snapshot: verified on 2026-07-06. The external sources used as risk
+context include the MCP 2025-11-25 latest specification family, OWASP Top 10 for
+Agentic Applications 2026 (published 2025-12-09), OWASP Agentic Skills Top 10
+Incubator/Public review (v1) material, SLSA v1.2 Approved specification, NIST AI
+600-1 Generative AI Profile, NIST SSDF SP 800-218 v1.1 Final, and the May 2025
+v1.0 joint AI Data Security guidance.
+
+MCP, OWASP agentic risk material, NIST/SSDF guidance, SLSA provenance material,
+and research on indirect prompt injection, AgentDojo, and MCP tool poisoning
+describe failure modes that static metadata cannot settle.
 
 `agent-guard` uses that context to keep repository evidence explicit and
-sanitized. It should not absorb runtime validation layers.
+sanitized. It should not absorb runtime validation layers, and these references
+must not be described as certification, compliance, artifact-safety proof,
+SLSA-level proof, live OAuth validation, or runtime MCP/tool-poisoning
+detection.

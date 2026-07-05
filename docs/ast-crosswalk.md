@@ -4,9 +4,18 @@ This crosswalk is review metadata and additive. `agent-guard` still emits the
 existing `owasp_agentic_risk_themes` ASI labels in findings; AST labels are not
 a required finding field and are not runtime exploit detection.
 
-The OWASP Agentic Skills Top 10 is still incubator-stage, with a v1.0 release
-candidate expected in Q3 2026. Treat this page as review metadata until the AST
-taxonomy is final.
+Reference snapshot: verified on 2026-07-06 against the OWASP Agentic Skills Top
+10 project page. The project page identifies the material as an OWASP Incubator
+project and points readers to a Public review (v1) draft. The project proposal
+keeps the Q2/Q3 2026 timeline as historical planning context, including a v0.5
+community-review milestone and a v1.0 release target. Treat this page as review
+metadata until the AST taxonomy is final.
+
+This is separate from the OWASP Top 10 for Agentic Applications 2026 ASI
+taxonomy used by `owasp_agentic_risk_themes`. AST entries describe agentic skill
+risks; ASI entries describe broader agentic application risks. Neither label
+set is a vulnerability proof, runtime MCP/OAuth validation, SLSA/provenance
+verification, or compliance attestation.
 
 ## AST Categories
 
