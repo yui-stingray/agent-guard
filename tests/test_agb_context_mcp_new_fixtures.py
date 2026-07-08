@@ -30,6 +30,12 @@ DETECTED_CASES: dict[str, list[tuple[str, str]]] = {
     "a11-instruction-paraphrased-approval-override": [
         ("approval_bypass", "AGENTS.md"),
     ],
+    "a13-instruction-japanese-skip-verification": [
+        ("skip_verification", "GEMINI.md"),
+    ],
+    "a14-instruction-japanese-private-data-exfiltration": [
+        ("private_data_exfiltration", "CLAUDE.md"),
+    ],
     "a15-instruction-paraphrased-hidden-action": [
         ("hidden_action", "AGENTS.md"),
     ],
@@ -43,16 +49,14 @@ DETECTED_CASES: dict[str, list[tuple[str, str]]] = {
 }
 
 # Cases documented in docs/benchmark-results.md as known false negatives: the
-# adversarial wording (obfuscated token-splitting, Japanese-language phrasing, or
-# an MCP description with no other risky metadata signal) is not detected by the
-# current static rules. These tests intentionally lock in that gap. If one of
-# these starts passing (tp=1, fn=0), the underlying guard rule was improved:
-# update docs/benchmark-results.md's "Known false negatives" list and adjust
-# this test rather than treating the new failure as a regression to revert.
+# adversarial wording (obfuscated token-splitting or an MCP description with no
+# other risky metadata signal) is not detected by the current static rules.
+# These tests intentionally lock in that gap. If one of these starts passing
+# (tp=1, fn=0), the underlying guard rule was improved: update
+# docs/benchmark-results.md's "Known false negatives" list and adjust this test
+# rather than treating the new failure as a regression to revert.
 KNOWN_GAP_CASES = (
     "a12-instruction-obfuscated-approval-bypass",
-    "a13-instruction-japanese-skip-verification",
-    "a14-instruction-japanese-private-data-exfiltration",
     "c09-mcp-metadata-poisoning-description",
 )
 

@@ -9,6 +9,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Clarified external risk-reference currentness for MCP, OWASP, SLSA, NIST, and
   AI data security material while keeping those references as review context,
   not certification, compliance, runtime validation, or provenance proof.
+- Tuned context guard coverage for narrow Japanese-language skip-verification
+  and private-data exfiltration wording, reducing the documented Agent-Guard
+  Bench known false negatives without adding runtime detection or model judging.
 
 ## 0.2.3 - 2026-07-05
 

@@ -839,8 +839,9 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
     assert "examples/evidence_consumer.py" in docs
     assert "agent-guard.report_evidence.v1" in docs
     assert "not as runtime safety guarantees" in docs_single_line
-    assert "Reference snapshot: verified on 2026-07-06" in docs
+    assert "Reference snapshot: verified on 2026-07-09" in docs
     assert "MCP 2025-11-25 latest specification family" in docs
+    assert "non-final MCP 2026-07-28 release candidate" in docs_single_line
     assert "OWASP Top 10 for Agentic Applications 2026" in docs_single_line
     assert "published 2025-12-09" in docs
     assert "OWASP Agentic Skills Top 10 Incubator/Public review (v1) material" in docs_single_line
@@ -848,6 +849,7 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
     assert "NIST AI 600-1 Generative AI Profile" in docs_single_line
     assert "NIST SSDF SP 800-218 v1.1 Final" in docs_single_line
     assert "May 2025 v1.0 joint AI Data Security guidance" in docs_single_line
+    assert "2026 Five Eyes careful-adoption guidance for agentic AI services" in docs_single_line
     assert "must not be described as certification, compliance" in docs_single_line
     assert "live OAuth validation, or runtime MCP/tool-poisoning detection" in docs_single_line
 

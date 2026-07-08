@@ -76,7 +76,7 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     {
         "id": "skip_verification",
         "severity": "medium",
-        "pattern": r"(?i)\b(never|do\s+not|don't|skip)\b.{0,80}\b(run|perform|execute)\b.{0,40}\b(tests?|pytest|lint|typecheck|build|verification|smoke\s+checks?)\b",
+        "pattern": r"(?i)\b(never|do\s+not|don't|skip)\b.{0,80}\b(run|perform|execute)\b.{0,40}\b(tests?|pytest|lint|typecheck|build|verification|smoke\s+checks?)\b|(?:テスト|検証).{0,20}(?:実行しない|行わない)",
         "message": "agent context should not normalize skipping verification",
     },
     {
@@ -142,7 +142,7 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     {
         "id": "private_data_exfiltration",
         "severity": "high",
-        "pattern": r"(?i)\b(send|upload|post|exfiltrate|copy)\b.{0,80}\b(secrets?|tokens?|credentials?|private\s+data|local\s+paths?|environment\s+variables?)\b.{0,80}\b(to|into)\b.{0,40}\b(url|webhook|external|remote|public)\b",
+        "pattern": r"(?i)\b(send|upload|post|exfiltrate|copy)\b.{0,80}\b(secrets?|tokens?|credentials?|private\s+data|local\s+paths?|environment\s+variables?)\b.{0,80}\b(to|into)\b.{0,40}\b(url|webhook|external|remote|public)\b|(?:秘密情報|トークン).{0,40}(?:外部URL|外部|URL).{0,40}(?:アップロード|送信)",
         "message": "agent context must not move private data to external destinations",
     },
     {

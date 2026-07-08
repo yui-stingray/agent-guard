@@ -206,12 +206,12 @@ def test_sprint3_fixture_corpus_has_expected_group_counts() -> None:
 def test_guard_results_table_renders_markdown_from_result_payload() -> None:
     payload = {
         "by_guard": {
-            "context": {"tp": 14, "fp": 0, "fn": 3, "precision": 1, "recall": 0.823529, "f1": 0.903226},
+            "context": {"tp": 16, "fp": 0, "fn": 1, "precision": 1, "recall": 0.941176, "f1": 0.969697},
             "path": {"tp": 7, "fp": 0, "fn": 0, "precision": 1, "recall": 1, "f1": 1},
         }
     }
 
     table = agb_reporting.guard_results_table(payload)
 
-    assert "| Context | 14 | 0 | 3 | 1.000000 | 0.823529 | 0.903226 |" in table
+    assert "| Context | 16 | 0 | 1 | 1.000000 | 0.941176 | 0.969697 |" in table
     assert "| Path | 7 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |" in table

@@ -119,12 +119,14 @@ without adding runtime enforcement to `agent-guard`.
 
 ## External Risk Context
 
-Reference snapshot: verified on 2026-07-06. The external sources used as risk
-context include the MCP 2025-11-25 latest specification family, OWASP Top 10 for
-Agentic Applications 2026 (published 2025-12-09), OWASP Agentic Skills Top 10
-Incubator/Public review (v1) material, SLSA v1.2 Approved specification, NIST AI
-600-1 Generative AI Profile, NIST SSDF SP 800-218 v1.1 Final, and the May 2025
-v1.0 joint AI Data Security guidance.
+Reference snapshot: verified on 2026-07-09. The external sources used as risk
+context include the MCP 2025-11-25 latest specification family, the non-final
+MCP 2026-07-28 release candidate, OWASP Top 10 for Agentic Applications 2026
+(published 2025-12-09), OWASP Agentic Skills Top 10 Incubator/Public review
+(v1) material, SLSA v1.2 Approved specification, NIST AI 600-1 Generative AI
+Profile, NIST SSDF SP 800-218 v1.1 Final, the May 2025 v1.0 joint AI Data
+Security guidance, and the 2026 Five Eyes careful-adoption guidance for agentic
+AI services.
 
 MCP, OWASP agentic risk material, NIST/SSDF guidance, SLSA provenance material,
 and research on indirect prompt injection, AgentDojo, and MCP tool poisoning
