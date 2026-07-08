@@ -336,6 +336,7 @@ def main() -> int:
             "    - filesystem_root_reference\n"
             "    - inline_authorization_value\n"
             "    - inline_env_value\n"
+            "    - instruction_like_description\n"
             "    - latest_package\n"
             "    - secret_shaped_inline_value\n"
             "    - unsafe_url_scheme\n"
