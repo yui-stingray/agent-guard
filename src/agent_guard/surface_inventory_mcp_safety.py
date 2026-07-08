@@ -65,6 +65,16 @@ BROAD_AUTHORIZATION_SCOPE_VALUES = {
 SECRET_SHAPED_VALUE = re.compile(
     r"(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16})"
 )
+DESCRIPTION_FIELD_NAMES = {"description", "tooldescription", "tool_description"}
+INSTRUCTION_LIKE_DESCRIPTION = re.compile(
+    r"\bwhen\s+shown\s+to\s+an\s+agent\b.{0,160}"
+    r"\b(?:skip|bypass|disable|ignore)\b.{0,80}"
+    r"\b(?:approval|permission|policy|guardrail|safety\s+checks?)\b"
+    r"|"
+    r"\bwhen\s+shown\s+to\s+an\s+agent\b.{0,160}"
+    r"\bhide\b.{0,80}\b(?:tool\s+output|output)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def command_basename(command: object) -> str:
@@ -246,3 +256,12 @@ def is_authorization_field_name(name: object) -> bool:
     if normalized in AUTH_FIELD_NAMES:
         return True
     return normalized.endswith(("_token", "_secret"))
+
+
+def has_instruction_like_description(raw: dict[str, object]) -> bool:
+    for key, value in raw.items():
+        if normalized_auth_field_name(key) not in DESCRIPTION_FIELD_NAMES:
+            continue
+        if any(INSTRUCTION_LIKE_DESCRIPTION.search(item) for item in string_values(value)):
+            return True
+    return False

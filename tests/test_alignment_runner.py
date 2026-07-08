@@ -34,3 +34,13 @@ def test_alignment_runner_validates_sarif_with_official_schema() -> None:
     check = checks["sarif_official_schema_validation"]
     assert check["status"] == "ok"
     assert check["missing"] == []
+
+
+def test_alignment_runner_tracks_static_mcp_rule_ids() -> None:
+    result = build_alignment_result()
+    checks = {check["name"]: check for check in result["checks"]}
+
+    check = checks["mcp_rule_ids"]
+    assert check["status"] == "ok"
+    assert check["emitted_count"] == 3
+    assert check["missing"] == []

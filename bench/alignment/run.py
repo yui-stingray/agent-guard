@@ -43,6 +43,7 @@ WORKFLOW_REASON_LABELS = {
 }
 MCP_RULE_IDS = {
     "mcp_config_risky_pattern",
+    "mcp_metadata_poisoning",
     "mcp_policy_missing",
 }
 DIGEST_STATUS_LABELS = {

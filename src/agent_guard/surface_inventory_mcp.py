@@ -24,6 +24,7 @@ from .surface_inventory_mcp_safety import (
     contains_filesystem_root,
     extract_remote_host,
     has_unsafe_mcp_url_scheme,
+    has_instruction_like_description,
     infer_transport,
     infer_version_pin,
     is_authorization_field_name,
@@ -207,6 +208,8 @@ def collect_mcp_config_surfaces(root: Path) -> list[dict[str, object]]:
                 risky_patterns.add("inline_authorization_value")
             if has_broad_authorization_scope(raw_server):
                 risky_patterns.add("broad_authorization_scope")
+            if has_instruction_like_description(raw_server):
+                risky_patterns.add("instruction_like_description")
             has_filesystem_root = any(contains_filesystem_root(item) for item in metadata_strings)
             if has_filesystem_root:
                 risky_patterns.add("filesystem_root_reference")

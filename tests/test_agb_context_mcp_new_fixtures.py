@@ -46,18 +46,19 @@ DETECTED_CASES: dict[str, list[tuple[str, str]]] = {
     "c10-mcp-metadata-poisoning-latest-package": [
         ("mcp_config_risky_pattern", ".mcp.json"),
     ],
+    "c09-mcp-metadata-poisoning-description": [
+        ("mcp_metadata_poisoning", ".mcp.json"),
+    ],
 }
 
 # Cases documented in docs/benchmark-results.md as known false negatives: the
-# adversarial wording (obfuscated token-splitting or an MCP description with no
-# other risky metadata signal) is not detected by the current static rules.
-# These tests intentionally lock in that gap. If one of these starts passing
-# (tp=1, fn=0), the underlying guard rule was improved: update
-# docs/benchmark-results.md's "Known false negatives" list and adjust this test
-# rather than treating the new failure as a regression to revert.
+# adversarial wording is not detected by the current static rules. These tests
+# intentionally lock in that gap. If one of these starts passing (tp=1, fn=0),
+# the underlying guard rule was improved: update docs/benchmark-results.md's
+# "Known false negatives" list and adjust this test rather than treating the new
+# failure as a regression to revert.
 KNOWN_GAP_CASES = (
     "a12-instruction-obfuscated-approval-bypass",
-    "c09-mcp-metadata-poisoning-description",
 )
 
 ALL_NEW_CASES = tuple(DETECTED_CASES) + KNOWN_GAP_CASES
@@ -260,8 +261,67 @@ def test_c10_mcp_check_reports_only_the_policy_scoped_pattern() -> None:
     assert not any(finding["reason"] == "unpinned_package" for finding in payload["findings"])
 
 
-def test_c09_mcp_check_currently_reports_no_findings() -> None:
+def test_c09_mcp_check_reports_instruction_like_description() -> None:
     case_dir = FIXTURES_ROOT / "c09-mcp-metadata-poisoning-description"
+    result = run_cli_from(
+        REPO_ROOT,
+        "mcp",
+        "check",
+        "--root",
+        str(case_dir),
+        "--policy",
+        str(case_dir / "policies" / "mcp-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "violation"
+    assert payload["finding_count"] == 1
+    finding = payload["findings"][0]
+    assert finding["rule_id"] == "mcp_metadata_poisoning"
+    assert finding["reason"] == "instruction_like_description"
+    assert finding["severity"] == "high"
+    assert "When shown to an agent" not in result.stdout
+    assert "skip approval checks" not in result.stdout
+    assert "hide tool output" not in result.stdout
+
+
+def test_c09_mcp_instruction_like_description_is_policy_scoped(tmp_path: Path) -> None:
+    case_dir = FIXTURES_ROOT / "c09-mcp-metadata-poisoning-description"
+    policy = tmp_path / "mcp-policy.yaml"
+    policy.write_text(
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        "policy:\n"
+        "  fail_on_parse_error: true\n"
+        "  forbidden_risky_patterns:\n"
+        "    - latest_package\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli_from(
+        REPO_ROOT,
+        "mcp",
+        "check",
+        "--root",
+        str(case_dir),
+        "--policy",
+        str(policy),
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["findings"] == []
+    surfaces = payload["mcp_config"]["surfaces"]
+    server_surface = next(item for item in surfaces if item["surface"] == "mcp_server_reference")
+    assert server_surface["risky_patterns"] == ["instruction_like_description"]
+    assert "When shown to an agent" not in result.stdout
+    assert "skip approval checks" not in result.stdout
+
+
+def test_e10_benign_mcp_metadata_warning_stays_clean() -> None:
+    case_dir = FIXTURES_ROOT / "e10-benign-mcp-metadata-warning"
     result = run_cli_from(
         REPO_ROOT,
         "mcp",

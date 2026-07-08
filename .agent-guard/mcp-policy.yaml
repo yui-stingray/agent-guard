@@ -11,6 +11,7 @@ policy:
     - filesystem_root_reference
     - inline_authorization_value
     - inline_env_value
+    - instruction_like_description
     - latest_package
     - secret_shaped_inline_value
     - unsafe_url_scheme

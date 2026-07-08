@@ -21,6 +21,7 @@ DEFAULT_FORBIDDEN_RISKY_PATTERNS = frozenset(
         "filesystem_root_reference",
         "inline_authorization_value",
         "inline_env_value",
+        "instruction_like_description",
         "latest_package",
         "secret_shaped_inline_value",
         "unsafe_url_scheme",
@@ -113,7 +114,11 @@ def mcp_policy_summary(
 
 
 def mcp_risk_severity(pattern: str) -> str:
-    return "high" if pattern in {"inline_authorization_value", "secret_shaped_inline_value"} else "medium"
+    return (
+        "high"
+        if pattern in {"inline_authorization_value", "instruction_like_description", "secret_shaped_inline_value"}
+        else "medium"
+    )
 
 
 def mcp_config_findings_from_surfaces(
@@ -158,10 +163,16 @@ def mcp_config_findings_from_surfaces(
         for pattern in patterns:
             if forbidden_patterns is not None and pattern not in forbidden_patterns:
                 continue
+            rule_id = "mcp_metadata_poisoning" if pattern == "instruction_like_description" else "mcp_config_risky_pattern"
+            message = (
+                "MCP configuration metadata contains instruction-like description text"
+                if pattern == "instruction_like_description"
+                else "MCP configuration metadata requires review"
+            )
             finding = {
-                "rule_id": "mcp_config_risky_pattern",
+                "rule_id": rule_id,
                 "severity": mcp_risk_severity(pattern),
-                "message": "MCP configuration metadata requires review",
+                "message": message,
                 "reason": pattern,
                 "surface": "mcp_server_reference",
                 "path": str(item.get("path", "")),

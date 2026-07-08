@@ -182,6 +182,7 @@ DRIFT_CLASSIFICATION_THEMES: dict[str, tuple[str, ...]] = {
 
 MCP_RULE_THEMES: dict[str, tuple[str, ...]] = {
     "mcp_config_risky_pattern": ("ASI02", "ASI04"),
+    "mcp_metadata_poisoning": ("ASI01", "ASI04"),
     "mcp_policy_missing": ("ASI04",),
 }
 
@@ -192,6 +193,7 @@ MCP_RISK_PATTERN_THEMES: dict[str, tuple[str, ...]] = {
     "secret_shaped_inline_value": ("ASI03",),
     "inline_env_value": ("ASI03",),
     "inline_authorization_value": ("ASI03",),
+    "instruction_like_description": ("ASI01", "ASI04"),
     "broad_authorization_scope": ("ASI02", "ASI03"),
     "unsafe_url_scheme": ("ASI02", "ASI05"),
     "parse_error": ("ASI04",),

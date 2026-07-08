@@ -18,6 +18,7 @@ REQUIRED_MCP_RISK_LABELS = frozenset(
         "filesystem_root_reference",
         "inline_authorization_value",
         "inline_env_value",
+        "instruction_like_description",
         "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
