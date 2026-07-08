@@ -135,3 +135,9 @@ sanitized. It should not absorb runtime validation layers, and these references
 must not be described as certification, compliance, artifact-safety proof,
 SLSA-level proof, live OAuth validation, or runtime MCP/tool-poisoning
 detection.
+
+When these external references change, update labels, docs, or benchmark notes
+only after rechecking primary sources. A new MCP, OWASP, NIST, SLSA, or research
+item is evidence for reviewer context; it is not by itself a requirement to add
+a runtime validator, live network check, model judge, broad credential-scanning
+feature, or autonomous enforcement path to this package.

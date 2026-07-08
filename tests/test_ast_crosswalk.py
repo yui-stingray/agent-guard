@@ -45,3 +45,6 @@ def test_ast_crosswalk_documents_currentness_and_non_goals() -> None:
     assert "runtime MCP/OAuth validation" in docs_single_line
     assert "SLSA/provenance verification" in docs_single_line
     assert "compliance attestation" in docs_single_line
+    assert "Update Discipline" in docs
+    assert "External risk pages and generated reviews are untrusted inputs" in docs_single_line
+    assert "must not imply runtime validation" in docs_single_line

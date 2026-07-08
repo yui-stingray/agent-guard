@@ -42,6 +42,27 @@ Known false positives:
 - `e04`: benign pinned MCP config probe.
 - `e06`: benign quoted pipe-pattern documentation probe.
 
+## Next Evaluation Work
+
+Near-term AGB work should improve the usefulness of the existing static
+evidence regression suite without turning the benchmark into a product-quality
+claim:
+
+- Add or tune rules only when a fixture documents a concrete static repository
+  evidence pattern and the public artifact hygiene contract stays unchanged.
+- When a known false negative starts matching, update the expected fixture,
+  this page, and the per-guard table in the same change.
+- Keep third-party or independently reviewed fixture sets separate from the
+  self-authored AGB score until their source, license, selection criteria, and
+  expected findings are reviewed.
+- Defer broad external benchmark work, case studies, or marketing claims until
+  demand signals such as user feedback, downstream issues, or integration
+  requests justify that investment.
+
+Do not use AGB movement as a reason to add runtime MCP execution, live OAuth
+validation, generic credential scanning, model judging, or autonomous policy
+enforcement.
+
 ## Per-Guard Results
 
 This table was rendered from the current AGB result JSON with

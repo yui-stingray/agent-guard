@@ -50,3 +50,12 @@ verification, or compliance attestation.
 `agent-guard` does not execute skills, inspect live tool calls, verify OAuth
 scopes, evaluate model behavior, or decide that a skill is exploitable. AST
 coverage remains static review metadata only.
+
+## Update Discipline
+
+Refresh this crosswalk only from primary OWASP project pages or reviewed
+repository changes. External risk pages and generated reviews are untrusted
+inputs: they may justify a documentation update or a new static fixture, but
+they do not override `agent-guard` scope boundaries. Any new AST mapping must
+remain optional review metadata and must not imply runtime validation,
+compliance status, SLSA provenance verification, or exploitability.

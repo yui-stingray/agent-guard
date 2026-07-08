@@ -109,6 +109,12 @@ The action and CLI resolve relative policy paths such as
 selected root. Use absolute paths only for local experiments; repo-external
 policy files do not satisfy recommended or strict reviewed-policy conformance.
 
+Treat each reviewed project root as its own evidence boundary. Do not aggregate
+raw scanner JSON across services, and do not use one service's
+`.agent-guard/mcp-policy.yaml` as reviewed evidence for another service. If a
+monorepo wants a top-level status check, run `agent-guard` once per selected
+root and let the wrapper summarize the per-root sanitized reports.
+
 The equivalent local command keeps `--root` on the reviewed project, keeps
 policy paths relative to that root, and writes evidence under the selected
 project directory:
@@ -126,6 +132,15 @@ agent-guard conformance check \
   --evidence services/api/.agent-guard/evidence/agent-guard-report.json \
   --profile recommended \
   --json
+```
+
+The evidence consumer example uses the same root discipline:
+
+```text
+AGENT_GUARD_ROOT=services/api \
+AGENT_GUARD_EVIDENCE_DIR=services/api/.agent-guard/evidence \
+AGENT_GUARD_REPORT_JSON=services/api/.agent-guard/evidence/agent-guard-report.json \
+sh examples/evidence_contracts_ci.sh consume
 ```
 
 ## 4. Optional Review Commands

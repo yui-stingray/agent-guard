@@ -112,6 +112,25 @@ example, the test suite runs the same script with
 `AGENT_GUARD_BIN="python -m agent_guard.cli"` so the example exercises the
 source checkout instead of an installed console script.
 
+For monorepos, run the consumer per reviewed project root instead of merging
+multiple service reports into one public artifact. Keep `AGENT_GUARD_ROOT`,
+`AGENT_GUARD_EVIDENCE_DIR`, and `AGENT_GUARD_REPORT_JSON` aligned to the same
+selected root:
+
+```text
+AGENT_GUARD_ROOT=services/api
+AGENT_GUARD_EVIDENCE_DIR=services/api/.agent-guard/evidence
+AGENT_GUARD_REPORT_JSON=services/api/.agent-guard/evidence/agent-guard-report.json
+```
+
+The stale-report check must regenerate evidence with the same selected root,
+same reviewed repo-local policies, and same public artifact directory. A report
+from `services/api` should not be consumed as evidence for `services/worker`,
+and a repo-external MCP policy still cannot satisfy recommended or strict
+reviewed-policy conformance. If a repository needs an aggregate status page,
+publish a small wrapper summary that links to per-root sanitized reports instead
+of uploading raw scanner JSON or concatenating service outputs.
+
 These examples remain static evidence consumers. They do not execute MCP
 servers, validate live OAuth flows, detect runtime prompt/tool poisoning, scan
 for arbitrary credentials, publish comments, approve releases, or change GitHub
