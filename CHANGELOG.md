@@ -14,6 +14,8 @@ Why: keep static guard releases auditable while the package is still alpha.
   Bench known false negatives without adding runtime detection or model judging.
 - Added a sanitized static MCP metadata-poisoning label for instruction-like
   server descriptions, keeping raw description text out of public evidence.
+- Tuned split-token approval-bypass context detection while keeping quoted
+  reviewer-training examples benign.
 
 ## 0.2.3 - 2026-07-05
 

@@ -46,7 +46,7 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     {
         "id": "approval_bypass",
         "severity": "high",
-        "pattern": r"(?i)\b(ignore|bypass|disable|skip)\b.{0,80}\b(approval|permission|policy|guardrail|safety check)\b",
+        "pattern": r"(?i)(?:\b(ignore|bypass|disable|skip)\b|(?<!not )(?<!never )\buse\s+b\s+y\s+p\s+a\s+s\s+s\b).{0,80}\b(approval|permission|policy|guardrail|safety checks?)\b",
         "message": "agent context must not instruct agents to bypass approval or policy checks",
     },
     {

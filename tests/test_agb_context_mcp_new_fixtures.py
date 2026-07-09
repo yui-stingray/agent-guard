@@ -30,6 +30,9 @@ DETECTED_CASES: dict[str, list[tuple[str, str]]] = {
     "a11-instruction-paraphrased-approval-override": [
         ("approval_bypass", "AGENTS.md"),
     ],
+    "a12-instruction-obfuscated-approval-bypass": [
+        ("approval_bypass", ".github/copilot-instructions.md"),
+    ],
     "a13-instruction-japanese-skip-verification": [
         ("skip_verification", "GEMINI.md"),
     ],
@@ -51,15 +54,10 @@ DETECTED_CASES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-# Cases documented in docs/benchmark-results.md as known false negatives: the
-# adversarial wording is not detected by the current static rules. These tests
-# intentionally lock in that gap. If one of these starts passing (tp=1, fn=0),
-# the underlying guard rule was improved: update docs/benchmark-results.md's
-# "Known false negatives" list and adjust this test rather than treating the new
-# failure as a regression to revert.
-KNOWN_GAP_CASES = (
-    "a12-instruction-obfuscated-approval-bypass",
-)
+# Cases documented in docs/benchmark-results.md as known false negatives. Keep
+# this tuple empty when all self-authored new fixtures are detected, and add a
+# case only when the current static rules intentionally leave it as a known gap.
+KNOWN_GAP_CASES: tuple[str, ...] = ()
 
 ALL_NEW_CASES = tuple(DETECTED_CASES) + KNOWN_GAP_CASES
 
@@ -127,18 +125,18 @@ def test_detected_paraphrased_separated_and_supply_chain_variants(
     assert declared_pairs == set(expected_pairs)
 
 
-@pytest.mark.parametrize("case_name", KNOWN_GAP_CASES)
-def test_documented_known_false_negatives_still_reproduce_the_gap(case_name: str) -> None:
-    result = agb_run.run_case(REPO_ROOT, FIXTURES_ROOT / case_name)
+def test_documented_known_false_negatives_still_reproduce_the_gap() -> None:
+    for case_name in KNOWN_GAP_CASES:
+        result = agb_run.run_case(REPO_ROOT, FIXTURES_ROOT / case_name)
 
-    assert result.counts == {"tp": 0, "fp": 0, "fn": 1}
-    assert result.false_positives == []
+        assert result.counts == {"tp": 0, "fp": 0, "fn": 1}
+        assert result.false_positives == []
 
-    [expected_item] = load_expected(case_name)["expected_findings"]
-    [actual_fn] = result.false_negatives
-    assert actual_fn.guard == expected_item["guard"]
-    assert actual_fn.rule == expected_item["rule"]
-    assert actual_fn.path == expected_item["path"]
+        [expected_item] = load_expected(case_name)["expected_findings"]
+        [actual_fn] = result.false_negatives
+        assert actual_fn.guard == expected_item["guard"]
+        assert actual_fn.rule == expected_item["rule"]
+        assert actual_fn.path == expected_item["path"]
 
 
 def test_a11_paraphrased_approval_override_text_matches_fixture_intent() -> None:
@@ -157,6 +155,14 @@ def test_a12_obfuscated_bypass_text_splits_the_trigger_word() -> None:
     # The trigger word is deliberately split by spaces; no contiguous "bypass"
     # substring should remain anywhere else in the fixture text.
     assert "bypass" not in text
+
+
+def test_e09_benign_obfuscated_bypass_training_example_stays_clean() -> None:
+    result = agb_run.run_case(REPO_ROOT, FIXTURES_ROOT / "e09-benign-context-obfuscated-risk-example")
+
+    assert result.counts == {"tp": 0, "fp": 0, "fn": 0}
+    assert result.false_negatives == []
+    assert result.false_positives == []
 
 
 def test_a13_japanese_skip_verification_text_is_japanese() -> None:
