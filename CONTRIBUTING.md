@@ -10,6 +10,9 @@ stay small, deterministic, and easy to run in hooks or CI.
 - Improve JSON output consistency while preserving existing fields.
 - Add narrowly scoped scanners only when they can run without network access
   and without reading private state outside the requested repository root.
+- Do not add runtime MCP execution, live OAuth validation, generic credential
+  scanning, model judging, LLM review, or issue-triage automation to this
+  package.
 
 ## Local setup
 
@@ -35,6 +38,8 @@ python -m pytest -s -q
 - Preserve the CLI exit-code contract: `0` clean, `1` violation, `2`
   configuration or runtime error.
 - Avoid network access and avoid scanning outside explicit roots.
+- Keep public artifacts sanitized: no raw local paths, credentials, raw snippets,
+  raw URLs, raw scope strings, or private command transcripts.
 
 ## Release notes
 

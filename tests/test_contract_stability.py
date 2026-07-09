@@ -13,6 +13,7 @@ SCHEMA_DIR = REPO_ROOT / "src" / "agent_guard" / "schemas"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 
 FROZEN_SCHEMA_CONTRACTS = {
     "agent-guard.conformance.v1.schema.json": (
@@ -97,6 +98,17 @@ def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     assert "P0 fix" in docs
     assert "Do not cut a patch release for every qualifying change" in docs
     assert "schema/contract stability" in docs
+
+
+def test_contributing_keeps_runtime_expansion_out_of_scope() -> None:
+    docs = CONTRIBUTING.read_text(encoding="utf-8")
+
+    assert "runtime MCP execution" in docs
+    assert "live OAuth validation" in docs
+    assert "generic credential" in docs
+    assert "LLM review" in docs
+    assert "raw local paths" in docs
+    assert "private command transcripts" in docs
 
 
 def test_changelog_records_024_patch_release_entry() -> None:

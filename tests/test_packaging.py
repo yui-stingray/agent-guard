@@ -805,8 +805,14 @@ def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path:
 
 def test_positioning_doc_keeps_public_scope_narrow() -> None:
     docs = POSITIONING_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
 
     assert "Static evidence contracts for AI-agent-maintained repositories." in docs
+    assert "CONTINUE-NARROW" in docs
+    assert "Python/PyPI static evidence package" in docs_single_line
+    assert "init -> report -> upload evidence" in docs_single_line
+    assert "demand signals" in docs
+    assert "rename work" in docs
     assert "does not route" in docs
     assert "run LLM review" in docs
     assert "validate live OAuth flows" in docs

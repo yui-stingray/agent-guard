@@ -51,9 +51,9 @@ claim:
 - Keep third-party or independently reviewed fixture sets separate from the
   self-authored AGB score until their source, license, selection criteria, and
   expected findings are reviewed.
-- Defer broad external benchmark work, case studies, or marketing claims until
-  demand signals such as user feedback, downstream issues, or integration
-  requests justify that investment.
+- Defer broad external benchmark work, case studies, rename work, or marketing
+  claims until demand signals such as user feedback, downstream issues, or
+  integration requests justify that investment.
 
 Do not use AGB movement as a reason to add runtime MCP execution, live OAuth
 validation, generic credential scanning, model judging, or autonomous policy

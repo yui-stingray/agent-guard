@@ -15,6 +15,11 @@
 review evidence commands for init, surface inventory, policy/spec drift,
 profile conformance, and evidence-pack manifests.
 
+Current direction: keep the package narrow as Python/PyPI static repository
+evidence, not as a runtime agent security platform. See
+[`docs/positioning.md`](docs/positioning.md) for the product boundary and
+demand-validation strategy.
+
 ### Measured quality
 
 Current Agent-Guard Bench (AGB) details live in

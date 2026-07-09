@@ -18,6 +18,21 @@ vulnerability proof, SLSA/provenance verification, or compliance attestation.
 Those systems can consume `agent-guard` JSON evidence, but they should not move
 into this package.
 
+## Current Strategy
+
+The current strategy is **CONTINUE-NARROW**: keep `agent-guard` as a Python/PyPI
+static evidence package and GitHub Action for repository-local review evidence,
+not as a broader agent security platform. The default adoption path is the
+documented `init -> report -> upload evidence` golden path. Runtime admission
+stays with `agent-policy` and host wrappers.
+
+Broad external benchmarks, public case studies, rename work, and marketing
+claims should wait for demand signals such as downstream issues, integration
+requests, or maintainers reporting concrete catches from real repositories. If
+public distribution becomes the main goal, use the short description above
+alongside the project name so readers do not confuse this package with runtime
+security products that use similar naming.
+
 ## Why This Layer
 
 Coding agents increasingly read durable repository instructions such as

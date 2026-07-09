@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Clarified the current `CONTINUE-NARROW` product strategy: keep `agent-guard`
+  as a Python/PyPI static repository evidence package, defer rename and broad
+  benchmark work until demand signals justify them, and keep runtime security
+  controls in separate layers.
+
 ## 0.2.4 - 2026-07-09
 
 - Clarified external risk-reference currentness for MCP, OWASP, SLSA, NIST, and
