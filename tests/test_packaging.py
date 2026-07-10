@@ -587,6 +587,7 @@ def test_release_workflow_attests_built_distributions() -> None:
     build_job = workflow["jobs"]["build"]
 
     assert build_job["permissions"] == {
+        "actions": "read",
         "contents": "read",
         "id-token": "write",
         "attestations": "write",
@@ -596,12 +597,13 @@ def test_release_workflow_attests_built_distributions() -> None:
     steps = build_job["steps"]
     named_steps = {step.get("name", step.get("uses")): index for index, step in enumerate(steps)}
     attest_step = steps[named_steps["Generate provenance attestations for release distributions"]]
-    assert attest_step["uses"] == "actions/attest@v4"
+    assert attest_step["uses"].startswith("actions/attest@")
     assert attest_step["with"]["subject-path"] == "dist/*"
     assert "github.event_name == 'push'" in attest_step["if"]
     assert "inputs.publish" in attest_step["if"]
+    upload_step = next(name for name in named_steps if name.startswith("actions/upload-artifact@"))
     assert named_steps["Verify wheel public contract"] < named_steps["Generate provenance attestations for release distributions"]
-    assert named_steps["Generate provenance attestations for release distributions"] < named_steps["actions/upload-artifact@v7"]
+    assert named_steps["Generate provenance attestations for release distributions"] < named_steps[upload_step]
 
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")

@@ -30,6 +30,10 @@ wheelhouse="$work_root/wheelhouse"
 mkdir -p "$fixture_repo" "$shim_bin" "$wheelhouse"
 trap 'rm -rf "$work_root"' EXIT
 base_python="$("$python_bin" -c 'import sys; print(getattr(sys, "_base_executable", sys.executable))')"
+build_python="$python_bin"
+if ! "$build_python" -m pip --version >/dev/null 2>&1; then
+  build_python="$base_python"
+fi
 cat > "$shim_bin/python3" <<EOF
 #!/usr/bin/env bash
 exec "$base_python" "\$@"
@@ -58,15 +62,13 @@ EOF
 
 setup_status="skipped"
 setup_detail=""
-if "$python_bin" -m pip wheel --no-deps --no-build-isolation "$repo_root" -w "$wheelhouse" >/dev/null 2>&1; then
+if "$build_python" -m pip wheel --no-deps "$repo_root" -w "$wheelhouse" >/dev/null 2>&1; then
   setup_status="local_wheelhouse"
   setup_detail="built yui-agent-guard wheel"
-  while IFS= read -r wheel; do
-    cp "$wheel" "$wheelhouse/"
-  done < <(find "${TMPDIR:-/tmp}" /tmp -maxdepth 3 -type f -iname 'pyyaml-*.whl' 2>/dev/null | sort -u | head -1)
+  "$build_python" -m pip wheel --no-deps 'PyYAML>=6,<7' -w "$wheelhouse" >/dev/null 2>&1 || true
+  export PIP_FIND_LINKS="$wheelhouse"
   if find "$wheelhouse" -maxdepth 1 -iname 'pyyaml-*.whl' | grep -q .; then
     export PIP_NO_INDEX=1
-    export PIP_FIND_LINKS="$wheelhouse"
   else
     setup_detail="built yui-agent-guard wheel; PyYAML wheel unavailable"
   fi
@@ -113,7 +115,7 @@ with records_path.open("a", encoding="utf-8") as fh:
 PY
 }
 
-cd "$fixture_repo"
+cd "$fixture_repo" || exit 2
 start_ms="$("$python_bin" -c 'import time; print(time.monotonic_ns() // 1_000_000)')"
 index=0
 while IFS= read -r command; do

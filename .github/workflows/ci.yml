@@ -17,8 +17,8 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: devops-actions/actionlint@v0.1.11
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819 # v0.1.11
 
   test:
     name: pytest (py${{ matrix.python-version }})
@@ -26,10 +26,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install package + dev deps
@@ -39,6 +39,15 @@ jobs:
         run: python scripts/check_changelog.py
       - name: Run tests
         run: pytest
+      - name: Replay 15-minute onboarding path
+        if: matrix.python-version == '3.14'
+        env:
+          AGENT_GUARD_TTFE_OUT: /tmp/agent-guard-ttfe.json
+        run: |
+          PYTHON="$(command -v python)" bash bench/ttfe/run.sh
+          python -m bench.ttfe.run check \
+            --input /tmp/agent-guard-ttfe.json \
+            --max-elapsed-ms 900000
       - name: Validate pre-commit hook manifest
         if: matrix.python-version == '3.12'
         run: pre-commit validate-manifest
@@ -143,7 +152,7 @@ jobs:
             --format github-annotations
       - name: Upload self-dogfood evidence report
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-guard-evidence-report
           path: .agent-guard/evidence/

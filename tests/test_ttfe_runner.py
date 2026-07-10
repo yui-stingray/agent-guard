@@ -83,3 +83,32 @@ def test_quickstart_splits_diagnostic_and_green_ci_paths() -> None:
     assert "| `0` |" in quickstart
     assert "| `1` |" in quickstart
     assert "| `>=2` |" in quickstart
+
+
+def test_validate_result_payload_enforces_time_and_completion() -> None:
+    payload = ttfe_run.build_result_payload(
+        source_doc="docs/quickstart-existing-repo.md",
+        commands=["agent-guard evidence-pack manifest --json"],
+        records=[
+            {
+                "index": 1,
+                "command": "agent-guard evidence-pack manifest --json",
+                "exit_code": 0,
+            }
+        ],
+        elapsed_ms=1_000,
+        setup={"status": "local_wheelhouse"},
+    )
+
+    assert ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000) == []
+
+    payload["elapsed_ms"] = 900_001
+    payload["failure_point"] = {"index": 1, "exit_code": 2}
+    errors = ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000)
+
+    assert "TTFE replay exceeded the configured time limit" in errors
+    assert "TTFE replay encountered a configuration or runtime error" in errors
+
+    payload["setup"] = {"status": "wheelhouse_failed"}
+    errors = ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000)
+    assert "TTFE replay did not install the current checkout wheel" in errors

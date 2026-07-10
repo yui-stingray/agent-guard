@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Pinned executable GitHub Action dependencies to full commit SHAs, required
+  release tags to point at the current `master` commit with successful CI, and
+  added a bounded TTFE onboarding gate.
+- Added Python 3.13 and 3.14 to the supported CI matrix and package classifiers.
 - Clarified the current `CONTINUE-NARROW` product strategy: keep `agent-guard`
   as a Python/PyPI static repository evidence package, defer rename and broad
   benchmark work until demand signals justify them, and keep runtime security
