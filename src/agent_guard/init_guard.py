@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__ as PACKAGE_VERSION
+
 
 INIT_PLAN_SCHEMA_VERSION = "agent-guard.init_plan.v1"
 
@@ -192,12 +194,12 @@ jobs:
   evidence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install agent-guard
-        run: python -m pip install yui-agent-guard
+        run: python -m pip install yui-agent-guard==__AGENT_GUARD_VERSION__
       - name: Generate evidence
         run: |
           set +e
@@ -249,12 +251,12 @@ jobs:
           exit "$status"
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-guard-evidence
           path: .agent-guard/evidence/
           if-no-files-found: error
-"""
+""".replace("__AGENT_GUARD_VERSION__", PACKAGE_VERSION)
 
 
 NEXT_STEPS = [

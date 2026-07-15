@@ -110,6 +110,13 @@ with a focused [`agent-audit` comparison](docs/comparison.md).
 pip install yui-agent-guard
 ```
 
+To inspect the starter plan without a persistent install or repository writes,
+use `uvx` with the current release pinned:
+
+```bash
+uvx --python 3.12 --from yui-agent-guard==0.2.4 agent-guard init --root . --json
+```
+
 From a source checkout, install the package in editable mode:
 
 ```bash
@@ -134,11 +141,15 @@ Generate a sanitized evidence report:
 
 ```bash
 mkdir -p .agent-guard/evidence
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
+agent-guard report --root . --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
-Use the GitHub Action after the starter `.agent-guard` policies are reviewed:
+The recommended report uses the reviewed repo-local context and MCP policy
+defaults and embeds recommended conformance plus an evidence-pack manifest.
+Run the standalone commands only when a separate consumer artifact is needed.
+
+`init --write` also creates `.github/workflows/agent-guard.yml`. Review and
+commit that generated workflow, or use the packaged GitHub Action directly:
 
 ```yaml
 permissions:

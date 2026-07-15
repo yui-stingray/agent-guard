@@ -66,8 +66,8 @@ def test_quickstart_golden_path_stays_short_and_fixture_runnable() -> None:
 
     commands = ttfe_run.extract_bash_commands(quickstart)
 
-    assert len(commands) <= 5
-    assert any(ttfe_run.PACK_COMMAND_MARKER in command for command in commands)
+    assert len(commands) <= 4
+    assert ttfe_run.reaches_recommended_evidence_pack([{"command": command} for command in commands])
     assert not any("--root services/api" in command for command in commands)
 
 

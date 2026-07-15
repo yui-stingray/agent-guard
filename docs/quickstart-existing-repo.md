@@ -6,33 +6,30 @@ It assumes the repository already has at least one agent context file such as
 
 ## 1. Initial Diagnostic Path
 
+If `uv` is available, preview the starter plan without installing a persistent
+tool or changing the repository:
+
+```console
+uvx --python 3.12 --from yui-agent-guard==0.2.4 agent-guard init --root . --json
+```
+
 Run these commands from the repository root on the first pass through an
-un-onboarded repository. This five-command golden path creates an isolated
-Python environment, writes starter guard files, produces the recommended
-sanitized report, checks recommended conformance, and builds the evidence-pack
-manifest:
+un-onboarded repository. This four-command golden path creates an isolated
+Python environment, previews the starter plan, writes the reviewed guard files,
+and produces one recommended sanitized report. The report already embeds
+recommended conformance and its evidence-pack manifest:
 
 ```bash
 python3 -m venv .venv && \
   . .venv/bin/activate && \
-  python -m pip install yui-agent-guard
+  python -m pip install yui-agent-guard==0.2.4
+agent-guard init --root . --json
 agent-guard init --root . --write
 agent-guard report \
   --root . \
-  --context-policy .agent-guard/context-policy.yaml \
   --evidence-preset recommended \
-  --mcp-policy .agent-guard/mcp-policy.yaml \
   --format json \
   --output .agent-guard/evidence/agent-guard-report.json
-agent-guard conformance check --root . \
-  --evidence .agent-guard/evidence/agent-guard-report.json \
-  --profile recommended \
-  --json
-agent-guard evidence-pack manifest --root . \
-  --report .agent-guard/evidence/agent-guard-report.json \
-  --artifact .agent-guard/evidence/agent-guard-report.json \
-  --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json \
-  --json
 ```
 
 On this initial diagnostic path, findings and drift are useful output. If
@@ -42,18 +39,15 @@ evidence gaps, and refused to report a clean gate. It is not the same as a
 usage error.
 
 The diagnostic pass is done when the starter files exist, the sanitized report
-was written, and every finding has an owner or an explicit onboarding decision.
+was written with embedded conformance and evidence-pack sections, and every
+finding has an owner or an explicit onboarding decision.
 Do not hide exit `1` in CI; use it locally to decide which policy files, README
 guard-command guidance, workflows, digest locks, or MCP policy reviews must be
 added before the repository is green.
 
-Existing files are not overwritten unless `--force` is used. To review the
-starter plan before writing files, run this dry-run command outside the
-five-command golden path:
-
-```text
-agent-guard init --root . --json
-```
+Existing files are not overwritten unless `--force` is used. The dry-run in the
+four-command path is intentional: review its proposed files before running the
+following `init --write` command.
 
 Before treating `agent-guard drift check` as a clean gate, document the chosen
 guard commands in the repository README. The drift gate intentionally reports
@@ -201,6 +195,26 @@ policy/spec drift v2, surface inventory v2, recommended conformance, and an
 embedded evidence-pack manifest. It does not enable API or digest policies
 automatically; add those options only when the repository has reviewed policy
 files for them.
+
+Run the embedded handoff checks as standalone commands only when a downstream
+consumer needs separate payloads or an `agent-policy` admission event must be
+attached to the evidence-pack manifest:
+
+```text
+agent-guard conformance check --root . \
+  --evidence .agent-guard/evidence/agent-guard-report.json \
+  --profile recommended \
+  --json
+agent-guard evidence-pack manifest --root . \
+  --report .agent-guard/evidence/agent-guard-report.json \
+  --artifact .agent-guard/evidence/agent-guard-report.json \
+  --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json \
+  --json
+```
+
+These commands are not required for the four-command first pass because the
+recommended report already contains the same conformance and manifest
+sections.
 
 ### Consume Evidence Safely
 

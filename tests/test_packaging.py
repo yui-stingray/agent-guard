@@ -146,6 +146,16 @@ def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
 
+def test_onboarding_commands_pin_the_current_package_version() -> None:
+    version = pyproject_version()
+    readme = README.read_text(encoding="utf-8")
+    quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+
+    assert f"--from yui-agent-guard=={version}" in readme
+    assert f"--from yui-agent-guard=={version}" in quickstart
+    assert f"python -m pip install yui-agent-guard=={version}" in quickstart
+
+
 def test_public_sample_report_matches_pyproject_version() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
 
@@ -323,11 +333,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard report --root ." in quickstart
     assert "agent-guard render-report --root ." in quickstart
     assert "--evidence-preset recommended" in quickstart
-    assert (
-        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml"
-        in readme
-    )
+    assert "agent-guard report --root . --evidence-preset recommended --format json" in readme
     assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
     assert "agent-guard conformance check --root ." in quickstart
     assert "agent-guard evidence-pack manifest --root ." in quickstart

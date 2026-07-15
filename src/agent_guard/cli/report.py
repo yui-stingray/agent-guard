@@ -44,7 +44,11 @@ from .report_builders import (
 def add_report_parser(top) -> None:
     report = top.add_parser("report", help="emit sanitized evidence for reviews")
     report.add_argument("--root", default=".", help="repository root path")
-    report.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    report.add_argument(
+        "--context-policy",
+        default=".agent-guard/context-policy.yaml",
+        help="agent context YAML policy path (default: .agent-guard/context-policy.yaml)",
+    )
     report.add_argument(
         "--evidence-preset",
         choices=(RECOMMENDED_EVIDENCE_PRESET,),

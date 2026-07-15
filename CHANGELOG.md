@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Reduced first-run friction with a no-write `uvx` preview, a four-command
+  review-first quickstart, repo-local context policy defaults for `report`, and
+  a single recommended report that already embeds conformance and evidence-pack
+  metadata. Starter workflows now pin the current package and action SHAs.
 - Pinned executable GitHub Action dependencies to full commit SHAs, required
   release tags to point at the current `master` commit with successful CI, and
   added a bounded TTFE onboarding gate.

@@ -53,8 +53,6 @@ def test_report_cli_recommended_preset_expands_adoption_bundle() -> None:
         "report",
         "--root",
         str(ROOT),
-        "--context-policy",
-        ".agent-guard/context-policy.yaml",
         "--evidence-preset",
         "recommended",
         "--format",
@@ -63,6 +61,7 @@ def test_report_cli_recommended_preset_expands_adoption_bundle() -> None:
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
+    assert payload["policy"]["path"] == ".agent-guard/context-policy.yaml"
     assert payload["report"]["scope"] == "context+path+content+mcp+workflow+drift"
     assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
     assert payload["conformance"]["profile"] == "recommended"

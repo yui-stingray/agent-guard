@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
+from agent_guard import __version__ as AGENT_GUARD_VERSION
 from agent_guard.cli import build_parser, safe_policy_path
 from agent_guard.cli_registry import AGENT_GUARD_COMMANDS
 
@@ -50,6 +51,10 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     workflow = contents[".github/workflows/agent-guard.yml"]
     mcp_policy = contents[".agent-guard/mcp-policy.yaml"]
     workflow_policy = contents[".agent-guard/workflow-policy.yaml"]
+    assert "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7" in workflow
+    assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
+    assert f"python -m pip install yui-agent-guard=={AGENT_GUARD_VERSION}" in workflow
+    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in workflow
     assert "schema_version: agent-guard.mcp_policy.v1" in mcp_policy
     assert "forbidden_risky_patterns:" in mcp_policy
     assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in workflow
@@ -297,4 +302,3 @@ def test_safe_policy_path_treats_url_like_policy_as_external(tmp_path: Path) -> 
     url_policy = "https://policy.example.invalid/reviewed/policy.yaml"
 
     assert safe_policy_path(url_policy, tmp_path) == "<external-policy>"
-
