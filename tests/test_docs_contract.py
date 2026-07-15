@@ -5,6 +5,7 @@ Why: keep public docs aligned with the package contract and static-evidence boun
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -36,9 +37,40 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
+    assert f"python -m pip install yui-agent-guard=={version}" in readme
     assert f"--from yui-agent-guard=={version}" in readme
     assert f"--from yui-agent-guard=={version}" in quickstart
     assert f"python -m pip install yui-agent-guard=={version}" in quickstart
+
+    bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
+    assert bootstrap.index("agent-guard init --root . --json") < bootstrap.index(
+        "agent-guard init --root . --write"
+    )
+
+
+def test_readme_opening_states_the_bounded_value_contract() -> None:
+    readme = README.read_text(encoding="utf-8")
+    opening = readme[: readme.index("## Why")]
+
+    assert "Deterministic static evidence for repositories maintained with coding agents." in opening
+    assert "Which agent-facing surfaces are present" in opening
+    assert "without executing agents" in opening
+    assert "MCP servers" in opening
+    assert "- **Inventory**" in opening
+    assert "- **Check**" in opening
+    assert "- **Emit**" in opening
+    assert "sanitized report JSON" in opening
+    assert "SARIF derived from the report payload" in opening
+    assert "sanitized JSON, Markdown, and SARIF outputs" not in opening
+    assert "Raw per-scanner JSON remains a" in opening
+    assert "local/CI-internal surface unless a maintainer reviews it" in opening
+    assert "It is **not** an authorship detector" in opening
+    assert re.search(r"It is \*\*not\*\*[^.]{0,180}\bprovenance system\b", opening, re.IGNORECASE)
+    assert not re.search(
+        r"\b(SBOM|DCO|ISO|NIST|compliance|certification|attestation)\b",
+        opening,
+        re.IGNORECASE,
+    )
 
 
 def test_quickstart_documents_windows_without_activation() -> None:
@@ -61,7 +93,7 @@ def test_security_policy_tracks_the_current_alpha_series() -> None:
     assert "latest published `0.1.x` release" not in security
 
 
-def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
+def test_readme_documents_ci_gate_recipe() -> None:
     readme = README.read_text(encoding="utf-8")
 
     assert "## CI gate recipe" in readme
@@ -101,14 +133,24 @@ def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
 def test_readme_documents_agent_policy_companion_boundary() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert "`agent-policy` decides whether an agent should do something." in readme
-    assert "`agent-guard` checks whether the repository content still obeys the rules." in readme
+    assert "Runtime admission belongs to" in readme
+    assert "shows the two layers together" in readme
     assert "| Runtime admission | `agent-policy` |" in readme
     assert "| Static repository gate | `agent-guard` |" in readme
     assert "It does **not** route models, score model quality, run LLM review" in readme
     assert "does not execute MCP servers, validate" in readme
     assert "live OAuth flows" in readme
     assert "replace dedicated secret scanners" in readme
+
+
+def test_readme_uses_audience_facing_ci_and_example_language() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "ai-resilience-style repositories" not in readme
+    assert "ready-to-run ai-resilience-style copy" not in readme
+    assert "For repositories that publish artifacts or accept changes" in readme
+    assert "A ready-to-run example policy lives in" in readme
+    assert "examples/ai_resilience_path_policy.yaml" in readme
 
 
 def test_readme_documents_report_evidence_contract() -> None:

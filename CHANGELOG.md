@@ -6,6 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Reworked the README opening around agent-facing repository surfaces,
+  concrete inventory/check/evidence value, and the reviewed bootstrap path
+  without implying authorship, runtime protection, provenance, or compliance.
 - Required out-of-cadence P0 patch releases to record a one-sentence,
   public-safe rationale in the release-preparation pull request or that
   release's CHANGELOG entry without exposing embargoed vulnerability details,

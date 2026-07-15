@@ -20,9 +20,12 @@ def test_readme_measured_quality_section_points_to_benchmark_results_doc() -> No
     assert "[`docs/benchmark-results.md`](docs/benchmark-results.md)" in readme
     assert (REPO_ROOT / "docs" / "benchmark-results.md").is_file()
 
-    single_line = " ".join(readme.split())
-    assert "Treat AGB as local deterministic regression evidence, not as an" in single_line
-    assert "independently verified quality benchmark." in single_line
+    paragraph_start = readme.index("Agent-Guard Bench (AGB)")
+    paragraph_end = readme.index("\n\n## Why", paragraph_start)
+    benchmark_paragraph = " ".join(readme[paragraph_start:paragraph_end].split())
+    assert "[`docs/benchmark-results.md`](docs/benchmark-results.md)" in benchmark_paragraph
+    assert "local deterministic regression evidence" in benchmark_paragraph
+    assert "not an independently verified quality benchmark" in benchmark_paragraph
 
 
 def test_readme_no_longer_states_a_bare_agb_metric_claim() -> None:

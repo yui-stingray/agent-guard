@@ -5,45 +5,80 @@
 [![Python](https://img.shields.io/pypi/pyversions/yui-agent-guard.svg)](https://pypi.org/project/yui-agent-guard/)
 [![License](https://img.shields.io/pypi/l/yui-agent-guard.svg)](LICENSE)
 
-> Static repository guardrails for agent-touched codebases.
->
-> `agent-policy` decides whether an agent should do something.
-> `agent-guard` checks whether the repository content still obeys the rules.
+> Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.2.4` alpha. The current MVP ships seven guard scanners:
-`api`, `content`, `context`, `mcp`, `path`, `digest`, and `workflow`, plus
-review evidence commands for init, surface inventory, policy/spec drift,
-profile conformance, and evidence-pack manifests.
+**Status**: `0.2.4` alpha. Vendor-neutral, static-only, Python 3.11+, with one
+runtime dependency (`PyYAML`).
 
-Current direction: keep the package narrow as Python/PyPI static repository
-evidence, not as a runtime agent security platform. See
-[`docs/positioning.md`](docs/positioning.md) for the product boundary and
-demand-validation strategy.
+Coding agents can change more than application code. They can also change the
+durable repository surfaces that shape later agent runs: instruction files,
+skills, MCP configuration, policy files, and CI workflows. Reviewers need a
+repeatable answer to a narrower question:
 
-### Measured quality
+> Which agent-facing surfaces are present, and do they still satisfy the
+> reviewed static rules?
 
-Current Agent-Guard Bench (AGB) details live in
-[`docs/benchmark-results.md`](docs/benchmark-results.md). That page keeps the
-population, family mix, false-positive and false-negative counts, per-guard
-table, independent-verification status, and scope limits with the metric
-claim. Treat AGB as local deterministic regression evidence, not as an
-independently verified quality benchmark.
+`agent-guard` scans a selected repository tree without executing agents, tools,
+skills, or MCP servers. Think of it as a linter plus an evidence contract for
+agent-facing repository configuration:
 
-**Paired demo**: `agent-guard` is the static repository gate half of the
-toolkit. Use [`agent-policy`](https://github.com/yui-stingray/agent-policy)
-for runtime admission, and see
+- **Inventory** agent instructions, skills, MCP metadata, workflows, policies,
+  and evidence artifacts without copying raw instruction bodies into reports.
+- **Check** reviewed static rules for unsafe instruction patterns, unpinned MCP
+  package commands, leak-prone paths, endpoint/content policy violations, and
+  digest or workflow drift.
+- **Emit** sanitized report JSON, rendered Markdown, GitHub annotations, and
+  SARIF derived from the report payload, plus conformance summaries and
+  evidence-pack manifests for CI and maintainer review.
+
+The sanitized public-artifact contract applies to `agent-guard report`,
+`agent-guard render-report`, GitHub annotations, SARIF rendered from a report,
+conformance output, and evidence-pack manifests. Raw per-scanner JSON remains a
+local/CI-internal surface unless a maintainer reviews it. See
+[`docs/evidence-contracts.md`](docs/evidence-contracts.md).
+
+## Use it when
+
+- Pull requests can modify agent instructions or agent-facing configuration,
+  and maintainers want a deterministic static gate before merge or release.
+- Multiple repositories need the same conformance level while keeping reviewed
+  policies repository-local.
+- CI consumers need stable, sanitized evidence instead of repository contents
+  or an LLM-generated verdict.
+
+It is **not** an authorship detector, runtime firewall, LLM reviewer, live OAuth
+validator, provenance system, or replacement for a dedicated secret scanner.
+Runtime admission belongs to
+[`agent-policy`](https://github.com/yui-stingray/agent-policy); the public
 [`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example)
-for a public demo that wires both tools together.
+shows the two layers together.
+
+## Start with a reviewed bootstrap
+
+Install the current alpha, preview the files it proposes, and write them only
+after review:
+
+```bash
+python -m pip install yui-agent-guard==0.2.4
+agent-guard init --root . --json
+# Review the proposed policies and workflow before the write step.
+agent-guard init --root . --write
+```
+
+`init --write` creates starter policies and a pinned GitHub Actions workflow.
+Review and commit those files, then resolve the initial fail-closed findings.
+The [existing-repo quickstart](docs/quickstart-existing-repo.md) covers the
+green CI path, Windows PowerShell, and monorepo roots.
+
+Agent-Guard Bench (AGB) is documented in
+[`docs/benchmark-results.md`](docs/benchmark-results.md). It is local
+deterministic regression evidence, not an independently verified quality
+benchmark.
 
 ## Why
 
-`agent-guard` exists to provide fail-closed static checks around agent-operated
-repositories without pulling in a full control plane. It is model- and
-provider-agnostic: it checks the repository tree and configured policy files,
-so the same static gate can be used for repos touched by single-model coding
-agents, MoA-style multi-model agent loops, or persistent agent sessions.
+The seven scanners are intentionally narrow and composable:
 
-The current extracted scanners are intentionally narrow:
 - `api`: scan repository text files for URL/API endpoint references, allow approved endpoint patterns, fail on forbidden endpoint patterns
 - `content`: scan Markdown or other configured text files for dangerous instruction patterns
 - `context`: scan agent instruction files such as `AGENTS.md`, `CLAUDE.md`, and Copilot/Cursor/Windsurf rules
@@ -236,9 +271,10 @@ conformance output, and evidence-pack manifests.
 
 ## CI gate recipe
 
-For ai-resilience-style repositories, use `agent-guard` as the static half of
-the publication gate and pair it with a runtime approval wrapper such as
-`agent-policy`. A practical final gate runs these static checks:
+For repositories that publish artifacts or accept changes to agent-facing
+configuration, use `agent-guard` as the static half of the publication gate
+and pair it with a runtime approval wrapper such as `agent-policy`. A practical
+final gate runs these static checks:
 
 ```bash
 agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
@@ -775,7 +811,7 @@ policy:
       message: "local-only artifact directory must stay outside published/tracked paths"
 ```
 
-A ready-to-run ai-resilience-style copy lives in
+A ready-to-run example policy lives in
 [`examples/ai_resilience_path_policy.yaml`](examples/ai_resilience_path_policy.yaml).
 
 ### Digest guard policy
