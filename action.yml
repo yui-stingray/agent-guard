@@ -1,5 +1,6 @@
-name: agent-guard evidence
-description: Generate deterministic agent-guard evidence for agent-touched repositories.
+name: agent-guard static evidence
+author: yui-stingray
+description: Generate deterministic static evidence for agent-touched repositories (alpha).
 branding:
   icon: shield
   color: green
@@ -81,7 +82,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: ${{ inputs.python-version }}
     - name: Install agent-guard

@@ -454,7 +454,11 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert PRE_COMMIT_HOOKS.is_file()
 
     action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
-    assert action["name"] == "agent-guard evidence"
+    assert action["name"] == "agent-guard static evidence"
+    assert action["author"] == "yui-stingray"
+    assert action["description"] == (
+        "Generate deterministic static evidence for agent-touched repositories (alpha)."
+    )
     assert action["runs"]["using"] == "composite"
     assert action["inputs"]["package-spec"]["default"] == ""
     assert action["inputs"]["base-ref"]["default"] == ""
@@ -561,6 +565,21 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
         "--evidence-preset",
     ]
     assert "recommended" in evidence_hook["args"]
+
+
+def test_marketplace_readiness_stays_manual_and_static_only() -> None:
+    readme = README.read_text(encoding="utf-8")
+    release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+
+    assert "packaged alpha GitHub Action" in readme
+    assert "The action generates static evidence only" in readme
+    assert "Marketplace publication is not part of the automated release workflows" in release_criteria
+    assert "`agent-guard static evidence`" in release_criteria
+    assert "`Security` as the primary category" in release_criteria
+    assert "`Code quality` as the secondary" in release_criteria
+    assert "do not select `Code Scanning Ready`" in release_criteria
+    assert "do not create a moving\n  `v0` alias" in release_criteria
+    assert "explicit maintainer approval" in release_criteria
 
 
 def test_ci_self_dogfood_renders_from_single_json_report() -> None:

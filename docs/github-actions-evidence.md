@@ -6,7 +6,8 @@
 - GitHub workflow annotations for inline failure anchors.
 
 It does not post pull request comments, call an LLM reviewer, or make merge
-decisions. Maintainers should treat the output as deterministic evidence.
+decisions. The packaged Action is an alpha, static-only evidence surface.
+Maintainers should treat the output as deterministic evidence.
 
 ## Recommended Action Workflow
 

@@ -48,6 +48,27 @@ Before tagging, verify:
 The release workflow remains tag-driven. Do not publish from an unreviewed
 branch.
 
+## GitHub Marketplace Readiness
+
+GitHub Marketplace publication is not part of the automated release workflows.
+It remains a separate manual action that requires explicit maintainer approval.
+Before submitting the Marketplace release form:
+
+- use the candidate Action name `agent-guard static evidence` and confirm that
+  GitHub's final uniqueness validator still accepts it;
+- use `Security` as the primary category and `Code quality` as the secondary
+  category; do not select `Code Scanning Ready`, because the Action emits SARIF
+  but does not upload it to GitHub code scanning;
+- require the release commit's CI `packaged action smoke` job to pass, so the
+  checked-out composite Action, its public outputs, and the packaged evidence
+  consumer are verified before the release tag can publish to PyPI;
+- keep the Action description and release notes explicit that the package is
+  alpha and static-only, not a runtime agent, MCP, OAuth, or LLM validator;
+- use exact version tags while the package is `0.x`; do not create a moving
+  `v0` alias that silently changes an alpha consumer's code;
+- stop at the validated release form until the maintainer separately approves
+  Marketplace publication and any required developer agreement.
+
 ## Release Provenance
 
 Release distributions are built in the tag-triggered release workflow, checked
