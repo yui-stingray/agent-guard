@@ -5,7 +5,7 @@ hooks, CI, releases, or public publication paths.
 
 ## Supported versions
 
-The latest published `0.1.x` release is supported while the project is in
+The latest published `0.x` release is supported while the project is in
 alpha. Security fixes may be released as a new patch version without preserving
 compatibility for undocumented internals.
 
