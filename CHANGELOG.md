@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Required out-of-cadence P0 patch releases to record a one-sentence,
+  public-safe rationale in the release-preparation pull request or that
+  release's CHANGELOG entry without exposing embargoed vulnerability details,
+  credentials, private incident data, or local paths.
 - Prepared the unpublished GitHub Action metadata for a future Marketplace
   listing with a distinct static-evidence name, explicit alpha scope, and a
   CI consumer smoke gate; Marketplace publication remains a separate manual

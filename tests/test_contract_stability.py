@@ -96,6 +96,9 @@ def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     assert "Batched Release Cadence" in docs
     assert "weekly" in docs
     assert "P0 fix" in docs
+    assert "one-sentence, public-safe rationale" in docs
+    assert "release-preparation pull request or that release's CHANGELOG entry" in docs
+    assert "embargoed vulnerability details" in docs
     assert "Do not cut a patch release for every qualifying change" in docs
     assert "schema/contract stability" in docs
 
