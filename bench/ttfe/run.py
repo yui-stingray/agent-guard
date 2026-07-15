@@ -14,6 +14,7 @@ from typing import Any
 
 SCHEMA_VERSION = "agent-guard.ttfe_results.v1"
 PACK_COMMAND_MARKER = "agent-guard evidence-pack manifest"
+RECOMMENDED_REPORT_MARKER = "--evidence-preset recommended"
 DEFAULT_MAX_ELAPSED_MS = 15 * 60 * 1000
 
 
@@ -65,6 +66,16 @@ def _first_matching(records: list[dict[str, Any]], *, minimum_exit_code: int) ->
     return None
 
 
+def reaches_recommended_evidence_pack(records: list[dict[str, Any]]) -> bool:
+    for record in records:
+        command = str(record.get("command", ""))
+        if PACK_COMMAND_MARKER in command:
+            return True
+        if "agent-guard report" in command and RECOMMENDED_REPORT_MARKER in command:
+            return True
+    return False
+
+
 def build_result_payload(
     *,
     source_doc: str,
@@ -73,7 +84,7 @@ def build_result_payload(
     elapsed_ms: int,
     setup: dict[str, Any],
 ) -> dict[str, Any]:
-    reached_pack = any(PACK_COMMAND_MARKER in str(record.get("command", "")) for record in records)
+    reached_pack = reaches_recommended_evidence_pack(records)
     failure_point = _first_matching(records, minimum_exit_code=2)
     first_nonzero = _first_matching(records, minimum_exit_code=1)
     status = "ok" if reached_pack and failure_point is None else "failed"
