@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
 
 
-def test_readme_measured_quality_section_points_to_benchmark_results_doc() -> None:
+def test_readme_agb_section_points_to_benchmark_results_doc() -> None:
     readme = README.read_text(encoding="utf-8")
 
     assert "[`docs/benchmark-results.md`](docs/benchmark-results.md)" in readme
