@@ -151,7 +151,9 @@ evidence-pack manifest. Run the standalone commands only when a separate
 consumer artifact is needed.
 
 `init --write` also creates `.github/workflows/agent-guard.yml`. Review and
-commit that generated workflow, or use the packaged GitHub Action directly:
+commit that generated workflow, or use the packaged alpha GitHub Action
+directly. The action generates static evidence only; it does not execute agents,
+MCP servers, or an LLM reviewer:
 
 ```yaml
 permissions:

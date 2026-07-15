@@ -21,6 +21,9 @@ def test_executable_action_dependencies_are_pinned_to_full_commit_shas() -> None
         references = USES_PATTERN.findall(text)
         assert references, path
         for reference in references:
+            if reference == "./":
+                assert path == ROOT / ".github" / "workflows" / "ci.yml"
+                continue
             assert re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", reference), (path, reference)
 
 
@@ -30,6 +33,14 @@ def test_ci_covers_supported_current_python_versions_and_ttfe() -> None:
         assert f"'{version}'" in workflow
     assert "Replay 15-minute onboarding path" in workflow
     assert "--max-elapsed-ms 900000" in workflow
+
+
+def test_ci_runs_packaged_action_consumer_smoke() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "name: packaged action smoke" in workflow
+    assert "uses: ./" in workflow
+    assert 'test "$ACTION_STATUS" = "0"' in workflow
+    assert 'python -m agent_guard.consumer "$REPORT_JSON"' in workflow
 
 
 def test_release_requires_current_master_and_successful_ci() -> None:

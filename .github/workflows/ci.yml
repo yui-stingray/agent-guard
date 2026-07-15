@@ -7,6 +7,9 @@ name: ci
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [master]
@@ -17,8 +20,32 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819 # v0.1.11
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+      - uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819  # v0.1.11
+
+  action-smoke:
+    name: packaged action smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+      - id: agent-guard
+        uses: ./
+        with:
+          github-annotations: "false"
+      - name: Verify packaged action consumer contract
+        env:
+          ACTION_STATUS: ${{ steps.agent-guard.outputs.status }}
+          REPORT_JSON: ${{ steps.agent-guard.outputs.report-json }}
+          REPORT_MARKDOWN: ${{ steps.agent-guard.outputs.report-markdown }}
+          REPORT_SARIF: ${{ steps.agent-guard.outputs.report-sarif }}
+        run: |
+          set -euo pipefail
+          test "$ACTION_STATUS" = "0"
+          test -f "$REPORT_JSON"
+          test -f "$REPORT_MARKDOWN"
+          test -f "$REPORT_SARIF"
+          python -m agent_guard.consumer "$REPORT_JSON"
 
   test:
     name: pytest (py${{ matrix.python-version }})
@@ -28,8 +55,8 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install package + dev deps
@@ -152,7 +179,7 @@ jobs:
             --format github-annotations
       - name: Upload self-dogfood evidence report
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: agent-guard-evidence-report
           path: .agent-guard/evidence/

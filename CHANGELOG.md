@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Prepared the unpublished GitHub Action metadata for a future Marketplace
+  listing with a distinct static-evidence name, explicit alpha scope, and a
+  CI consumer smoke gate; Marketplace publication remains a separate manual
+  maintainer decision.
 - Reduced first-run friction with a no-write `uvx` preview, a four-command
   review-first quickstart, repo-local context policy defaults for `report`, and
   a single recommended report that already embeds conformance and evidence-pack
