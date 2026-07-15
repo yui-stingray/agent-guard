@@ -333,7 +333,16 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard report --root ." in quickstart
     assert "agent-guard render-report --root ." in quickstart
     assert "--evidence-preset recommended" in quickstart
-    assert "agent-guard report --root . --evidence-preset recommended --format json" in readme
+    assert (
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended --format json"
+        in readme
+    )
+    assert (
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended"
+        in quickstart_single_line
+    )
     assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
     assert "agent-guard conformance check --root ." in quickstart
     assert "agent-guard evidence-pack manifest --root ." in quickstart

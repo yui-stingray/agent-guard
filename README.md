@@ -141,12 +141,14 @@ Generate a sanitized evidence report:
 
 ```bash
 mkdir -p .agent-guard/evidence
-agent-guard report --root . --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
-The recommended report uses the reviewed repo-local context and MCP policy
-defaults and embeds recommended conformance plus an evidence-pack manifest.
-Run the standalone commands only when a separate consumer artifact is needed.
+The command names the reviewed repo-local context policy explicitly for
+compatibility with the published `0.2.4` CLI. The recommended preset supplies
+the reviewed repo-local MCP policy and embeds recommended conformance plus an
+evidence-pack manifest. Run the standalone commands only when a separate
+consumer artifact is needed.
 
 `init --write` also creates `.github/workflows/agent-guard.yml`. Review and
 commit that generated workflow, or use the packaged GitHub Action directly:

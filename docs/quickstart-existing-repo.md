@@ -27,6 +27,7 @@ agent-guard init --root . --json
 agent-guard init --root . --write
 agent-guard report \
   --root . \
+  --context-policy .agent-guard/context-policy.yaml \
   --evidence-preset recommended \
   --format json \
   --output .agent-guard/evidence/agent-guard-report.json
