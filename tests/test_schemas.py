@@ -24,6 +24,7 @@ EXPECTED_SCHEMAS = {
     "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
     "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
     "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+    "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
 }
 
 

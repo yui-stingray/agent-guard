@@ -485,3 +485,39 @@ def test_readme_documents_operational_example_policy_coverage() -> None:
     assert '- "**/*.sh"' in readme
     assert "destructive_rm_root" in readme
     assert "local_artifacts" in readme
+
+
+def test_readme_documents_surface_delta_evidence() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "### Surface delta evidence" in readme
+    assert "agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>" in readme
+    assert "agent-guard.surface_delta.v1.schema.json" in readme
+    assert "--surface-delta-base-ref <ref>" in readme
+    assert "## Surface Delta Evidence" in readme
+    assert (
+        "agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml "
+        "--base-ref origin/main --json"
+        in readme
+    )
+
+
+def test_evidence_contract_docs_cover_surface_delta() -> None:
+    docs = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
+
+    assert "agent-guard.surface_delta.v1.schema.json" in docs
+    assert "controlled-vocabulary `changed_fields` names" in docs_single_line
+    assert "It is review evidence, not a gate" in docs_single_line
+    assert "never emitted to SARIF" in docs_single_line
+    assert "Policy is always read from the current working tree, never from the base" in docs_single_line
+
+
+def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
+    actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
+
+    assert "## Surface Delta Evidence On Pull Requests" in actions
+    assert "surface-delta-base-ref: origin/${{ github.base_ref }}" in actions
+    assert "${{ github.event.pull_request.base.sha }}" in actions
+    assert "fetch-depth: 0" in actions
+    assert "never emitted to SARIF" in actions or "never SARIF" in actions

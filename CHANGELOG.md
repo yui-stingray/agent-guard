@@ -6,6 +6,14 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Added `agent-guard surface delta --base-ref <ref>` and
+  `agent-guard report --surface-delta-base-ref <ref>`: sanitized PR base/head
+  agent surface delta evidence (surface inventory v2 diff) reporting
+  added/removed/modified surfaces with controlled-vocabulary `changed_fields`
+  names (never values) and risk labels. It is deterministic review evidence,
+  not a gate, and is never emitted to SARIF. Added the packaged
+  `agent-guard.surface_delta.v1.schema.json` schema and the matching
+  `action.yml` `surface-delta-base-ref` input.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

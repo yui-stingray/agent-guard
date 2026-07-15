@@ -289,6 +289,7 @@ agent-guard drift check --root . --profile recommended --schema-version v2 --jso
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
+agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml --base-ref origin/main --json
 ```
 
 Recommended split:
@@ -631,11 +632,28 @@ files from the source tree:
   `recommended`, and `strict` adoption levels.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
   artifact manifest for reviewer handoff.
+- `agent-guard.surface_delta.v1.schema.json`: sanitized PR base/head agent
+  surface delta evidence (see Surface delta evidence below).
 
 For `context check`, it returns:
 - exit `0` on clean
 - exit `1` on violation
 - exit `2` on configuration/runtime error
+
+### Surface delta evidence
+
+`agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>`
+computes a sanitized diff of surface inventory v2 between a fetched base ref
+and the current working tree: which agent-facing surfaces (context files,
+skills, MCP servers, workflows, policies, hooks) were added, removed, or
+modified. `changed_fields` lists metadata field names only, never values, and
+the section never emits the base ref name, raw diffs, MCP args/env values, or
+instruction/description text. It is deterministic review evidence, not a
+gate: exit `0` regardless of whether entries are present, exit `2` on
+configuration/runtime error such as an unfetched base ref. Pass
+`--surface-delta-base-ref <ref>` to `agent-guard report` to embed the same
+evidence as an optional `surface_delta` section (Markdown heading
+`## Surface Delta Evidence`, informational GitHub annotations, never SARIF).
 
 ### Path guard
 

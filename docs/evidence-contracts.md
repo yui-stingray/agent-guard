@@ -28,6 +28,11 @@ Installed wheels package these JSON Schema resources under
   surface inventory.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
+- `agent-guard.surface_delta.v1.schema.json`: sanitized PR base/head agent
+  surface delta evidence emitted by `agent-guard surface delta` and by
+  `agent-guard report --surface-delta-base-ref`. It is review evidence, not a
+  gate: added/removed/modified counts and per-surface entries with
+  controlled-vocabulary `changed_fields` names (never values) and risk labels.
 
 The `v1` schemas are intended to remain stable for downstream consumers.
 Compatible tightening may add enum constraints for values already emitted by
@@ -185,6 +190,17 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `--base-ref` or `--drift-base-ref` is supplied, it can also flag
   baseline-sensitive guard policy, digest policy, workflow, action metadata, or
   hook metadata changes as review-required evidence.
+- Optional `surface_delta` is emitted when `--surface-delta-base-ref` is
+  supplied. It reports which agent surfaces (context files, skills, MCP
+  servers, workflows, policies, hooks) were added, removed, or modified
+  relative to the given base ref, computed from the same surface inventory v2
+  used elsewhere in the report. It is deterministic review evidence, not a
+  gate: it never changes the report's exit code and is never emitted to SARIF.
+  Policy is always read from the current working tree, never from the base
+  ref; the base tree is materialized read-only and never executed as
+  instructions. `changed_fields` lists field *names* only, never before/after
+  values, and the section omits base ref names, raw diffs, MCP args/env
+  values, and instruction/description text.
 
 For failure reading, a missing implicit MCP policy in recommended evidence is a
 sanitized violation report: `mcp_config` records `mcp_policy_missing`, and

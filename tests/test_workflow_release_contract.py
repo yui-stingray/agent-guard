@@ -110,12 +110,14 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["runs"]["using"] == "composite"
     assert action["inputs"]["package-spec"]["default"] == ""
     assert action["inputs"]["base-ref"]["default"] == ""
+    assert action["inputs"]["surface-delta-base-ref"]["default"] == ""
     assert action["inputs"]["conformance-profile"]["default"] == "recommended"
     assert action["inputs"]["conformance-profile"]["description"] == (
         "Conformance profile checked against the generated recommended evidence report."
     )
     evidence_step = next(step for step in action["runs"]["steps"] if step.get("id") == "evidence")
     assert evidence_step["env"]["AGENT_GUARD_BASE_REF"] == "${{ inputs.base-ref }}"
+    assert evidence_step["env"]["AGENT_GUARD_SURFACE_DELTA_BASE_REF"] == "${{ inputs.surface-delta-base-ref }}"
     assert evidence_step["env"]["AGENT_GUARD_ROOT"] == "${{ inputs.root }}"
     assert evidence_step["env"]["AGENT_GUARD_CONFORMANCE_PROFILE"] == "${{ inputs.conformance-profile }}"
     assert evidence_step["env"]["AGENT_GUARD_GITHUB_ANNOTATIONS"] == "${{ inputs.github-annotations }}"
@@ -137,6 +139,9 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert "write_output" in action_script
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
     assert 'report_args+=(--drift-base-ref "$base_ref")' in action_script
+    assert 'surface_delta_base_ref="${AGENT_GUARD_SURFACE_DELTA_BASE_REF:-}"' in action_script
+    assert 'report_args+=(--surface-delta-base-ref "$surface_delta_base_ref")' in action_script
+    assert 'validate_no_control_chars "surface-delta-base-ref" "$AGENT_GUARD_SURFACE_DELTA_BASE_REF"' in action_script
     assert "agent-guard conformance check" in action_script
     assert (
         'agent-guard conformance check --root "$root" --evidence "$report_json" '

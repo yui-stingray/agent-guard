@@ -62,6 +62,7 @@ def test_schema_resources_are_present_in_package_tree() -> None:
         "agent-guard.report_evidence.v1.schema.json",
         "agent-guard.conformance.v1.schema.json",
         "agent-guard.evidence_pack_manifest.v1.schema.json",
+        "agent-guard.surface_delta.v1.schema.json",
     }
 
     assert SCHEMA_DIR.is_dir()

@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from ..context_guard import load_context_policy
+from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
 from .common import resolve_policy_arg, result_payload
 
@@ -21,6 +22,21 @@ def add_surface_parser(top) -> None:
     surface_inventory.add_argument("--context-policy", required=True, help="agent context YAML policy path")
     surface_inventory.add_argument("--schema-version", choices=("v1", "v2"), default="v1", help="inventory schema version")
     surface_inventory.add_argument("--json", action="store_true", help="emit JSON")
+
+    surface_delta = surface_sub.add_parser(
+        "delta", help="sanitized PR base/head agent surface delta evidence"
+    )
+    surface_delta.add_argument("--root", default=".", help="repository root path")
+    surface_delta.add_argument("--context-policy", required=True, help="agent context YAML policy path")
+    surface_delta.add_argument(
+        "--base-ref",
+        required=True,
+        help="git ref to diff against the current working tree; fetch it explicitly in CI",
+    )
+    surface_delta.add_argument(
+        "--schema-version", choices=("v1",), default="v1", help="surface delta schema version"
+    )
+    surface_delta.add_argument("--json", action="store_true", help="emit JSON")
 
 
 def run_surface_inventory(args: argparse.Namespace) -> int:
@@ -69,4 +85,62 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
     else:
         print(f"surface-inventory: OK ({surface_count} surfaces)")
     return 0
+
+
+def run_surface_delta(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    policy_path = resolve_policy_arg(args.context_policy, root)
+    try:
+        policy = load_context_policy(policy_path)
+        delta = build_surface_delta_report(root=root, context_policy=policy, base_ref=args.base_ref)
+    except SurfaceDeltaError as exc:
+        return _emit_surface_delta_error(args=args, root=root, message=str(exc))
+    except Exception as exc:
+        return _emit_surface_delta_error(args=args, root=root, message=str(exc))
+
+    entries = delta.get("entries", [])
+    entry_count = len(entries) if isinstance(entries, list) else 0
+    summary = delta.get("summary", {}) if isinstance(delta.get("summary"), dict) else {}
+    payload = result_payload(
+        scanner="surface",
+        status="ok",
+        exit_code=0,
+        policy_arg=args.context_policy,
+        root=root,
+        findings=[],
+        scanned_count=entry_count,
+        scanned_unit="delta_entries",
+        summary_extra={
+            "delta_added_count": summary.get("added", 0),
+            "delta_removed_count": summary.get("removed", 0),
+            "delta_modified_count": summary.get("modified", 0),
+        },
+        extra={"command": "delta", "delta": delta},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        print(
+            "surface-delta: OK "
+            f"(added={summary.get('added', 0)} removed={summary.get('removed', 0)} "
+            f"modified={summary.get('modified', 0)} unchanged={summary.get('unchanged', 0)})"
+        )
+    return 0
+
+
+def _emit_surface_delta_error(*, args: argparse.Namespace, root: Path, message: str) -> int:
+    payload = result_payload(
+        scanner="surface",
+        status="error",
+        exit_code=2,
+        policy_arg=args.context_policy,
+        root=root,
+        error=message,
+        extra={"command": "delta"},
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"ERROR: {payload.get('error', 'unknown error')}")
+    return 2
 

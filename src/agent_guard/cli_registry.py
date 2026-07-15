@@ -19,7 +19,7 @@ AGENT_GUARD_COMMANDS: dict[str, tuple[str, ...]] = {
     "path": ("check",),
     "report": ("",),
     "render-report": ("",),
-    "surface": ("inventory",),
+    "surface": ("inventory", "delta"),
     "workflow": ("check",),
 }
 AGENT_GUARD_SCANNERS = frozenset(AGENT_GUARD_COMMANDS)

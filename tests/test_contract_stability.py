@@ -43,6 +43,10 @@ FROZEN_SCHEMA_CONTRACTS = {
         "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.result.v1.schema.json",
         {"schema_version": "agent-guard.result.v1"},
     ),
+    "agent-guard.surface_delta.v1.schema.json": (
+        "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.surface_delta.v1.schema.json",
+        {"schema_version": "agent-guard.surface_delta.v1"},
+    ),
 }
 
 DOCUMENTED_ARTIFACTS = (
@@ -52,6 +56,7 @@ DOCUMENTED_ARTIFACTS = (
     "agent-guard.report_evidence.v1",
     "agent-guard.conformance.v1",
     "agent-guard.evidence_pack_manifest.v1",
+    "agent-guard.surface_delta.v1",
     "agent-guard.agb_results.v1",
     "agent-guard.evidence_results.v1",
     "agent-guard.alignment.v1",

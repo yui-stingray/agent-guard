@@ -107,6 +107,54 @@ pre-commit hook metadata. It does not approve, reject, or enforce GitHub branch
 protection, and it does not publish raw diffs, hash values, raw workflow
 bodies, branch names, or local paths.
 
+## Surface Delta Evidence On Pull Requests
+
+Set `surface-delta-base-ref` to embed sanitized PR agent-surface delta
+evidence: which agent-facing surfaces (context files, skills, MCP servers,
+workflows, policies, hooks) were added, removed, or modified relative to the
+pull request's base branch. This is deterministic review evidence, not a gate;
+it does not fail the job by itself and it is never emitted to SARIF.
+
+Fetch the base ref explicitly before running the action, the same way
+`base-ref` requires it:
+
+```yaml
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.2.4
+        with:
+          conformance-profile: recommended
+          surface-delta-base-ref: origin/${{ github.base_ref }}
+```
+
+For a pull request event, the exact base commit is also available as
+`${{ github.event.pull_request.base.sha }}`. Fetch it first, then pass it
+directly instead of a branch name that can move:
+
+```yaml
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fetch PR base commit
+        run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.2.4
+        with:
+          conformance-profile: recommended
+          surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
+```
+
+Auto-detecting the base ref from the `pull_request` event and fetching it
+automatically is intentionally out of scope for this alpha surface; the caller
+always fetches and passes the ref explicitly, matching `base-ref`. Read the
+`surface_delta` section of the JSON report or the `## Surface Delta Evidence`
+Markdown heading for `added`/`removed`/`modified` counts and a sanitized
+per-surface entry list with controlled-vocabulary `changed_fields` names (no
+values) and risk labels. It never includes the base ref name, raw diffs, MCP
+args/env values, or instruction/description text.
+
 ## Expanded Workflow Step
 
 Use this form when a repository wants the commands visible in workflow review

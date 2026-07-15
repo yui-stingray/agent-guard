@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.surface_delta.v1.schema.json",
+  "title": "agent-guard sanitized PR base/head agent surface delta evidence v1",
+  "type": "object",
+  "required": ["schema_version", "base_resolved", "summary", "entries"],
+  "properties": {
+    "schema_version": {"const": "agent-guard.surface_delta.v1"},
+    "base_resolved": {"type": "boolean"},
+    "summary": {
+      "type": "object",
+      "required": ["added", "removed", "modified", "unchanged"],
+      "properties": {
+        "added": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0},
+        "modified": {"type": "integer", "minimum": 0},
+        "unchanged": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "name", "status", "changed_fields"],
+        "properties": {
+          "kind": {"type": "string"},
+          "path": {"type": "string"},
+          "name": {"type": "string"},
+          "status": {"type": "string", "enum": ["added", "removed", "modified"]},
+          "risk_labels": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
