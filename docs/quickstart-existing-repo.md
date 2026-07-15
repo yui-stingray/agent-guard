@@ -33,6 +33,18 @@ agent-guard report \
   --output .agent-guard/evidence/agent-guard-report.json
 ```
 
+On Windows PowerShell, avoid activation and execution-policy friction by
+calling the virtual-environment executables directly. The same dry-run,
+reviewed write, and sanitized report sequence is:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.2.4
+.\.venv\Scripts\agent-guard.exe init --root . --json
+.\.venv\Scripts\agent-guard.exe init --root . --write
+.\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+```
+
 On this initial diagnostic path, findings and drift are useful output. If
 `report` or `conformance` exits `1` on an un-onboarded repository, that is the
 expected, correct fail-closed behavior: the command completed, found static

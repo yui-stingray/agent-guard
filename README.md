@@ -117,6 +117,9 @@ use `uvx` with the current release pinned:
 uvx --python 3.12 --from yui-agent-guard==0.2.4 agent-guard init --root . --json
 ```
 
+Windows PowerShell users can follow the non-activation virtual-environment
+commands in the [existing-repo quickstart](docs/quickstart-existing-repo.md).
+
 From a source checkout, install the package in editable mode:
 
 ```bash

@@ -19,6 +19,7 @@ GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
+SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 
 
 def pyproject_version() -> str:
@@ -38,6 +39,26 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
     assert f"--from yui-agent-guard=={version}" in readme
     assert f"--from yui-agent-guard=={version}" in quickstart
     assert f"python -m pip install yui-agent-guard=={version}" in quickstart
+
+
+def test_quickstart_documents_windows_without_activation() -> None:
+    version = pyproject_version()
+    readme = README.read_text(encoding="utf-8")
+    quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+
+    assert "Windows PowerShell users" in readme
+    assert "avoid activation and execution-policy friction" in quickstart
+    assert rf".\.venv\Scripts\python.exe -m pip install yui-agent-guard=={version}" in quickstart
+    assert r".\.venv\Scripts\agent-guard.exe init --root . --json" in quickstart
+    assert r".\.venv\Scripts\agent-guard.exe init --root . --write" in quickstart
+    assert r".\.venv\Scripts\agent-guard.exe report --root ." in quickstart
+
+
+def test_security_policy_tracks_the_current_alpha_series() -> None:
+    security = SECURITY_POLICY.read_text(encoding="utf-8")
+
+    assert "latest published `0.x` release is supported" in security
+    assert "latest published `0.1.x` release" not in security
 
 
 def test_readme_documents_ai_resilience_ci_gate_recipe() -> None:
