@@ -10,6 +10,11 @@ Do not cut a patch release for every qualifying change. By default, batch
 reviewed release candidates on a weekly cadence. Cut an earlier patch only when
 a P0 fix needs to reach installed users before the next batch.
 
+When cutting an earlier P0 patch, record a one-sentence, public-safe rationale
+in the release-preparation pull request or that release's CHANGELOG entry. Keep
+embargoed vulnerability details, credentials, private incident data, and local
+paths out of the rationale.
+
 A release batch may include:
 
 - a CLI behavior change that downstream CI users need from PyPI;
