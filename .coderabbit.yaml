@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Where: .coderabbit.yaml
+# What: repository-level CodeRabbit review overrides.
+# Why: preserve inherited review settings while disabling a blanket metric that
+#      does not match this repository's documentation policy.
+
+inheritance: true
+reviews:
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
