@@ -549,9 +549,8 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     assert "unrelated tracked blobs are not materialized" in docs_single_line
     assert "Repository-external symlink targets are not followed" in docs_single_line
     assert "git merge-base <base-ref> HEAD" in docs_single_line
-    assert "context-excluded targets are not expanded through context-selected symlinks" in (
-        docs_single_line
-    )
+    assert "repository-relative alias paths and resolved in-repo target paths" in docs_single_line
+    assert "before expansion through context-selected symlinks" in docs_single_line
     assert "Target values are never published" in docs_single_line
 
 

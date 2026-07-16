@@ -105,6 +105,7 @@ _MAX_SYMLINK_TARGET_BYTES = 64 * 1024
 _MAX_EXPANDED_SYMLINKS = 256
 _MAX_SYMLINK_CHAIN_DEPTH = 40
 _MAX_SYMLINK_TARGET_ENTRIES = 1000
+_MAX_MATERIALIZATION_PROJECTIONS = 4096
 _MAX_SURFACE_PATHSPECS = 256
 _MAX_SURFACE_PATHSPEC_LENGTH = 1024
 _MAX_GLOB_VARIANTS = 32
@@ -161,6 +162,26 @@ class SurfaceMaterializationPlan:
     context_includes: tuple[str, ...]
     context_excludes: tuple[str, ...]
     fixed_includes: tuple[str, ...]
+
+
+@dataclass(frozen=True, order=True)
+class SymlinkMaterializationRequest:
+    """Alias-space selection that must follow a symlink target."""
+
+    scope: str
+    alias_root: str
+    suffix: str
+    physical_alias_roots: tuple[str, ...]
+
+
+@dataclass(frozen=True, order=True)
+class SurfaceMaterializationProjection:
+    """Map one selected alias root onto its current physical target root."""
+
+    scope: str
+    alias_root: str
+    target_root: str
+    physical_alias_roots: tuple[str, ...]
 
 
 class GitBlobReader:
@@ -506,34 +527,212 @@ def materialization_ancestor_roots(
     }
 
 
-def path_is_at_or_below(path: str, roots: Sequence[str]) -> bool:
-    """Return whether a Git path is an explicitly selected root or descendant."""
+def scope_materialization_matches(
+    *,
+    path: str,
+    scope: str,
+    plan: SurfaceMaterializationPlan,
+) -> bool:
+    """Apply one materialization scope to an alias-space path."""
 
-    return any(path == root or path.startswith(f"{root}/") for root in roots)
+    if scope == "fixed":
+        return inventory_path_matches(path, plan.fixed_includes)
+    if scope == "context":
+        return inventory_path_matches(path, plan.context_includes) and not is_excluded(
+            PurePosixPath(path), plan.context_excludes
+        )
+    raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
 
 
-def path_is_symlink_ancestor_of_root(path: str, roots: Sequence[str]) -> bool:
-    """Return whether a symlink path is an ancestor of an explicit root."""
+def symlink_materialization_requests(
+    *,
+    path: str,
+    plan: SurfaceMaterializationPlan,
+    allowed_scope: str | None = None,
+) -> set[SymlinkMaterializationRequest]:
+    """Return alias-space selections that a symlink must expose."""
 
-    prefix = f"{path.rstrip('/')}/"
-    return any(root.startswith(prefix) for root in roots)
+    requests: set[SymlinkMaterializationRequest] = set()
+    scopes = (allowed_scope,) if allowed_scope is not None else ("fixed", "context")
+    for scope in scopes:
+        if scope_materialization_matches(path=path, scope=scope, plan=plan):
+            requests.add(
+                SymlinkMaterializationRequest(
+                    scope=scope,
+                    alias_root=path,
+                    suffix="",
+                    physical_alias_roots=(),
+                )
+            )
+        for root in materialization_ancestor_roots(path, plan)[scope]:
+            if root == path:
+                suffix = ""
+            elif root.startswith(f"{path.rstrip('/')}/"):
+                suffix = root[len(path.rstrip('/')) + 1 :]
+            else:
+                continue
+            requests.add(
+                SymlinkMaterializationRequest(
+                    scope=scope,
+                    alias_root=root,
+                    suffix=suffix,
+                    physical_alias_roots=(),
+                )
+            )
+    return requests
 
 
-def symlink_follow_requests(
+def project_path_between_roots(
+    path: str,
+    *,
+    source_root: str,
+    target_root: str,
+) -> str | None:
+    """Project a descendant path between two equivalent roots."""
+
+    if path == source_root:
+        return target_root
+    prefix = f"{source_root.rstrip('/')}/"
+    if not path.startswith(prefix):
+        return None
+    suffix = path[len(prefix) :]
+    return PurePosixPath(target_root, suffix).as_posix()
+
+
+def projected_alias_path(
+    path: str,
+    projection: SurfaceMaterializationProjection,
+) -> str | None:
+    """Project a physical target path back into its selected alias space."""
+
+    return project_path_between_roots(
+        path,
+        source_root=projection.target_root,
+        target_root=projection.alias_root,
+    )
+
+
+def projection_physical_paths(
+    path: str,
+    projection: SurfaceMaterializationProjection,
+) -> tuple[str, ...]:
+    """Return current and prior physical namespaces for one target path."""
+
+    projected = [path]
+    for root in projection.physical_alias_roots:
+        mapped = project_path_between_roots(
+            path,
+            source_root=projection.target_root,
+            target_root=root,
+        )
+        if mapped is None:
+            raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
+        projected.append(mapped)
+    return tuple(projected)
+
+
+def preserve_projection_physical_roots(
+    request: SymlinkMaterializationRequest,
+    projection: SurfaceMaterializationProjection,
+) -> SymlinkMaterializationRequest:
+    """Carry every prior physical namespace into a nested symlink request."""
+
+    roots: set[str] = set()
+    for root in (*projection.physical_alias_roots, projection.target_root):
+        mapped = project_path_between_roots(
+            request.alias_root,
+            source_root=projection.alias_root,
+            target_root=root,
+        )
+        if mapped is None:
+            raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
+        roots.add(mapped)
+    return SymlinkMaterializationRequest(
+        scope=request.scope,
+        alias_root=request.alias_root,
+        suffix=request.suffix,
+        physical_alias_roots=tuple(sorted(roots)),
+    )
+
+
+def materialization_projection_matches(
     *,
     path: str,
     mode: str,
-    roots: Sequence[str],
-    scope: str,
-) -> set[tuple[str, str]]:
-    """Map selected roots to bounded suffixes that a symlink must expose."""
+    projection: SurfaceMaterializationProjection,
+    plan: SurfaceMaterializationPlan,
+) -> bool:
+    """Apply original alias-space rules to one physical target path."""
 
-    requests: set[tuple[str, str]] = set()
-    for root in roots:
-        if path == root or path.startswith(f"{root}/"):
-            requests.add((scope, ""))
-        elif mode == "120000" and root.startswith(f"{path.rstrip('/')}/"):
-            requests.add((scope, root[len(path.rstrip('/')) + 1 :]))
+    alias_path = projected_alias_path(path, projection)
+    if alias_path is not None:
+        if projection.scope == "context" and any(
+            is_excluded(PurePosixPath(candidate), plan.context_excludes)
+            for candidate in projection_physical_paths(path, projection)
+        ):
+            return False
+        if scope_materialization_matches(
+            path=alias_path,
+            scope=projection.scope,
+            plan=plan,
+        ):
+            return True
+        return mode == "120000" and bool(
+            symlink_materialization_requests(
+                path=alias_path,
+                plan=plan,
+                allowed_scope=projection.scope,
+            )
+        )
+
+    if mode != "120000" or not projection.target_root.startswith(
+        f"{path.rstrip('/')}/"
+    ):
+        return False
+    return projection.scope != "context" or not any(
+        is_excluded(PurePosixPath(root), plan.context_excludes)
+        for root in (projection.target_root, *projection.physical_alias_roots)
+    )
+
+
+def projected_symlink_requests(
+    *,
+    path: str,
+    projections: Sequence[SurfaceMaterializationProjection],
+    plan: SurfaceMaterializationPlan,
+) -> set[SymlinkMaterializationRequest]:
+    """Preserve alias selections while following nested physical symlinks."""
+
+    requests: set[SymlinkMaterializationRequest] = set()
+    for projection in projections:
+        alias_path = projected_alias_path(path, projection)
+        if alias_path is not None:
+            requests.update(
+                preserve_projection_physical_roots(request, projection)
+                for request in symlink_materialization_requests(
+                    path=alias_path,
+                    plan=plan,
+                    allowed_scope=projection.scope,
+                )
+            )
+            continue
+        prefix = f"{path.rstrip('/')}/"
+        if projection.target_root.startswith(prefix):
+            requests.add(
+                SymlinkMaterializationRequest(
+                    scope=projection.scope,
+                    alias_root=projection.alias_root,
+                    suffix=projection.target_root[len(prefix) :],
+                    physical_alias_roots=tuple(
+                        sorted(
+                            {
+                                projection.target_root,
+                                *projection.physical_alias_roots,
+                            }
+                        )
+                    ),
+                )
+            )
     return requests
 
 
@@ -588,12 +787,12 @@ def parse_git_tree_entries(
     *,
     repo_relative: str,
     materialization_plan: SurfaceMaterializationPlan | None = None,
-    explicit_fixed_root_paths: Sequence[str] = (),
-    explicit_context_root_paths: Sequence[str] = (),
-    context_excludes: Sequence[str] = (),
+    materialization_projections: Sequence[SurfaceMaterializationProjection] = (),
 ) -> list[GitTreeEntry]:
     """Parse and validate raw `git ls-tree -z` output deterministically."""
 
+    if materialization_projections and materialization_plan is None:
+        raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
     entries: list[GitTreeEntry] = []
     seen_paths: set[str] = set()
     prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
@@ -625,46 +824,26 @@ def parse_git_tree_entries(
             continue
         raw_relative = raw_path[len(raw_root) + 1 :] if raw_root else raw_path
         raw_relative_path = os.fsdecode(raw_relative)
-        selected = (
-            materialization_plan is None
-            and not explicit_fixed_root_paths
-            and not explicit_context_root_paths
-        )
+        selected = materialization_plan is None and not materialization_projections
         if materialization_plan is not None:
-            if materialization_plan_matches(raw_relative_path, materialization_plan):
+            if materialization_projections:
+                selected = any(
+                    materialization_projection_matches(
+                        path=raw_relative_path,
+                        mode=mode,
+                        projection=projection,
+                        plan=materialization_plan,
+                    )
+                    for projection in materialization_projections
+                )
+            elif materialization_plan_matches(raw_relative_path, materialization_plan):
                 selected = True
             elif mode == "120000" and any(
-                materialization_ancestor_roots(raw_relative_path, materialization_plan).values()
+                materialization_ancestor_roots(
+                    raw_relative_path, materialization_plan
+                ).values()
             ):
                 selected = True
-        if explicit_fixed_root_paths and (
-            path_is_at_or_below(raw_relative_path, explicit_fixed_root_paths)
-            or (
-                mode == "120000"
-                and path_is_symlink_ancestor_of_root(
-                    raw_relative_path, explicit_fixed_root_paths
-                )
-            )
-        ):
-            selected = True
-        if (
-            explicit_context_root_paths
-            and (
-                (
-                    path_is_at_or_below(raw_relative_path, explicit_context_root_paths)
-                    and not is_excluded(PurePosixPath(raw_relative_path), context_excludes)
-                )
-                or (
-                    mode == "120000"
-                    and any(
-                        root.startswith(f"{raw_relative_path.rstrip('/')}/")
-                        and not is_excluded(PurePosixPath(root), context_excludes)
-                        for root in explicit_context_root_paths
-                    )
-                )
-            )
-        ):
-            selected = True
         if not selected:
             continue
         path = safe_git_tree_path(raw_path)
@@ -857,29 +1036,20 @@ def expand_git_tree_symlink_targets(
     """Add bounded repository-internal target chains for selected symlinks."""
 
     selected = {os.path.normcase(entry.path): entry for entry in entries}
-    selected_requests: dict[str, set[tuple[str, str]]] = {}
+    selected_requests: dict[str, set[SymlinkMaterializationRequest]] = {}
     prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
     for key, entry in selected.items():
+        if entry.mode != "120000":
+            continue
         relative_path = entry.path[len(prefix) :] if prefix else entry.path
-        scope = materialization_scope(relative_path, materialization_plan)
-        requests = {(scope, "")} if scope is not None else set()
-        if entry.mode == "120000":
-            ancestor_roots = materialization_ancestor_roots(
-                relative_path, materialization_plan
-            )
-            for ancestor_scope, roots in ancestor_roots.items():
-                requests.update(
-                    symlink_follow_requests(
-                    path=relative_path,
-                    mode=entry.mode,
-                    roots=roots,
-                    scope=ancestor_scope,
-                )
-                )
+        requests = symlink_materialization_requests(
+            path=relative_path,
+            plan=materialization_plan,
+        )
         if not requests:
             raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
         selected_requests[key] = requests
-    processed_requests: dict[str, frozenset[tuple[str, str]]] = {}
+    processed_requests: dict[str, frozenset[SymlinkMaterializationRequest]] = {}
     symlink_targets: dict[str, bytes] = {}
     normalized_targets: dict[str, str] = {}
     expanded_entry_count = 0
@@ -907,8 +1077,7 @@ def expand_git_tree_symlink_targets(
             )
 
         round_targets = read_git_symlink_targets(toplevel=toplevel, entries=pending)
-        fixed_roots: set[str] = set()
-        context_roots: set[str] = set()
+        projections: set[SurfaceMaterializationProjection] = set()
         for entry in pending:
             key = os.path.normcase(entry.path)
             target = round_targets[entry.path]
@@ -930,51 +1099,55 @@ def expand_git_tree_symlink_targets(
                 raise SurfaceDeltaError(
                     "surface delta found a symlink cycle in the base ref tree"
                 )
-            for scope, suffix in selected_requests[key]:
-                expansion_root = (
-                    PurePosixPath(normalized_target, suffix).as_posix()
-                    if suffix
+            for request in selected_requests[key]:
+                target_root = (
+                    PurePosixPath(normalized_target, request.suffix).as_posix()
+                    if request.suffix
                     else normalized_target
                 )
-                if scope == "fixed":
-                    fixed_roots.add(expansion_root)
-                else:
-                    context_roots.add(expansion_root)
+                projections.add(
+                    SurfaceMaterializationProjection(
+                        scope=request.scope,
+                        alias_root=request.alias_root,
+                        target_root=target_root,
+                        physical_alias_roots=request.physical_alias_roots,
+                    )
+                )
+                if len(projections) > _MAX_MATERIALIZATION_PROJECTIONS:
+                    raise SurfaceDeltaError(
+                        "surface delta found too many materialization projections"
+                    )
             processed_requests[key] = frozenset(selected_requests[key])
 
+        round_projections = tuple(sorted(projections))
         discovered = parse_git_tree_entries(
             raw_listing,
             repo_relative=repo_relative,
-            explicit_fixed_root_paths=tuple(sorted(fixed_roots)),
-            explicit_context_root_paths=tuple(sorted(context_roots)),
-            context_excludes=materialization_plan.context_excludes,
+            materialization_plan=materialization_plan,
+            materialization_projections=round_projections,
         )
         for entry in discovered:
             key = os.path.normcase(entry.path)
-            relative_path = entry.path[len(prefix) :] if prefix else entry.path
-            requests = symlink_follow_requests(
-                path=relative_path,
-                mode=entry.mode,
-                roots=tuple(fixed_roots),
-                scope="fixed",
-            )
-            requests.update(
-                symlink_follow_requests(
+            requests: set[SymlinkMaterializationRequest] = set()
+            if entry.mode == "120000":
+                relative_path = entry.path[len(prefix) :] if prefix else entry.path
+                requests = projected_symlink_requests(
                     path=relative_path,
-                    mode=entry.mode,
-                    roots=tuple(context_roots),
-                    scope="context",
+                    projections=round_projections,
+                    plan=materialization_plan,
                 )
-            )
-            if not requests:
-                raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
+                if not requests:
+                    raise SurfaceDeltaError(
+                        "surface delta found an unsafe materialization scope"
+                    )
             existing = selected.get(key)
             if existing is not None:
                 if existing != entry:
                     raise SurfaceDeltaError(
                         "surface delta found duplicate paths in the base ref tree"
                     )
-                selected_requests[key].update(requests)
+                if entry.mode == "120000":
+                    selected_requests[key].update(requests)
                 continue
             expanded_entry_count += 1
             if expanded_entry_count > _MAX_SYMLINK_TARGET_ENTRIES:
@@ -982,7 +1155,8 @@ def expand_git_tree_symlink_targets(
                     "surface delta found too many symlink target entries in the base ref tree"
                 )
             selected[key] = entry
-            selected_requests[key] = requests
+            if entry.mode == "120000":
+                selected_requests[key] = requests
 
     return sorted(selected.values(), key=lambda entry: entry.path), symlink_targets
 

@@ -212,8 +212,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
   are not materialized. Selected repository-internal symlink targets and chains
   are added with bounded expansion so target-only changes remain comparable.
   Repository-external symlink targets are not followed; external, `.git`,
-  cyclic, and otherwise unsafe targets fail closed, while context-excluded
-  targets are not expanded through context-selected symlinks. Target values are
+  cyclic, and otherwise unsafe targets fail closed. Context `scan.exclude` is
+  applied to both repository-relative alias paths and resolved in-repo target
+  paths before expansion through context-selected symlinks. Target values are
   never published.
   Raw blobs are streamed into a temporary synthetic tar rather than buffering
   a repository archive in memory. Base-tree extraction requires the

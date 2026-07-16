@@ -809,6 +809,147 @@ def test_archive_base_tree_materializes_only_selected_symlink_ancestor_descendan
     assert not (dest / "config" / "github" / "unrelated.bin").exists()
 
 
+def test_archive_base_tree_projects_context_include_through_symlink_ancestor(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "storage" / "context-root" / "selected.md", "selected\n")
+    write(repo / "storage" / "context-root" / "unrelated.bin", "unrelated\n")
+    (repo / "context").symlink_to("storage/context-root", target_is_directory=True)
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={"scan": {"include": ["context/**/*.md"]}},
+    )
+
+    assert (dest / "context").is_symlink()
+    assert (dest / "storage" / "context-root" / "selected.md").is_file()
+    assert not (dest / "storage" / "context-root" / "unrelated.bin").exists()
+
+
+def test_archive_base_tree_projects_context_exclude_through_symlink_ancestor(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "storage" / "context-root" / "public.md", "public\n")
+    write(repo / "storage" / "context-root" / "private" / "secret.md", "private\n")
+    (repo / "context").symlink_to("storage/context-root", target_is_directory=True)
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={
+            "scan": {
+                "include": ["context/**/*.md"],
+                "exclude": ["context/private/**"],
+            }
+        },
+    )
+
+    assert (dest / "context").is_symlink()
+    assert (dest / "storage" / "context-root" / "public.md").is_file()
+    assert not (dest / "storage" / "context-root" / "private" / "secret.md").exists()
+
+
+def test_archive_base_tree_preserves_context_rules_through_symlink_chain(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "storage" / "context-root" / "public.md", "public\n")
+    write(repo / "storage" / "context-root" / "unrelated.bin", "unrelated\n")
+    write(repo / "storage" / "context-root" / "private" / "secret.md", "private\n")
+    (repo / "links").mkdir()
+    (repo / "links" / "context").symlink_to(
+        "../storage/context-root", target_is_directory=True
+    )
+    (repo / "context").symlink_to("links/context", target_is_directory=True)
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={
+            "scan": {
+                "include": ["context/**/*.md"],
+                "exclude": ["context/private/**"],
+            }
+        },
+    )
+
+    assert (dest / "context").is_symlink()
+    assert (dest / "links" / "context").is_symlink()
+    assert (dest / "storage" / "context-root" / "public.md").is_file()
+    assert not (dest / "storage" / "context-root" / "unrelated.bin").exists()
+    assert not (dest / "storage" / "context-root" / "private" / "secret.md").exists()
+
+
+def test_archive_base_tree_preserves_physical_excludes_through_symlink_chain(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "real" / "context-root" / "public.md", "public\n")
+    write(repo / "real" / "context-root" / "private" / "secret.md", "private\n")
+    (repo / "storage").symlink_to("real", target_is_directory=True)
+    (repo / "context").symlink_to("storage/context-root", target_is_directory=True)
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={
+            "scan": {
+                "include": ["context/**/*.md"],
+                "exclude": ["storage/context-root/private/**"],
+            }
+        },
+    )
+
+    assert (dest / "context").is_symlink()
+    assert (dest / "storage").is_symlink()
+    assert (dest / "real" / "context-root" / "public.md").is_file()
+    assert not (dest / "real" / "context-root" / "private" / "secret.md").exists()
+
+
+def test_surface_delta_alias_exclude_is_consistent_between_base_and_head(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    root = repo / "project"
+    init_repo(repo)
+    write(
+        root / "context_policy.yaml",
+        "scan:\n"
+        "  include:\n"
+        "    - context/**/*.md\n"
+        "  exclude:\n"
+        "    - context/private/**\n",
+    )
+    write(root / "storage" / "context-root" / "public.md", "public\n")
+    write(root / "storage" / "context-root" / "private" / "secret.md", "private\n")
+    (root / "context").symlink_to("storage/context-root", target_is_directory=True)
+    commit_all(repo, "base")
+
+    result = run_delta(root, "HEAD")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+
+
 def test_surface_delta_symlink_ancestor_is_unchanged(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
@@ -878,6 +1019,31 @@ def test_surface_delta_materializes_symlink_ancestor_chain(tmp_path: Path) -> No
             "changed_fields": ["content"],
         }
     ]
+
+
+def test_archive_base_tree_bounds_materialization_projections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "storage" / "context-root" / "one.md", "one\n")
+    write(repo / "storage" / "context-root" / "two.md", "two\n")
+    (repo / "context").symlink_to("storage/context-root", target_is_directory=True)
+    commit_all(repo, "base")
+    monkeypatch.setattr(surface_delta_module, "_MAX_MATERIALIZATION_PROJECTIONS", 1)
+
+    with pytest.raises(SurfaceDeltaError, match="too many materialization projections"):
+        archive_base_tree(
+            toplevel=repo,
+            base_ref="HEAD",
+            dest=tmp_path / "base-tree",
+            context_policy={
+                "scan": {
+                    "include": ["context/one.md", "context/two.md"],
+                }
+            },
+        )
 
 
 def test_archive_base_tree_bounds_internal_symlink_target_entries(

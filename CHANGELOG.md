@@ -33,8 +33,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   read, so unrelated tracked blobs are not materialized. Selected repository-
   internal symlink targets and chains use bounded expansion so target-only
   changes remain comparable; repository-external, `.git`, cyclic, and otherwise
-  unsafe targets fail closed, while context-excluded targets are not expanded
-  through context-selected symlinks. Target values are never published.
+  unsafe targets fail closed, while context `scan.exclude` is applied to both
+  repository-relative alias paths and resolved in-repo target paths before
+  expansion through context-selected symlinks. Target values are never
+  published.
   Synthetic tar extraction fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path

@@ -373,7 +373,11 @@ def iter_context_files(*, root: Path, policy: dict[str, object]) -> list[Path]:
         if has_glob_magic(pattern):
             candidates = root.glob(pattern)
         else:
-            target = (root / pattern).resolve()
+            target = root / pattern
+            try:
+                target.resolve().relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
             if target.is_dir():
                 candidates = target.rglob("*")
             else:
@@ -383,12 +387,18 @@ def iter_context_files(*, root: Path, policy: dict[str, object]) -> list[Path]:
             if not path.is_file():
                 continue
             try:
-                rel = path.resolve().relative_to(root)
-            except ValueError:
+                alias_rel = path.relative_to(root)
+                resolved_path = path.resolve()
+                resolved_rel = resolved_path.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
                 continue
-            if is_excluded(rel, exclude) or path in seen:
+            if (
+                is_excluded(alias_rel, exclude)
+                or is_excluded(resolved_rel, exclude)
+                or resolved_path in seen
+            ):
                 continue
-            seen.add(path)
+            seen.add(resolved_path)
             files.append(path)
 
     return sorted(files)

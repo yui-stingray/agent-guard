@@ -668,8 +668,8 @@ tracked blobs are not materialized. Selected repository-internal symlink targets
 and chains are materialized with bounded expansion so target-only changes remain
 comparable. Repository-external symlink targets are not followed; external,
 `.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
-targets are not expanded through context-selected symlinks. Target values are
-never published.
+alias paths and resolved in-repo target paths are not expanded through
+context-selected symlinks. Target values are never published.
 `changed_fields` lists metadata field names only, never values, and
 the section never emits the base ref name, raw diffs, MCP args/env values, or
 instruction/description text. Repeated records retain their count, while
@@ -829,6 +829,9 @@ policy:
       pattern: "(?i)always\\s+allow.{0,80}(bash|shell|network|write|edit)"
       message: "agent context should not broadly auto-allow risky tools"
 ```
+
+For symlinked context files, `scan.exclude` is evaluated against both the
+repository-relative alias path and the resolved in-repo target path.
 
 Use `forbidden_patterns` to replace the default context rules, or
 `extra_forbidden_patterns` to append repository-specific rules. A ready-to-run
