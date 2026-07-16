@@ -196,9 +196,12 @@ The JSON report is a compact statement of what `agent-guard` checked:
 - Optional `surface_delta` is emitted when `--surface-delta-base-ref` is
   supplied. It reports which agent surfaces (context files, skills, MCP
   servers, workflows, policies, hooks) were added, removed, or modified
-  relative to the given base ref, computed from the same surface inventory v2
-  used elsewhere in the report. It is deterministic review evidence, not a
-  gate: it never changes the report's exit code and is never emitted to SARIF.
+  relative to `git merge-base <base-ref> HEAD`, computed from the same surface
+  inventory v2 used elsewhere in the report. The working tree remains the head
+  side, so uncommitted changes are included without misclassifying additions on
+  an advanced base branch as PR removals. It is deterministic review evidence,
+  not a gate: it never changes the report's exit code and is never emitted to
+  SARIF.
   Policy is always read from the current working tree, never from the base
   ref; the base tree is materialized read-only from raw Git tree/blob objects
   and never executed as instructions. This does not apply release-archive
@@ -206,14 +209,18 @@ The JSON report is a compact statement of what `agent-guard` checked:
   clean/process/smudge filters are not executed. Git tree metadata is filtered
   against the requested repository root and inventory patterns, including
   context `scan.exclude`, before any blob is read, so unrelated tracked blobs
-  are not materialized. In addition,
-  repository-external symlink targets are not followed by surface inventory.
+  are not materialized. Selected repository-internal symlink targets and chains
+  are added with bounded expansion so target-only changes remain comparable.
+  Repository-external symlink targets are not followed; external, `.git`,
+  cyclic, and otherwise unsafe targets fail closed, while context-excluded
+  targets are not expanded through context-selected symlinks. Target values are
+  never published.
   Raw blobs are streamed into a temporary synthetic tar rather than buffering
   a repository archive in memory. Base-tree extraction requires the
   security-backported stdlib tar extraction filter available from Python
   3.11.4 and fails closed if that filter is unavailable; there is no
   unfiltered fallback. `changed_fields`
-  lists field *names* only, never before/after values. Repeated same-file
+  lists schema-enumerated field *names* only, never before/after values. Repeated same-file
   records retain their multiplicity, while
   line-number and workflow-step-position-only moves remain unchanged. The
   delta marks content-only changes to existing file-backed context, policy,

@@ -112,8 +112,10 @@ bodies, branch names, or local paths.
 Set `surface-delta-base-ref` to embed sanitized PR agent-surface delta
 evidence: which agent-facing surfaces (context files, skills, MCP servers,
 workflows, policies, hooks) were added, removed, or modified relative to the
-pull request's base branch. This is deterministic review evidence, not a gate;
-it does not fail the job by itself and it is never emitted to SARIF.
+merge base of the supplied ref and `HEAD`. This avoids reporting additions made
+only on an advanced base branch as PR removals. This is deterministic review
+evidence, not a gate. It is never emitted to SARIF and does not fail the job by
+itself.
 
 This Action input is currently unreleased and is not available in `v0.2.4`.
 Replace `<release-tag-with-surface-delta>` with the first published release tag
@@ -135,8 +137,8 @@ Fetch the base ref explicitly before running the action, the same way
 ```
 
 For a pull request event, the exact base commit is also available as
-`${{ github.event.pull_request.base.sha }}`. Fetch it first, then pass it
-directly instead of a branch name that can move:
+`${{ github.event.pull_request.base.sha }}`. Fetch it first, then pass it as a
+stable merge-base anchor instead of a branch name that can move:
 
 ```yaml
       - uses: actions/checkout@v7

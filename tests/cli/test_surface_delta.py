@@ -176,6 +176,41 @@ def test_surface_delta_cli_is_deterministic(tmp_path: Path) -> None:
     assert first.stdout == second.stdout
 
 
+def test_surface_delta_uses_merge_base_when_base_branch_advances(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    commit_all(repo, "common base")
+    base_branch = run_git(repo, "branch", "--show-current").stdout.strip()
+
+    run_git(repo, "checkout", "-b", "feature")
+    write(repo / ".github" / "skills" / "reviewer" / "SKILL.md", "reviewer skill\n")
+    commit_all(repo, "feature surface")
+
+    run_git(repo, "checkout", base_branch)
+    write(
+        repo / ".mcp.json",
+        json.dumps({"mcpServers": {"base-only": {"command": "uvx", "args": ["base==1.0"]}}}),
+    )
+    commit_all(repo, "base branch surface")
+    advanced_base = base_sha(repo)
+
+    run_git(repo, "checkout", "feature")
+    result = run_delta(repo, advanced_base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_skill",
+            "path": ".github/skills/reviewer",
+            "name": "",
+            "status": "added",
+            "changed_fields": [],
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     (
         "relative_path",
@@ -531,6 +566,225 @@ def test_archive_base_tree_skips_context_excluded_blob_materialization(tmp_path:
     assert not (dest / "private" / "secret.md").exists()
 
 
+def test_archive_base_tree_materializes_selected_internal_symlink_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "shared" / "context.md", "Require approval before shell writes.\n")
+    (repo / "AGENTS.md").symlink_to("shared/context.md")
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={"scan": {"include": ["AGENTS.md"]}},
+    )
+
+    assert (dest / "AGENTS.md").is_symlink()
+    assert (dest / "shared" / "context.md").read_text(encoding="utf-8") == (
+        "Require approval before shell writes.\n"
+    )
+
+
+def test_archive_base_tree_does_not_materialize_context_excluded_symlink_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "private" / "secret.md", "private marker\n")
+    (repo / "AGENTS.md").symlink_to("private/secret.md")
+    commit_all(repo, "base")
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy={
+            "scan": {
+                "include": ["AGENTS.md"],
+                "exclude": ["private/**"],
+            }
+        },
+    )
+
+    assert (dest / "AGENTS.md").is_symlink()
+    assert not (dest / "private" / "secret.md").exists()
+
+
+def test_surface_delta_internal_symlink_is_unchanged(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "scan:\n  include:\n    - AGENTS.md\n")
+    write(repo / "shared" / "context.md", "Require approval before shell writes.\n")
+    (repo / "AGENTS.md").symlink_to("shared/context.md")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    delta = json.loads(result.stdout)["delta"]
+    assert delta["entries"] == []
+    assert delta["summary"] == {
+        "added": 0,
+        "removed": 0,
+        "modified": 0,
+        "unchanged": 1,
+    }
+
+
+def test_surface_delta_maps_internal_symlink_target_only_change(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "scan:\n  include:\n    - AGENTS.md\n")
+    write(repo / "shared" / "context.md", "Require approval before shell writes A.\n")
+    (repo / "AGENTS.md").symlink_to("shared/context.md")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / "shared" / "context.md", "Require approval before shell writes B.\n")
+    commit_all(repo, "head")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_context",
+            "path": "shared/context.md",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_surface_delta_materializes_internal_symlink_chain(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "scan:\n  include:\n    - AGENTS.md\n")
+    write(repo / "shared" / "context.md", "Require approval before shell writes A.\n")
+    (repo / "links").mkdir()
+    (repo / "links" / "agent-context").symlink_to("../shared/context.md")
+    (repo / "AGENTS.md").symlink_to("links/agent-context")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / "shared" / "context.md", "Require approval before shell writes B.\n")
+    commit_all(repo, "head")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_context",
+            "path": "shared/context.md",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_surface_delta_maps_internal_directory_symlink_target_change(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "scan:\n  exclude:\n    - shared/**\n")
+    write(repo / "shared" / "reviewer" / "SKILL.md", "base skill body\n")
+    (repo / ".github" / "skills").mkdir(parents=True)
+    (repo / ".github" / "skills" / "reviewer").symlink_to("../../shared/reviewer")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / "shared" / "reviewer" / "SKILL.md", "head skill body\n")
+    commit_all(repo, "head")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_skill",
+            "path": "shared/reviewer",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_archive_base_tree_bounds_internal_symlink_target_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "shared" / "reviewer" / "one.md", "one\n")
+    write(repo / "shared" / "reviewer" / "two.md", "two\n")
+    (repo / ".github" / "skills").mkdir(parents=True)
+    (repo / ".github" / "skills" / "reviewer").symlink_to("../../shared/reviewer")
+    commit_all(repo, "base")
+    monkeypatch.setattr(surface_delta_module, "_MAX_SYMLINK_TARGET_ENTRIES", 1)
+
+    with pytest.raises(SurfaceDeltaError, match="too many symlink target entries"):
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
+
+
+def test_archive_base_tree_rejects_git_internal_symlink_target(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    (repo / "AGENTS.md").symlink_to(".git/config")
+    commit_all(repo, "base")
+
+    with pytest.raises(SurfaceDeltaError, match="unsafe symlink") as error:
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
+
+    assert ".git/config" not in str(error.value)
+    assert str(repo) not in str(error.value)
+
+
+def test_archive_base_tree_rejects_internal_symlink_cycle(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    (repo / "links").mkdir()
+    (repo / "AGENTS.md").symlink_to("links/agent-context")
+    (repo / "links" / "agent-context").symlink_to("../AGENTS.md")
+    commit_all(repo, "base")
+
+    with pytest.raises(SurfaceDeltaError, match="symlink cycle") as error:
+        archive_base_tree(
+            toplevel=repo,
+            base_ref="HEAD",
+            dest=tmp_path / "base-tree",
+            context_policy={"scan": {"include": ["AGENTS.md"]}},
+        )
+
+    assert "links/agent-context" not in str(error.value)
+    assert str(repo) not in str(error.value)
+
+
+def test_archive_base_tree_rejects_directory_target_symlink_cycle(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    (repo / "links").mkdir()
+    (repo / "AGENTS.md").symlink_to("links")
+    (repo / "links" / "AGENTS.md").symlink_to("../AGENTS.md")
+    commit_all(repo, "base")
+
+    with pytest.raises(SurfaceDeltaError, match="symlink cycle") as error:
+        archive_base_tree(
+            toplevel=repo,
+            base_ref="HEAD",
+            dest=tmp_path / "base-tree",
+            context_policy={"scan": {"include": ["AGENTS.md"]}},
+        )
+
+    assert "links/AGENTS.md" not in str(error.value)
+    assert str(repo) not in str(error.value)
+
+
 def test_surface_delta_ignores_unrelated_unsafe_git_path(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
@@ -588,10 +842,10 @@ def test_surface_delta_materializes_custom_context_include(tmp_path: Path) -> No
 
 @pytest.mark.parametrize(
     "relative_path",
-    (
+    [
         "nested/AGENTS.md",
         ".github/instructions/review.instructions.md",
-    ),
+    ],
 )
 def test_surface_delta_materializes_default_recursive_context_includes(
     tmp_path: Path,
@@ -867,6 +1121,25 @@ def test_surface_delta_entry_redacts_public_locator_shapes(unsafe_locator: str) 
     assert payload["path"] != unsafe_locator
     assert payload["name"] != unsafe_locator
     assert unsafe_locator not in serialized
+
+
+def test_surface_delta_rejects_unknown_public_vocabularies() -> None:
+    with pytest.raises(SurfaceDeltaError, match="unsupported surface metadata"):
+        surface_delta_module.diff_entry_fields(
+            {"surface": "future", "path": "surface", "future_field": "before"},
+            {"surface": "future", "path": "surface", "future_field": "after"},
+        )
+    with pytest.raises(SurfaceDeltaError, match="unsupported risk label"):
+        surface_delta_module.surface_entry_risk_labels(
+            {"risky_patterns": ["future_risk_label"]}
+        )
+    with pytest.raises(SurfaceDeltaError, match="unsupported entry status"):
+        SurfaceDeltaEntry(
+            kind="agent_context",
+            path="AGENTS.md",
+            name="",
+            status="future",
+        ).to_dict()
 
 
 def test_surface_delta_json_outputs_redact_secret_shaped_surface_paths(tmp_path: Path) -> None:

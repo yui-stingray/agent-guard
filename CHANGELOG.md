@@ -20,16 +20,22 @@ Why: keep static guard releases auditable while the package is still alpha.
   `action.yml` `surface-delta-base-ref` input. Repeated records retain their
   multiplicity instead of overwriting one another, locator-only line/step moves
   remain unchanged, content-only edits to all direct file-backed surfaces are
-  reported without publishing content or fingerprint values, public locator
+  reported without publishing content or fingerprint values, the supplied base
+  ref is resolved to its merge base with `HEAD` so an advanced base branch does
+  not create false PR removals, public `changed_fields` and risk labels are
+  schema-enumerated, public locator
   fields redact secret-, URL-, hash-, and absolute-path-shaped text before JSON
   emission, unresolved-base report sections validate against the same schema,
   and base snapshots now stream raw Git tree/blob objects without applying
   `export-ignore` or `export-subst`. Configured clean/process/smudge filters
   are not executed, and tree metadata is filtered against the requested root
   and inventory patterns, including context `scan.exclude`, before any blob is
-  read, so unrelated tracked blobs are not materialized. Repository-external
-  symlink targets are not followed, and synthetic tar extraction fails closed
-  when the safe tar filter is not available.
+  read, so unrelated tracked blobs are not materialized. Selected repository-
+  internal symlink targets and chains use bounded expansion so target-only
+  changes remain comparable; repository-external, `.git`, cyclic, and otherwise
+  unsafe targets fail closed, while context-excluded targets are not expanded
+  through context-selected symlinks. Target values are never published.
+  Synthetic tar extraction fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

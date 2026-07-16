@@ -205,6 +205,45 @@ def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None
         validate_payload("agent-guard.surface_delta.v1.schema.json", resolved_without_details)
 
 
+def test_surface_delta_schema_pins_public_vocabularies() -> None:
+    schema = load_schema("agent-guard.surface_delta.v1.schema.json")
+    entry = schema["properties"]["entries"]["items"]
+
+    assert schema["additionalProperties"] is False
+    assert entry["additionalProperties"] is False
+    assert entry["properties"]["changed_fields"]["items"]["enum"] == [
+        "artifact_path",
+        "command",
+        "command_basename",
+        "content",
+        "env_vars",
+        "file_count",
+        "filesystem_root",
+        "job_id",
+        "kind",
+        "line_count",
+        "package_manager",
+        "remote_host",
+        "risky_patterns",
+        "size_bytes",
+        "status",
+        "transport",
+        "truncated",
+        "version_pinned",
+    ]
+    assert entry["properties"]["risk_labels"]["items"]["enum"] == [
+        "broad_authorization_scope",
+        "filesystem_root_reference",
+        "inline_authorization_value",
+        "inline_env_value",
+        "instruction_like_description",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unsafe_url_scheme",
+        "unpinned_package",
+    ]
+
+
 def test_report_schema_embeds_surface_delta_contract() -> None:
     report_schema = load_schema("agent-guard.report_evidence.v1.schema.json")
     delta_schema = load_schema("agent-guard.surface_delta.v1.schema.json")

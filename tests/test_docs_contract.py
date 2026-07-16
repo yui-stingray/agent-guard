@@ -547,7 +547,12 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     assert "filtered against the requested repository root and inventory patterns" in docs_single_line
     assert "context `scan.exclude`" in docs_single_line
     assert "unrelated tracked blobs are not materialized" in docs_single_line
-    assert "repository-external symlink targets are not followed" in docs_single_line
+    assert "Repository-external symlink targets are not followed" in docs_single_line
+    assert "git merge-base <base-ref> HEAD" in docs_single_line
+    assert "context-excluded targets are not expanded through context-selected symlinks" in (
+        docs_single_line
+    )
+    assert "Target values are never published" in docs_single_line
 
 
 def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:

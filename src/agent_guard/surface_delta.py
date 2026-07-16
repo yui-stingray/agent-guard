@@ -37,6 +37,7 @@ from .surface_inventory import (
     WORKFLOW_GLOBS,
     collect_agent_surface_inventory,
 )
+from .surface_inventory_mcp_safety import MCP_RISKY_PATTERNS
 
 
 SURFACE_DELTA_SCHEMA_VERSION_V1 = "agent-guard.surface_delta.v1"
@@ -68,6 +69,28 @@ _INTERNAL_CONTENT_REVISION_FIELD = "_content_revision"
 _PUBLIC_CHANGED_FIELD_ALIASES = {
     _INTERNAL_CONTENT_REVISION_FIELD: "content",
 }
+_PUBLIC_CHANGED_FIELDS = frozenset(
+    {
+        "artifact_path",
+        "command",
+        "command_basename",
+        "content",
+        "env_vars",
+        "file_count",
+        "filesystem_root",
+        "job_id",
+        "kind",
+        "line_count",
+        "package_manager",
+        "remote_host",
+        "risky_patterns",
+        "size_bytes",
+        "status",
+        "transport",
+        "truncated",
+        "version_pinned",
+    }
+)
 _UNSAFE_BASE_REF_CHARS = "\x00\r\n"
 _BASE_REF_UNRESOLVED_MESSAGE = (
     "surface delta could not resolve --base-ref; fetch it explicitly in CI "
@@ -77,6 +100,9 @@ _BASE_REF_UNRESOLVED_MESSAGE = (
 _FILTER_CONFIG_SUFFIXES = (".clean", ".process", ".required")
 _MAX_FILTER_DRIVERS = 128
 _MAX_SYMLINK_TARGET_BYTES = 64 * 1024
+_MAX_EXPANDED_SYMLINKS = 256
+_MAX_SYMLINK_CHAIN_DEPTH = 40
+_MAX_SYMLINK_TARGET_ENTRIES = 1000
 _MAX_SURFACE_PATHSPECS = 256
 _MAX_SURFACE_PATHSPEC_LENGTH = 1024
 _MAX_GLOB_VARIANTS = 32
@@ -96,15 +122,23 @@ class SurfaceDeltaEntry:
     changed_fields: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
+        risk_labels = tuple(sorted(set(self.risk_labels)))
+        changed_fields = tuple(sorted(set(self.changed_fields)))
+        if self.status not in {"added", "removed", "modified"}:
+            raise SurfaceDeltaError("surface delta found an unsupported entry status")
+        if not set(risk_labels).issubset(MCP_RISKY_PATTERNS):
+            raise SurfaceDeltaError("surface delta found an unsupported risk label")
+        if not set(changed_fields).issubset(_PUBLIC_CHANGED_FIELDS):
+            raise SurfaceDeltaError("surface delta found unsupported surface metadata")
         payload: dict[str, object] = {
             "kind": self.kind,
             "path": self.path,
             "name": self.name,
             "status": self.status,
         }
-        if self.risk_labels:
-            payload["risk_labels"] = list(self.risk_labels)
-        payload["changed_fields"] = list(self.changed_fields)
+        if risk_labels:
+            payload["risk_labels"] = list(risk_labels)
+        payload["changed_fields"] = list(changed_fields)
         return sanitize_public_mapping(payload)
 
 
@@ -179,6 +213,27 @@ def repo_relative_root(*, root: Path, toplevel: Path) -> str:
         return root.resolve().relative_to(toplevel).as_posix()
     except ValueError as exc:
         raise SurfaceDeltaError("--root must stay inside the git repository") from exc
+
+
+def is_valid_git_object_id(value: str) -> bool:
+    return len(value) in (40, 64) and all(
+        char in "0123456789abcdef" for char in value
+    )
+
+
+def resolve_merge_base(*, root: Path, base_ref: str) -> str:
+    """Resolve the PR branch point without publishing the caller's ref value."""
+
+    try:
+        result = run_git_command(root, ["merge-base", "--all", "--", base_ref, "HEAD"])
+    except FileNotFoundError as exc:
+        raise SurfaceDeltaError("surface delta requires git") from exc
+    candidates = result.stdout.splitlines()
+    if result.returncode != 0 or len(candidates) != 1 or not is_valid_git_object_id(
+        candidates[0]
+    ):
+        raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
+    return candidates[0]
 
 
 def configured_filter_drivers(root: Path) -> tuple[str, ...]:
@@ -396,13 +451,26 @@ def inventory_path_matches(path: str, patterns: Sequence[str]) -> bool:
 def materialization_plan_matches(path: str, plan: SurfaceMaterializationPlan) -> bool:
     """Apply fixed surfaces plus context include/exclude semantics."""
 
+    return materialization_scope(path, plan) is not None
+
+
+def materialization_scope(path: str, plan: SurfaceMaterializationPlan) -> str | None:
+    """Return the selection scope whose rules must follow a symlink target."""
+
     if inventory_path_matches(path, plan.fixed_includes):
-        return True
+        return "fixed"
     candidate = PurePosixPath(path)
-    return inventory_path_matches(path, plan.context_includes) and not is_excluded(
-        candidate,
-        plan.context_excludes,
-    )
+    if inventory_path_matches(path, plan.context_includes) and not is_excluded(
+        candidate, plan.context_excludes
+    ):
+        return "context"
+    return None
+
+
+def path_is_at_or_below(path: str, roots: Sequence[str]) -> bool:
+    """Return whether a Git path is an explicitly selected root or descendant."""
+
+    return any(path == root or path.startswith(f"{root}/") for root in roots)
 
 
 def run_git_tree_list(
@@ -456,6 +524,9 @@ def parse_git_tree_entries(
     *,
     repo_relative: str,
     materialization_plan: SurfaceMaterializationPlan | None = None,
+    explicit_fixed_root_paths: Sequence[str] = (),
+    explicit_context_root_paths: Sequence[str] = (),
+    context_excludes: Sequence[str] = (),
 ) -> list[GitTreeEntry]:
     """Parse and validate raw `git ls-tree -z` output deterministically."""
 
@@ -484,18 +555,32 @@ def parse_git_tree_entries(
             ("160000", "commit"),
         }:
             raise SurfaceDeltaError("surface delta found an unsupported base ref tree entry")
-        if len(object_id) not in (40, 64) or any(
-            char not in "0123456789abcdef" for char in object_id
-        ):
+        if not is_valid_git_object_id(object_id):
             raise SurfaceDeltaError("surface delta could not parse the base ref tree")
         if raw_root and raw_path != raw_root and not raw_path.startswith(raw_root + b"/"):
             continue
         raw_relative = raw_path[len(raw_root) + 1 :] if raw_root else raw_path
         raw_relative_path = os.fsdecode(raw_relative)
-        if materialization_plan is not None and not materialization_plan_matches(
-            raw_relative_path,
-            materialization_plan,
+        selected = (
+            materialization_plan is None
+            and not explicit_fixed_root_paths
+            and not explicit_context_root_paths
+        )
+        if materialization_plan is not None and materialization_plan_matches(
+            raw_relative_path, materialization_plan
         ):
+            selected = True
+        if explicit_fixed_root_paths and path_is_at_or_below(
+            raw_relative_path, explicit_fixed_root_paths
+        ):
+            selected = True
+        if (
+            explicit_context_root_paths
+            and path_is_at_or_below(raw_relative_path, explicit_context_root_paths)
+            and not is_excluded(PurePosixPath(raw_relative_path), context_excludes)
+        ):
+            selected = True
+        if not selected:
             continue
         path = safe_git_tree_path(raw_path)
         if prefix and path != repo_relative and not path.startswith(prefix):
@@ -543,6 +628,249 @@ def finish_git_blob(process: subprocess.Popen[bytes], reader: GitBlobReader) -> 
         raise SurfaceDeltaError("surface delta could not read the base ref tree")
 
 
+def read_git_symlink_targets(
+    *,
+    toplevel: Path,
+    entries: Sequence[GitTreeEntry],
+) -> dict[str, bytes]:
+    """Read a bounded set of raw symlink blobs without checkout filters."""
+
+    process: subprocess.Popen[bytes] | None = None
+    targets: dict[str, bytes] = {}
+    try:
+        process = subprocess.Popen(
+            ["git", "-C", str(toplevel), "cat-file", "--batch"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        for entry in entries:
+            if entry.mode != "120000":
+                raise SurfaceDeltaError("surface delta could not read the base ref tree")
+            reader = begin_git_blob(process, entry.object_id)
+            if reader.remaining > _MAX_SYMLINK_TARGET_BYTES:
+                raise SurfaceDeltaError(
+                    "surface delta found an unsafe symlink in the base ref tree"
+                )
+            target = reader.read()
+            finish_git_blob(process, reader)
+            if b"\0" in target:
+                raise SurfaceDeltaError(
+                    "surface delta found an unsafe symlink in the base ref tree"
+                )
+            targets[entry.path] = target
+
+        if process.stdin is not None:
+            process.stdin.close()
+        if process.wait() != 0:
+            raise SurfaceDeltaError("surface delta could not read the base ref tree")
+    except SurfaceDeltaError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SurfaceDeltaError("surface delta could not read the base ref tree") from exc
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            process.wait()
+    return targets
+
+
+def normalize_git_symlink_target(
+    *,
+    link_path: str,
+    raw_target: bytes,
+    repo_relative: str,
+) -> str:
+    """Return a scan-root-relative in-root target without exposing its value."""
+
+    target = os.fsdecode(raw_target)
+    raw_parts = target.split("/")
+    meaningful_parts = [part for part in raw_parts if part not in ("", ".")]
+    has_drive_prefix = any(
+        len(part) >= 2 and part[1] == ":" and part[0].isalpha()
+        for part in meaningful_parts
+    )
+    if (
+        not target
+        or target.startswith(("/", "\\"))
+        or "\\" in target
+        or "\0" in target
+        or has_drive_prefix
+    ):
+        raise SurfaceDeltaError("surface delta found an unsafe symlink in the base ref tree")
+
+    root_parts = (
+        [] if repo_relative in ("", ".") else list(PurePosixPath(repo_relative).parts)
+    )
+    link_parts = list(PurePosixPath(link_path).parts)
+    if link_parts[: len(root_parts)] != root_parts or len(link_parts) <= len(root_parts):
+        raise SurfaceDeltaError(
+            "surface delta found an unsafe symlink in the base ref tree"
+        )
+
+    resolved_parts = link_parts[:-1]
+    for part in raw_parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if len(resolved_parts) <= len(root_parts):
+                raise SurfaceDeltaError(
+                    "surface delta found an unsafe symlink in the base ref tree"
+                )
+            resolved_parts.pop()
+            continue
+        if part.casefold() == ".git":
+            raise SurfaceDeltaError(
+                "surface delta found an unsafe symlink in the base ref tree"
+            )
+        resolved_parts.append(part)
+
+    relative_parts = resolved_parts[len(root_parts) :]
+    if not relative_parts:
+        raise SurfaceDeltaError("surface delta found an unsafe symlink in the base ref tree")
+    return PurePosixPath(*relative_parts).as_posix()
+
+
+def symlink_target_graph_has_cycle(targets: Mapping[str, str]) -> bool:
+    """Return whether file or directory target traversal reaches a symlink cycle."""
+
+    edges: dict[str, set[str]] = {}
+    for link, target in targets.items():
+        edges[link] = {
+            candidate
+            for candidate in targets
+            if candidate == target
+            or candidate.startswith(f"{target}/")
+            or target.startswith(f"{candidate}/")
+        }
+
+    state: dict[str, int] = {}
+
+    def visits_cycle(link: str) -> bool:
+        current_state = state.get(link, 0)
+        if current_state == 1:
+            return True
+        if current_state == 2:
+            return False
+        state[link] = 1
+        if any(visits_cycle(target) for target in edges[link]):
+            return True
+        state[link] = 2
+        return False
+
+    return any(visits_cycle(link) for link in edges if state.get(link, 0) == 0)
+
+
+def expand_git_tree_symlink_targets(
+    *,
+    toplevel: Path,
+    raw_listing: bytes,
+    repo_relative: str,
+    entries: Sequence[GitTreeEntry],
+    materialization_plan: SurfaceMaterializationPlan,
+) -> tuple[list[GitTreeEntry], dict[str, bytes]]:
+    """Add bounded repository-internal target chains for selected symlinks."""
+
+    selected = {os.path.normcase(entry.path): entry for entry in entries}
+    selected_scopes: dict[str, str] = {}
+    prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
+    for key, entry in selected.items():
+        relative_path = entry.path[len(prefix) :] if prefix else entry.path
+        scope = materialization_scope(relative_path, materialization_plan)
+        if scope is None:
+            raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
+        selected_scopes[key] = scope
+    processed_scopes: dict[str, str] = {}
+    symlink_targets: dict[str, bytes] = {}
+    normalized_targets: dict[str, str] = {}
+    expanded_entry_count = 0
+    expansion_depth = 0
+
+    while True:
+        pending = [
+            entry
+            for key, entry in selected.items()
+            if entry.mode == "120000" and processed_scopes.get(key) != selected_scopes[key]
+        ]
+        if not pending:
+            break
+        expansion_depth += 1
+        if expansion_depth > _MAX_SYMLINK_CHAIN_DEPTH:
+            raise SurfaceDeltaError(
+                "surface delta found an overly deep symlink chain in the base ref tree"
+            )
+        if len(symlink_targets) + len(
+            [entry for entry in pending if entry.path not in symlink_targets]
+        ) > _MAX_EXPANDED_SYMLINKS:
+            raise SurfaceDeltaError(
+                "surface delta found too many symlinks in the base ref tree"
+            )
+
+        round_targets = read_git_symlink_targets(toplevel=toplevel, entries=pending)
+        fixed_roots: set[str] = set()
+        context_roots: set[str] = set()
+        for entry in pending:
+            key = os.path.normcase(entry.path)
+            target = round_targets[entry.path]
+            symlink_targets[entry.path] = target
+            normalized_target = normalize_git_symlink_target(
+                link_path=entry.path,
+                raw_target=target,
+                repo_relative=repo_relative,
+            )
+            relative_link = entry.path[len(prefix) :] if prefix else entry.path
+            if relative_link == normalized_target or relative_link.startswith(
+                f"{normalized_target}/"
+            ):
+                raise SurfaceDeltaError(
+                    "surface delta found a symlink cycle in the base ref tree"
+                )
+            normalized_targets[relative_link] = normalized_target
+            if symlink_target_graph_has_cycle(normalized_targets):
+                raise SurfaceDeltaError(
+                    "surface delta found a symlink cycle in the base ref tree"
+                )
+            if selected_scopes[key] == "fixed":
+                fixed_roots.add(normalized_target)
+            else:
+                context_roots.add(normalized_target)
+            processed_scopes[key] = selected_scopes[key]
+
+        discovered = parse_git_tree_entries(
+            raw_listing,
+            repo_relative=repo_relative,
+            explicit_fixed_root_paths=tuple(sorted(fixed_roots)),
+            explicit_context_root_paths=tuple(sorted(context_roots)),
+            context_excludes=materialization_plan.context_excludes,
+        )
+        for entry in discovered:
+            key = os.path.normcase(entry.path)
+            relative_path = entry.path[len(prefix) :] if prefix else entry.path
+            discovered_scope = (
+                "fixed"
+                if path_is_at_or_below(relative_path, tuple(fixed_roots))
+                else "context"
+            )
+            existing = selected.get(key)
+            if existing is not None:
+                if existing != entry:
+                    raise SurfaceDeltaError(
+                        "surface delta found duplicate paths in the base ref tree"
+                    )
+                if discovered_scope == "fixed":
+                    selected_scopes[key] = "fixed"
+                continue
+            expanded_entry_count += 1
+            if expanded_entry_count > _MAX_SYMLINK_TARGET_ENTRIES:
+                raise SurfaceDeltaError(
+                    "surface delta found too many symlink target entries in the base ref tree"
+                )
+            selected[key] = entry
+            selected_scopes[key] = discovered_scope
+
+    return sorted(selected.values(), key=lambda entry: entry.path), symlink_targets
+
+
 def make_tar_info(entry: GitTreeEntry) -> tarfile.TarInfo:
     """Build deterministic tar metadata for one validated Git tree entry."""
 
@@ -559,6 +887,7 @@ def write_git_tree_tar(
     *,
     toplevel: Path,
     entries: Sequence[GitTreeEntry],
+    symlink_targets: Mapping[str, bytes],
     tar_stream: BinaryIO,
 ) -> None:
     """Stream raw Git blobs into a synthetic tar without checkout filters."""
@@ -581,17 +910,11 @@ def write_git_tree_tar(
                     tar.addfile(info)
                     continue
 
-                reader = begin_git_blob(process, entry.object_id)
                 if entry.mode == "120000":
-                    if reader.remaining > _MAX_SYMLINK_TARGET_BYTES:
+                    target = symlink_targets.get(entry.path)
+                    if target is None:
                         raise SurfaceDeltaError(
-                            "surface delta found an unsafe symlink in the base ref tree"
-                        )
-                    target = reader.read()
-                    finish_git_blob(process, reader)
-                    if b"\0" in target:
-                        raise SurfaceDeltaError(
-                            "surface delta found an unsafe symlink in the base ref tree"
+                            "surface delta could not read the base ref tree"
                         )
                     info.type = tarfile.SYMTYPE
                     info.mode = 0o777
@@ -600,6 +923,7 @@ def write_git_tree_tar(
                     tar.addfile(info)
                     continue
 
+                reader = begin_git_blob(process, entry.object_id)
                 info.type = tarfile.REGTYPE
                 info.mode = 0o755 if entry.mode == "100755" else 0o644
                 info.size = reader.remaining
@@ -639,10 +963,22 @@ def archive_base_tree(
         repo_relative=repo_relative,
         materialization_plan=plan,
     )
+    entries, symlink_targets = expand_git_tree_symlink_targets(
+        toplevel=toplevel,
+        raw_listing=listing.stdout,
+        repo_relative=repo_relative,
+        entries=entries,
+        materialization_plan=plan,
+    )
     dest.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryFile() as tar_stream:
-            write_git_tree_tar(toplevel=toplevel, entries=entries, tar_stream=tar_stream)
+            write_git_tree_tar(
+                toplevel=toplevel,
+                entries=entries,
+                symlink_targets=symlink_targets,
+                tar_stream=tar_stream,
+            )
             tar_stream.seek(0)
             with tarfile.open(fileobj=tar_stream, mode="r:") as tar:
                 extract_filter = getattr(tarfile, "data_filter", None)
@@ -674,7 +1010,10 @@ def surface_entry_risk_labels(surface: Mapping[str, object]) -> tuple[str, ...]:
     raw = surface.get("risky_patterns")
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         return ()
-    return tuple(sorted(str(item) for item in raw if isinstance(item, str) and item))
+    labels = tuple(sorted({str(item) for item in raw if isinstance(item, str) and item}))
+    if not set(labels).issubset(MCP_RISKY_PATTERNS):
+        raise SurfaceDeltaError("surface delta found an unsupported risk label")
+    return labels
 
 
 def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) -> tuple[str, ...]:
@@ -692,6 +1031,8 @@ def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) ->
         for key in keys
         if base.get(key) != head.get(key)
     }
+    if not changed_fields.issubset(_PUBLIC_CHANGED_FIELDS):
+        raise SurfaceDeltaError("surface delta found unsupported surface metadata")
     return tuple(sorted(changed_fields))
 
 
@@ -858,14 +1199,15 @@ def build_surface_delta_report(
         raise SurfaceDeltaError("surface delta requires --root to be inside a git repository")
 
     repo_relative = repo_relative_root(root=root, toplevel=toplevel)
-    changed_paths = changed_repo_paths(root=root, base_ref=base_ref)
+    merge_base = resolve_merge_base(root=root, base_ref=base_ref)
+    changed_paths = changed_repo_paths(root=root, base_ref=merge_base)
     ensure_changed_symlinks_stay_in_root(root=root, changed_paths=changed_paths)
 
     with tempfile.TemporaryDirectory(prefix="agent-guard-surface-delta-") as raw_tmpdir:
         tmpdir = Path(raw_tmpdir)
         archive_base_tree(
             toplevel=toplevel,
-            base_ref=base_ref,
+            base_ref=merge_base,
             dest=tmpdir,
             repo_relative=repo_relative,
             context_policy=context_policy,

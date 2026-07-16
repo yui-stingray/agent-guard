@@ -12,22 +12,11 @@ from typing import Any
 import yaml
 
 from .surface_inventory import collect_mcp_config_surfaces
+from .surface_inventory_mcp_safety import MCP_RISKY_PATTERNS
 from .taxonomy import annotate_finding
 
 MCP_POLICY_SCHEMA_VERSION = "agent-guard.mcp_policy.v1"
-DEFAULT_FORBIDDEN_RISKY_PATTERNS = frozenset(
-    {
-        "broad_authorization_scope",
-        "filesystem_root_reference",
-        "inline_authorization_value",
-        "inline_env_value",
-        "instruction_like_description",
-        "latest_package",
-        "secret_shaped_inline_value",
-        "unsafe_url_scheme",
-        "unpinned_package",
-    }
-)
+DEFAULT_FORBIDDEN_RISKY_PATTERNS = MCP_RISKY_PATTERNS
 
 
 def load_mcp_policy(path: Path) -> dict[str, Any]:

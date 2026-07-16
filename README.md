@@ -654,16 +654,22 @@ For `context check`, it returns:
 > not available in the published `0.2.4` package.
 
 `agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>`
-computes a sanitized diff of surface inventory v2 between a fetched base ref
-and the current working tree: which agent-facing surfaces (context files,
-skills, MCP servers, workflows, policies, hooks) were added, removed, or
-modified. The base snapshot is built from raw Git tree/blob objects for the
-requested repository root; release-archive attributes (`export-ignore` and
-`export-subst`) are not applied, and configured clean/process/smudge filters
-are not executed. Tree metadata is filtered against the requested root and
-inventory patterns, including context `scan.exclude`, before blobs are read,
-so unrelated tracked blobs are not materialized. Repository-external
-symlink targets are not followed while collecting either snapshot.
+computes a sanitized diff of surface inventory v2 between the merge base of a
+fetched base ref and `HEAD`, including current working-tree changes: which
+agent-facing surfaces (context files, skills, MCP servers, workflows, policies,
+hooks) were added, removed, or modified. Resolving `git merge-base <ref> HEAD`
+prevents base-branch-only additions from appearing as PR removals when the base
+branch advances. The base snapshot is built from raw Git tree/blob objects for
+the requested repository root; release-archive attributes (`export-ignore` and
+`export-subst`) are not applied, and configured clean/process/smudge filters are
+not executed. Tree metadata is filtered against the requested root and inventory
+patterns, including context `scan.exclude`, before blobs are read, so unrelated
+tracked blobs are not materialized. Selected repository-internal symlink targets
+and chains are materialized with bounded expansion so target-only changes remain
+comparable. Repository-external symlink targets are not followed; external,
+`.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
+targets are not expanded through context-selected symlinks. Target values are
+never published.
 `changed_fields` lists metadata field names only, never values, and
 the section never emits the base ref name, raw diffs, MCP args/env values, or
 instruction/description text. Repeated records retain their count, while
