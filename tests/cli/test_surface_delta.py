@@ -176,39 +176,114 @@ def test_surface_delta_cli_is_deterministic(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("relative_path", "surface_kind", "surface_path"),
     (
+        "relative_path",
+        "surface_kind",
+        "surface_path",
+        "base_content",
+        "head_content",
+    ),
+    (
+        (
+            "AGENTS.md",
+            "agent_context",
+            "AGENTS.md",
+            "Require approval before shell writes A.\n",
+            "Require approval before shell writes B.\n",
+        ),
+        (
+            ".agent-guard/path-policy.yaml",
+            "policy_file",
+            ".agent-guard/path-policy.yaml",
+            "# base\n{}\n",
+            "# head\n{}\n",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "workflow_file",
+            ".github/workflows/ci.yml",
+            "name: base\n",
+            "name: head\n",
+        ),
+        (
+            ".agent-guard/evidence/report.json",
+            "evidence_artifact",
+            ".agent-guard/evidence/report.json",
+            '{"mode":"a"}\n',
+            '{"mode":"b"}\n',
+        ),
         (
             ".github/skills/reviewer/SKILL.md",
             "agent_skill",
             ".github/skills/reviewer",
+            "base-private-marker\n",
+            "head-private-marker\n",
         ),
         (
             ".claude/agents/reviewer.md",
             "agent_profile",
             ".claude/agents/reviewer.md",
+            "base-private-marker\n",
+            "head-private-marker\n",
         ),
         (
             ".claude/commands/review.md",
             "agent_command",
             ".claude/commands/review.md",
+            "base-private-marker\n",
+            "head-private-marker\n",
+        ),
+        (
+            ".github/hooks/guard.json",
+            "agent_hook_config",
+            ".github/hooks/guard.json",
+            '{"mode":"a"}\n',
+            '{"mode":"b"}\n',
+        ),
+        (
+            ".mcp.json",
+            "mcp_config",
+            ".mcp.json",
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "docs": {
+                            "command": "uvx",
+                            "args": ["docs-server==1.2.3"],
+                        }
+                    }
+                }
+            ),
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "docs": {
+                            "command": "uvx",
+                            "args": ["docs-server==1.2.4"],
+                        }
+                    }
+                }
+            ),
         ),
     ),
 )
-def test_surface_delta_cli_detects_content_only_agent_directory_edits(
+def test_surface_delta_cli_detects_content_only_file_backed_surface_edits(
     tmp_path: Path,
     relative_path: str,
     surface_kind: str,
     surface_path: str,
+    base_content: str,
+    head_content: str,
 ) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
     write(repo / "context_policy.yaml", "{}\n")
-    write(repo / relative_path, "base-private-marker\n")
+    assert len(base_content.encode()) == len(head_content.encode())
+    write(repo / relative_path, base_content)
     commit_all(repo, "base")
     base = base_sha(repo)
 
-    write(repo / relative_path, "head-private-marker\n")
+    write(repo / relative_path, head_content)
     commit_all(repo, "head")
 
     result = run_delta(repo, base)
@@ -229,8 +304,9 @@ def test_surface_delta_cli_detects_content_only_agent_directory_edits(
             "changed_fields": ["content"],
         }
     ]
-    assert "base-private-marker" not in result.stdout
-    assert "head-private-marker" not in result.stdout
+    assert delta["entries"] == matching
+    assert base_content.strip() not in result.stdout
+    assert head_content.strip() not in result.stdout
     assert "_content_revision" not in result.stdout
 
 

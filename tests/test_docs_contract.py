@@ -497,6 +497,7 @@ def test_readme_documents_surface_delta_evidence() -> None:
     assert "--surface-delta-base-ref <ref>" in readme
     assert "## Surface Delta Evidence" in readme
     assert '`changed_fields: ["content"]`' in readme
+    assert "existing file-backed context, policy, workflow, evidence artifact" in readme_single_line
     assert "neither content nor a content fingerprint value is published" in readme_single_line
     assert (
         "agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml "
@@ -514,6 +515,7 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     assert "It is review evidence, not a gate" in docs_single_line
     assert "never emitted to SARIF" in docs_single_line
     assert "controlled field name `content`" in docs_single_line
+    assert "existing file-backed context, policy, workflow, evidence artifact" in docs_single_line
     assert "never emits the instruction body or an internal content fingerprint value" in docs_single_line
     assert "Policy is always read from the current working tree, never from the base" in docs_single_line
 

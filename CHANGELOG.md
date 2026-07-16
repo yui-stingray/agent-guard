@@ -15,10 +15,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   `agent-guard.surface_delta.v1.schema.json` schema and the matching
   `action.yml` `surface-delta-base-ref` input. Repeated records retain their
   multiplicity instead of overwriting one another, locator-only line/step moves
-  remain unchanged, content-only skill/profile/command edits are reported
-  without publishing content or fingerprint values, unresolved-base report
-  sections validate against the same schema, and archive extraction fails
-  closed when the safe tar filter is not available.
+  remain unchanged, content-only edits to all direct file-backed surfaces are
+  reported without publishing content or fingerprint values, unresolved-base
+  report sections validate against the same schema, and archive extraction
+  fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

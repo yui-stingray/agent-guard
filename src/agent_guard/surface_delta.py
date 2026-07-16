@@ -29,8 +29,20 @@ _LOCATOR_FIELDS_BY_SURFACE = {
     "evidence_artifact_reference": frozenset({"step_index"}),
     "workflow_reference": frozenset({"step_index"}),
 }
-_CONTENT_TRACKED_DIRECTORY_SURFACES = frozenset(
-    {"agent_skill", "agent_profile", "agent_command"}
+# Track only records that represent repository files or directories directly.
+# Parsed references remain metadata-driven so one edit does not create duplicate modifications.
+_CONTENT_TRACKED_SURFACES = frozenset(
+    {
+        "agent_context",
+        "policy_file",
+        "workflow_file",
+        "evidence_artifact",
+        "agent_skill",
+        "agent_profile",
+        "agent_command",
+        "agent_hook_config",
+        "mcp_config",
+    }
 )
 _INTERNAL_CONTENT_REVISION_FIELD = "_content_revision"
 _PUBLIC_CHANGED_FIELD_ALIASES = {
@@ -140,13 +152,13 @@ def surface_path_has_change(*, path: str, changed_paths: Sequence[str]) -> bool:
     return any(item == prefix or item.startswith(f"{prefix}/") for item in changed_paths)
 
 
-def annotate_directory_content_revisions(
+def annotate_content_revisions(
     surfaces: Sequence[object],
     *,
     changed_paths: Sequence[str],
     revision: str,
 ) -> list[object]:
-    """Add an internal-only marker when tracked directory content changed."""
+    """Add an internal-only marker when a file-backed surface changed."""
 
     annotated: list[object] = []
     for item in surfaces:
@@ -154,7 +166,7 @@ def annotate_directory_content_revisions(
             annotated.append(item)
             continue
         surface = dict(item)
-        if str(surface.get("surface", "")) in _CONTENT_TRACKED_DIRECTORY_SURFACES:
+        if str(surface.get("surface", "")) in _CONTENT_TRACKED_SURFACES:
             path = str(surface.get("path", ""))
             if surface_path_has_change(path=path, changed_paths=changed_paths):
                 surface[_INTERNAL_CONTENT_REVISION_FIELD] = revision
@@ -399,12 +411,12 @@ def build_surface_delta_report(
         head_surfaces = collect_surfaces_for_root(root=root, context_policy=context_policy)
 
     changed_paths = changed_repo_paths(root=root, base_ref=base_ref)
-    base_surfaces = annotate_directory_content_revisions(
+    base_surfaces = annotate_content_revisions(
         base_surfaces,
         changed_paths=changed_paths,
         revision="base",
     )
-    head_surfaces = annotate_directory_content_revisions(
+    head_surfaces = annotate_content_revisions(
         head_surfaces,
         changed_paths=changed_paths,
         revision="head",
