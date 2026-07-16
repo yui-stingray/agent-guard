@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -484,6 +485,59 @@ def test_surface_path_change_matches_descendants_but_not_sibling_prefixes() -> N
 
 def test_supported_runtime_provides_safe_tar_filter() -> None:
     assert callable(getattr(surface_delta_module.tarfile, "data_filter", None))
+
+
+@pytest.mark.parametrize(
+    ("member_name", "linkname", "repo_relative", "expected_probe"),
+    [
+        (
+            ".github/skills/reviewer",
+            "../../shared/reviewer",
+            "",
+            "shared/reviewer",
+        ),
+        (
+            "packages/demo/.github/skills/reviewer",
+            "../../shared/reviewer",
+            "packages/demo",
+            "packages/demo/shared/reviewer",
+        ),
+    ],
+)
+def test_tar_filter_uses_archive_root_probe_for_legacy_relative_symlink_check(
+    tmp_path: Path,
+    member_name: str,
+    linkname: str,
+    repo_relative: str,
+    expected_probe: str,
+) -> None:
+    dest = tmp_path / "base-tree"
+    dest.mkdir()
+    member = tarfile.TarInfo(member_name)
+    member.type = tarfile.SYMTYPE
+    member.linkname = linkname
+    observed_linknames: list[str] = []
+
+    def legacy_data_filter(
+        candidate: tarfile.TarInfo,
+        dest_path: str,
+    ) -> tarfile.TarInfo:
+        # Python 3.11.4 checked linkname relative to the extraction root.
+        target = (Path(dest_path) / candidate.linkname).resolve(strict=False)
+        target.relative_to(Path(dest_path).resolve(strict=False))
+        observed_linknames.append(candidate.linkname)
+        return candidate
+
+    filtered = surface_delta_module.filter_git_tree_tar_member(
+        member,
+        str(dest),
+        data_filter=legacy_data_filter,
+        repo_relative=repo_relative,
+    )
+
+    assert observed_linknames == [expected_probe]
+    assert filtered is not None
+    assert filtered.linkname == linkname
 
 
 def test_archive_base_tree_fails_closed_without_data_filter(

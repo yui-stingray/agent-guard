@@ -6,13 +6,14 @@ Why: turn ad hoc PR agent-surface review into deterministic, sanitized evidence
 
 from __future__ import annotations
 
+from functools import partial
 import json
 import os
 import subprocess
 import tarfile
 import tempfile
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
@@ -940,6 +941,55 @@ def write_git_tree_tar(
             process.wait()
 
 
+def filter_git_tree_tar_member(
+    member: tarfile.TarInfo,
+    dest_path: str,
+    *,
+    data_filter: Callable[[tarfile.TarInfo, str], tarfile.TarInfo | None],
+    repo_relative: str,
+) -> tarfile.TarInfo | None:
+    """Apply the stdlib data filter with correct relative-symlink semantics."""
+
+    if not member.issym():
+        return data_filter(member, dest_path)
+
+    normalized_target = normalize_git_symlink_target(
+        link_path=member.name,
+        raw_target=os.fsencode(member.linkname),
+        repo_relative=repo_relative,
+    )
+    archive_target = (
+        PurePosixPath(repo_relative, normalized_target).as_posix()
+        if repo_relative not in ("", ".")
+        else normalized_target
+    )
+
+    # Python 3.11.4 checks a symlink target relative to the extraction root,
+    # rather than the member's parent. Use the validated archive-root target
+    # for that check, then restore the relative link value used on disk.
+    filtered = data_filter(
+        member.replace(linkname=archive_target, deep=False),
+        dest_path,
+    )
+    if filtered is None:
+        return None
+
+    try:
+        resolved_dest = Path(dest_path).resolve(strict=False)
+        member_parent = PurePosixPath(member.name).parent
+        resolved_target = Path(dest_path).joinpath(
+            *member_parent.parts,
+            member.linkname,
+        ).resolve(strict=False)
+        resolved_target.relative_to(resolved_dest)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise SurfaceDeltaError(
+            "surface delta found an unsafe symlink in the base ref tree"
+        ) from exc
+
+    return filtered.replace(linkname=member.linkname, deep=False)
+
+
 def archive_base_tree(
     *,
     toplevel: Path,
@@ -981,12 +1031,19 @@ def archive_base_tree(
             )
             tar_stream.seek(0)
             with tarfile.open(fileobj=tar_stream, mode="r:") as tar:
-                extract_filter = getattr(tarfile, "data_filter", None)
-                if extract_filter is None:
+                data_filter = getattr(tarfile, "data_filter", None)
+                if data_filter is None:
                     raise SurfaceDeltaError(
                         "surface delta requires a safe tar extraction filter"
                     )
-                tar.extractall(path=dest, filter=extract_filter)
+                tar.extractall(
+                    path=dest,
+                    filter=partial(
+                        filter_git_tree_tar_member,
+                        data_filter=data_filter,
+                        repo_relative=repo_relative,
+                    ),
+                )
     except SurfaceDeltaError:
         raise
     except (OSError, subprocess.SubprocessError, tarfile.TarError, UnicodeError) as exc:
