@@ -36,7 +36,12 @@ Why: keep static guard releases auditable while the package is still alpha.
   unsafe targets fail closed, while context `scan.exclude` is applied to both
   repository-relative alias paths and resolved in-repo target paths before
   expansion through context-selected symlinks. Target values are never
-  published.
+  published. Tracked submodules are treated as opaque parent-repository
+  boundaries: initialized checkout contents and dirty/untracked files do not
+  affect the delta, while gitlink pin changes emit only the controlled
+  `content` field name without object ids or submodule content. Opaque paths
+  are pruned before collector reads, and otherwise unrepresented boundaries use
+  the controlled `git_submodule` kind.
   Synthetic tar extraction fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path

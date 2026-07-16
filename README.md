@@ -670,6 +670,14 @@ comparable. Repository-external symlink targets are not followed; external,
 `.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
 alias paths and resolved in-repo target paths are not expanded through
 context-selected symlinks. Target values are never published.
+Tracked submodules are opaque boundaries for the parent repository delta:
+initialized checkout contents and dirty/untracked submodule files are not
+inventoried, while a superproject gitlink pin change is reported only as
+`changed_fields: ["content"]` without publishing an object id or submodule
+content. Opaque paths are pruned before collector file reads. When no existing
+skill/profile/command surface represents the boundary, the delta uses the
+controlled `git_submodule` kind. Scan each submodule as its own repository when
+its internal surfaces also require review evidence.
 `changed_fields` lists metadata field names only, never values, and
 the section never emits the base ref name, raw diffs, MCP args/env values, or
 instruction/description text. Repeated records retain their count, while

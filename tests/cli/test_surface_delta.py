@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -1537,6 +1538,501 @@ def test_surface_delta_cli_empty_when_base_equals_head(tmp_path: Path) -> None:
     assert delta["summary"]["modified"] == 0
 
 
+@pytest.mark.parametrize(
+    ("submodule_path", "surface_kind", "surface_path"),
+    [
+        (".github/skills/reviewer", "agent_skill", ".github/skills/reviewer"),
+        (".github/skills", "agent_skill", ".github/skills"),
+        (".codex/agents/reviewer", "agent_profile", ".codex/agents/reviewer"),
+        (".claude/commands/review", "agent_command", ".claude/commands/review"),
+    ],
+)
+def test_surface_delta_cli_treats_initialized_submodule_as_opaque(
+    tmp_path: Path,
+    submodule_path: str,
+    surface_kind: str,
+    surface_path: str,
+) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    write(submodule / "AGENTS.md", "submodule-local context\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+
+    clean_result = run_delta(repo, "HEAD")
+    write(repo / submodule_path / "dirty.txt", "not tracked by the parent repo\n")
+    dirty_result = run_delta(repo, "HEAD")
+    run_git(repo, "submodule", "deinit", "--force", "--", submodule_path)
+    uninitialized_result = run_delta(repo, "HEAD")
+
+    assert clean_result.returncode == 0, clean_result.stdout + clean_result.stderr
+    assert dirty_result.returncode == 0, dirty_result.stdout + dirty_result.stderr
+    assert uninitialized_result.returncode == 0, (
+        uninitialized_result.stdout + uninitialized_result.stderr
+    )
+    assert json.loads(clean_result.stdout)["delta"]["entries"] == []
+    assert json.loads(dirty_result.stdout)["delta"]["entries"] == []
+    assert json.loads(uninitialized_result.stdout)["delta"]["entries"] == []
+    assert str(tmp_path) not in clean_result.stdout
+    assert str(tmp_path) not in dirty_result.stdout
+    assert str(tmp_path) not in uninitialized_result.stdout
+    inventory = surface_delta_module.collect_surfaces_for_root(
+        root=repo,
+        context_policy={},
+        opaque_directories=(submodule_path,),
+    )
+    assert any(
+        item.get("surface") == surface_kind
+        and item.get("path") == surface_path
+        and item.get("file_count") == 0
+        for item in inventory
+        if isinstance(item, dict)
+    )
+    assert not any(
+        str(item.get("path", "")).startswith(f"{submodule_path}/")
+        for item in inventory
+        if isinstance(item, dict)
+    )
+
+
+def test_surface_delta_cli_reports_submodule_pin_change_as_content(tmp_path: Path) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    submodule_path = ".github/skills/reviewer"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    checkout = repo / submodule_path
+    run_git(checkout, "config", "user.email", "agent-guard@example.invalid")
+    run_git(checkout, "config", "user.name", "agent guard tests")
+    write(checkout / "SKILL.md", "reviewer skill body updated\n")
+    commit_all(checkout, "update skill")
+    submodule_commit = base_sha(checkout)
+    run_git(repo, "add", submodule_path)
+    run_git(repo, "commit", "-m", "update submodule pin")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(result.stdout)["delta"]["entries"]
+    assert entries == [
+        {
+            "changed_fields": ["content"],
+            "kind": "agent_skill",
+            "name": "",
+            "path": submodule_path,
+            "status": "modified",
+        }
+    ]
+    assert base not in result.stdout
+    assert submodule_commit not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_reports_added_submodule_as_one_surface(tmp_path: Path) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    submodule_path = ".github/skills/reviewer"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "add submodule")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "changed_fields": [],
+            "kind": "agent_skill",
+            "name": "",
+            "path": submodule_path,
+            "status": "added",
+        }
+    ]
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_excludes_nested_submodule_from_file_count(tmp_path: Path) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    write(submodule / "AGENTS.md", "submodule-local context\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".github/skills/team/README.md", "parent-owned skill file\n")
+    submodule_path = ".github/skills/team/reviewer"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+
+    result = run_delta(repo, "HEAD")
+    inventory = surface_delta_module.collect_surfaces_for_root(
+        root=repo,
+        context_policy={},
+        opaque_directories=(submodule_path,),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert any(
+        item.get("surface") == "agent_skill"
+        and item.get("path") == ".github/skills/team"
+        and item.get("file_count") == 1
+        for item in inventory
+        if isinstance(item, dict)
+    )
+    assert not any(
+        str(item.get("path", "")).startswith(f"{submodule_path}/")
+        for item in inventory
+        if isinstance(item, dict)
+    )
+
+
+def test_surface_delta_cli_uses_generic_surface_for_workflow_submodule_pin(
+    tmp_path: Path,
+) -> None:
+    submodule = tmp_path / "workflow-source"
+    init_repo(submodule)
+    write(submodule / "ci.yml", "name: ci\n")
+    commit_all(submodule, "workflow")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    submodule_path = ".github/workflows"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    checkout = repo / submodule_path
+    run_git(checkout, "config", "user.email", "agent-guard@example.invalid")
+    run_git(checkout, "config", "user.name", "agent guard tests")
+    write(checkout / "ci.yml", "name: updated-ci\n")
+    commit_all(checkout, "update workflow")
+    submodule_commit = base_sha(checkout)
+    run_git(repo, "add", submodule_path)
+    run_git(repo, "commit", "-m", "update workflow submodule pin")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "changed_fields": ["content"],
+            "kind": "git_submodule",
+            "name": "",
+            "path": submodule_path,
+            "status": "modified",
+        }
+    ]
+    assert base not in result.stdout
+    assert submodule_commit not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_reports_removed_submodule_without_empty_parent(
+    tmp_path: Path,
+) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    submodule_path = ".github/skills/reviewer"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    run_git(repo, "rm", "--force", submodule_path)
+    commit_all(repo, "remove submodule")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "changed_fields": [],
+            "kind": "agent_skill",
+            "name": "",
+            "path": submodule_path,
+            "status": "removed",
+        }
+    ]
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_fails_closed_on_unmerged_index(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "AGENTS.md", "base\n")
+    commit_all(repo, "base")
+    main_branch = run_git(repo, "branch", "--show-current").stdout.strip()
+
+    run_git(repo, "switch", "-c", "conflicting")
+    write(repo / "AGENTS.md", "branch change\n")
+    commit_all(repo, "branch change")
+    run_git(repo, "switch", main_branch)
+    write(repo / "AGENTS.md", "head change\n")
+    commit_all(repo, "head change")
+    with pytest.raises(subprocess.CalledProcessError):
+        run_git(repo, "merge", "conflicting")
+
+    result = run_delta(repo, "HEAD")
+
+    assert result.returncode == 2
+    assert "conflict-free" in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_ignores_unmerged_index_outside_subdirectory_root(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    service_root = repo / "services" / "api"
+    write(service_root / "context_policy.yaml", "{}\n")
+    write(repo / "other/conflict.txt", "base\n")
+    commit_all(repo, "base")
+    main_branch = run_git(repo, "branch", "--show-current").stdout.strip()
+
+    run_git(repo, "switch", "-c", "conflicting")
+    write(repo / "other/conflict.txt", "branch change\n")
+    commit_all(repo, "branch change")
+    run_git(repo, "switch", main_branch)
+    write(repo / "other/conflict.txt", "head change\n")
+    commit_all(repo, "head change")
+    with pytest.raises(subprocess.CalledProcessError):
+        run_git(repo, "merge", "conflicting")
+
+    result = run_cli(
+        "surface",
+        "delta",
+        "--root",
+        str(service_root),
+        "--context-policy",
+        str(service_root / "context_policy.yaml"),
+        "--base-ref",
+        "HEAD",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert str(tmp_path) not in result.stdout
+
+
+def test_opaque_surface_collection_does_not_enter_submodule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submodule = tmp_path / "github-source"
+    init_repo(submodule)
+    write(submodule / "AGENTS.md", "submodule context\n")
+    write(submodule / "workflows/ci.yml", "name: ci\n")
+    write(submodule / "skills/reviewer/SKILL.md", "reviewer skill\n")
+    commit_all(submodule, "agent surfaces")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        ".github",
+    )
+    commit_all(repo, "base")
+
+    checkout = repo / ".github"
+    original_iterdir = Path.iterdir
+    original_read_text = Path.read_text
+
+    def guarded_iterdir(path: Path):
+        if path == checkout or checkout in path.parents:
+            raise AssertionError("opaque submodule traversal")
+        return original_iterdir(path)
+
+    def guarded_read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if path == checkout or checkout in path.parents:
+            raise AssertionError("opaque submodule read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "iterdir", guarded_iterdir)
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    surfaces = surface_delta_module.collect_surfaces_for_root(
+        root=repo,
+        context_policy={},
+        opaque_directories=(".github",),
+    )
+
+    assert surfaces == [
+        {
+            "kind": "gitlink",
+            "path": ".github",
+            "status": "present",
+            "surface": "git_submodule",
+        }
+    ]
+
+
+def test_surface_delta_cli_does_not_follow_symlink_into_opaque_submodule(
+    tmp_path: Path,
+) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        "vendor/tool",
+    )
+    alias = repo / ".github" / "skills" / "reviewer"
+    alias.parent.mkdir(parents=True, exist_ok=True)
+    alias.symlink_to("../../vendor/tool", target_is_directory=True)
+    commit_all(repo, "base")
+
+    write(repo / "vendor/tool/dirty.txt", "submodule worktree only\n")
+    result = run_delta(repo, "HEAD")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert str(tmp_path) not in result.stdout
+
+
+def test_pruned_context_walk_preserves_internal_symlink_alias(tmp_path: Path) -> None:
+    submodule = tmp_path / "vendor-source"
+    init_repo(submodule)
+    write(submodule / "AGENTS.md", "submodule context\n")
+    commit_all(submodule, "vendor")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(
+        repo / "context_policy.yaml",
+        "scan:\n  include:\n    - zcontext/**/*.md\n",
+    )
+    write(repo / "astorage/context/guide.md", "review guide\n")
+    (repo / "zcontext").symlink_to("astorage/context", target_is_directory=True)
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        "vendor/tool",
+    )
+    commit_all(repo, "base")
+
+    result = run_delta(repo, "HEAD")
+    surfaces = surface_delta_module.collect_surfaces_for_root(
+        root=repo,
+        context_policy={"scan": {"include": ["zcontext/**/*.md"]}},
+        opaque_directories=("vendor/tool",),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert any(
+        item.get("surface") == "agent_context"
+        and item.get("path") == "astorage/context/guide.md"
+        for item in surfaces
+        if isinstance(item, dict)
+    )
+    assert not any(
+        str(item.get("path", "")).startswith("vendor/tool/")
+        for item in surfaces
+        if isinstance(item, dict)
+    )
+
+
 def test_surface_delta_cli_treats_rename_as_removed_and_added(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
@@ -1623,6 +2119,88 @@ def test_surface_delta_cli_supports_subdirectory_root(tmp_path: Path) -> None:
         and entry["changed_fields"] == ["content"]
         for entry in delta["entries"]
     )
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_treats_submodule_inside_subdirectory_root_as_opaque(
+    tmp_path: Path,
+) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    service_root = repo / "services" / "api"
+    write(service_root / "context_policy.yaml", "{}\n")
+    submodule_path = "services/api/.github/skills/reviewer"
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        submodule_path,
+    )
+    commit_all(repo, "base")
+
+    result = run_cli(
+        "surface",
+        "delta",
+        "--root",
+        str(service_root),
+        "--context-policy",
+        str(service_root / "context_policy.yaml"),
+        "--base-ref",
+        "HEAD",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_cli_ignores_unsafe_submodule_outside_subdirectory_root(
+    tmp_path: Path,
+) -> None:
+    submodule = tmp_path / "reviewer-skill"
+    init_repo(submodule)
+    write(submodule / "SKILL.md", "reviewer skill body\n")
+    commit_all(submodule, "skill")
+
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    service_root = repo / "services" / "api"
+    write(service_root / "context_policy.yaml", "{}\n")
+    run_git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(submodule),
+        "unsafe\\sub",
+    )
+    commit_all(repo, "base")
+
+    result = run_cli(
+        "surface",
+        "delta",
+        "--root",
+        str(service_root),
+        "--context-policy",
+        str(service_root / "context_policy.yaml"),
+        "--base-ref",
+        "HEAD",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert "unsafe\\sub" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 

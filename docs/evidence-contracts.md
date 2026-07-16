@@ -215,7 +215,14 @@ The JSON report is a compact statement of what `agent-guard` checked:
   cyclic, and otherwise unsafe targets fail closed. Context `scan.exclude` is
   applied to both repository-relative alias paths and resolved in-repo target
   paths before expansion through context-selected symlinks. Target values are
-  never published.
+  never published. Tracked submodules are opaque boundaries in the parent
+  repository delta: initialized checkout contents and dirty/untracked
+  submodule files are excluded, while a superproject gitlink pin change is
+  represented only by the controlled `content` field name. Object ids and
+  submodule contents are never published, and opaque paths are pruned before
+  collector file reads. A boundary without an existing skill, profile, or
+  command surface is represented by the controlled `git_submodule` kind;
+  submodule-internal surfaces require a separate scan rooted in that repository.
   Raw blobs are streamed into a temporary synthetic tar rather than buffering
   a repository archive in memory. Base-tree extraction requires the
   security-backported stdlib tar extraction filter available from Python

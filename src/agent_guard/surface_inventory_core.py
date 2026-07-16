@@ -6,6 +6,7 @@ Why: keep surface scanners deterministic while splitting scanner-specific logic.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path, PureWindowsPath
 from typing import Literal
 
@@ -36,7 +37,39 @@ def is_repo_bound_path(path: Path, root: Path) -> bool:
     return True
 
 
-def repo_bound_glob(root: Path, pattern: str) -> list[Path]:
+def is_in_opaque_directory(
+    path: Path,
+    *,
+    root: Path,
+    opaque_directories: Sequence[str],
+) -> bool:
+    def matches(relative: str) -> bool:
+        return any(
+            relative == opaque or relative.startswith(f"{opaque.rstrip('/')}/")
+            for opaque in opaque_directories
+        )
+
+    try:
+        relative = path.relative_to(root).as_posix()
+    except ValueError:
+        relative = ""
+    if relative and matches(relative):
+        return True
+
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved_relative = path.resolve(strict=True).relative_to(resolved_root).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return matches(resolved_relative)
+
+
+def repo_bound_glob(
+    root: Path,
+    pattern: str,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[Path]:
     """Glob only when the fixed parent and each result remain repo-bound."""
 
     fixed_parts: list[str] = []
@@ -45,9 +78,24 @@ def repo_bound_glob(root: Path, pattern: str) -> list[Path]:
             break
         fixed_parts.append(part)
     base = root.joinpath(*fixed_parts) if fixed_parts else root
+    if is_in_opaque_directory(
+        base,
+        root=root,
+        opaque_directories=opaque_directories,
+    ):
+        return []
     if not is_repo_bound_path(base, root):
         return []
-    return [path for path in root.glob(pattern) if is_repo_bound_path(path, root)]
+    return [
+        path
+        for path in root.glob(pattern)
+        if not is_in_opaque_directory(
+            path,
+            root=root,
+            opaque_directories=opaque_directories,
+        )
+        and is_repo_bound_path(path, root)
+    ]
 
 
 def rel_path(path: Path, root: Path) -> str:

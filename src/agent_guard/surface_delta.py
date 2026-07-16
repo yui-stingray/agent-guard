@@ -64,6 +64,7 @@ _CONTENT_TRACKED_SURFACES = frozenset(
         "agent_command",
         "agent_hook_config",
         "mcp_config",
+        "git_submodule",
     }
 )
 _INTERNAL_CONTENT_REVISION_FIELD = "_content_revision"
@@ -324,7 +325,7 @@ def changed_repo_paths(*, root: Path, base_ref: str) -> tuple[str, ...]:
                 "-z",
                 "--no-ext-diff",
                 "--no-textconv",
-                "--ignore-submodules=all",
+                "--ignore-submodules=dirty",
                 "--no-renames",
                 base_ref,
                 "--",
@@ -761,6 +762,26 @@ def run_git_tree_list(
     )
 
 
+def run_git_index_list(*, toplevel: Path) -> subprocess.CompletedProcess[bytes]:
+    """List tracked index entries without inspecting submodule worktrees."""
+
+    return subprocess.run(
+        [
+            "git",
+            "-C",
+            str(toplevel),
+            "-c",
+            "core.fsmonitor=false",
+            "ls-files",
+            "--stage",
+            "-z",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
 def safe_git_tree_path(raw_path: bytes) -> str:
     """Return a materializable Git path or fail without exposing the path."""
 
@@ -780,6 +801,97 @@ def safe_git_tree_path(raw_path: bytes) -> str:
     ):
         raise SurfaceDeltaError("surface delta found an unsafe path in the base ref tree")
     return os.fsdecode(raw_path)
+
+
+def relative_git_path(path: str, *, repo_relative: str) -> str | None:
+    if repo_relative in ("", "."):
+        return path
+    prefix = f"{repo_relative.rstrip('/')}/"
+    if not path.startswith(prefix):
+        return None
+    return path[len(prefix) :]
+
+
+def raw_git_path_is_in_root(raw_path: bytes, *, repo_relative: str) -> bool:
+    if repo_relative in ("", "."):
+        return True
+    return raw_path.startswith(os.fsencode(f"{repo_relative.rstrip('/')}/"))
+
+
+def gitlink_paths_from_tree(
+    raw_listing: bytes,
+    *,
+    repo_relative: str,
+) -> tuple[str, ...]:
+    """Return validated root-relative gitlinks from one raw commit tree listing."""
+
+    gitlinks: set[str] = set()
+    for record in raw_listing.split(b"\0"):
+        if not record:
+            continue
+        metadata, separator, raw_path = record.partition(b"\t")
+        fields = metadata.split(b" ")
+        if not separator or len(fields) != 3:
+            raise SurfaceDeltaError("surface delta could not parse the base ref tree")
+        mode, object_type, raw_object_id = fields
+        if mode != b"160000":
+            continue
+        if not raw_git_path_is_in_root(raw_path, repo_relative=repo_relative):
+            continue
+        try:
+            object_id = raw_object_id.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise SurfaceDeltaError("surface delta could not parse the base ref tree") from exc
+        if object_type != b"commit" or not is_valid_git_object_id(object_id):
+            raise SurfaceDeltaError("surface delta could not parse the base ref tree")
+        path = safe_git_tree_path(raw_path)
+        relative = relative_git_path(path, repo_relative=repo_relative)
+        if relative:
+            gitlinks.add(relative)
+    return tuple(sorted(gitlinks))
+
+
+def gitlink_paths_from_index(
+    *,
+    toplevel: Path,
+    repo_relative: str,
+) -> tuple[str, ...]:
+    """Return tracked root-relative gitlinks without entering initialized submodules."""
+
+    try:
+        listing = run_git_index_list(toplevel=toplevel)
+    except FileNotFoundError as exc:
+        raise SurfaceDeltaError("surface delta requires git") from exc
+    if listing.returncode != 0:
+        raise SurfaceDeltaError("surface delta could not inspect the Git index")
+
+    gitlinks: set[str] = set()
+    for record in listing.stdout.split(b"\0"):
+        if not record:
+            continue
+        metadata, separator, raw_path = record.partition(b"\t")
+        fields = metadata.split(b" ")
+        if not separator or len(fields) != 3:
+            raise SurfaceDeltaError("surface delta could not parse the Git index")
+        mode, raw_object_id, stage = fields
+        if not raw_git_path_is_in_root(raw_path, repo_relative=repo_relative):
+            continue
+        if stage != b"0":
+            raise SurfaceDeltaError("surface delta requires a conflict-free Git index")
+        if mode != b"160000":
+            continue
+        try:
+            object_id = raw_object_id.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise SurfaceDeltaError("surface delta could not parse the Git index") from exc
+        if not is_valid_git_object_id(object_id):
+            raise SurfaceDeltaError("surface delta could not parse the Git index")
+        path = safe_git_tree_path(raw_path)
+        relative = relative_git_path(path, repo_relative=repo_relative)
+        if relative is None:
+            raise SurfaceDeltaError("surface delta could not parse the Git index")
+        gitlinks.add(relative)
+    return tuple(sorted(gitlinks))
 
 
 def parse_git_tree_entries(
@@ -1286,7 +1398,7 @@ def archive_base_tree(
     dest: Path,
     repo_relative: str = "",
     context_policy: Mapping[str, object] | None = None,
-) -> None:
+) -> tuple[str, ...]:
     """Materialize raw tracked base_ref content without archive or checkout attributes."""
 
     try:
@@ -1296,6 +1408,10 @@ def archive_base_tree(
     if listing.returncode != 0:
         raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
 
+    gitlink_paths = gitlink_paths_from_tree(
+        listing.stdout,
+        repo_relative=repo_relative,
+    )
     plan = surface_materialization_plan(context_policy or {})
     entries = parse_git_tree_entries(
         listing.stdout,
@@ -1337,6 +1453,7 @@ def archive_base_tree(
         raise
     except (OSError, subprocess.SubprocessError, tarfile.TarError, UnicodeError) as exc:
         raise SurfaceDeltaError("surface delta could not materialize the base ref tree") from exc
+    return gitlink_paths
 
 
 def surface_entry_name(surface: Mapping[str, object]) -> str:
@@ -1519,16 +1636,48 @@ def build_surface_delta_entries(
     return entries, summary
 
 
-def collect_surfaces_for_root(*, root: Path, context_policy: Mapping[str, object]) -> list[object]:
+def collect_surfaces_for_root(
+    *,
+    root: Path,
+    context_policy: Mapping[str, object],
+    opaque_directories: Sequence[str] = (),
+) -> list[object]:
     if not root.is_dir():
         return []
     inventory = collect_agent_surface_inventory(
         root=root,
         context_policy=dict(context_policy),
         schema_version="v2",
+        opaque_directories=opaque_directories,
+        include_empty_directory_surfaces=False,
     )
     surfaces = inventory.get("surfaces", [])
-    return surfaces if isinstance(surfaces, list) else []
+    if not isinstance(surfaces, list):
+        return []
+    directory_surface_kinds = {"agent_skill", "agent_profile", "agent_command"}
+    for path in opaque_directories:
+        represented = any(
+            isinstance(item, Mapping)
+            and item.get("surface") in directory_surface_kinds
+            and (
+                str(item.get("path", "")) == path
+                or path.startswith(f"{str(item.get('path', '')).rstrip('/')}/")
+            )
+            for item in surfaces
+        )
+        if not represented:
+            surfaces.append(
+                {
+                    "surface": "git_submodule",
+                    "path": path,
+                    "kind": "gitlink",
+                    "status": "present",
+                }
+            )
+    return sorted(
+        surfaces,
+        key=lambda item: canonical_surface(item) if isinstance(item, Mapping) else repr(item),
+    )
 
 
 def build_surface_delta_report(
@@ -1559,10 +1708,14 @@ def build_surface_delta_report(
     merge_base = resolve_merge_base(root=root, base_ref=base_ref)
     changed_paths = changed_repo_paths(root=root, base_ref=merge_base)
     ensure_changed_symlinks_stay_in_root(root=root, changed_paths=changed_paths)
+    head_gitlinks = gitlink_paths_from_index(
+        toplevel=toplevel,
+        repo_relative=repo_relative,
+    )
 
     with tempfile.TemporaryDirectory(prefix="agent-guard-surface-delta-") as raw_tmpdir:
         tmpdir = Path(raw_tmpdir)
-        archive_base_tree(
+        base_gitlinks = archive_base_tree(
             toplevel=toplevel,
             base_ref=merge_base,
             dest=tmpdir,
@@ -1571,8 +1724,16 @@ def build_surface_delta_report(
         )
         base_root = tmpdir if repo_relative in ("", ".") else tmpdir / repo_relative
 
-        base_surfaces = collect_surfaces_for_root(root=base_root, context_policy=context_policy)
-        head_surfaces = collect_surfaces_for_root(root=root, context_policy=context_policy)
+        base_surfaces = collect_surfaces_for_root(
+            root=base_root,
+            context_policy=context_policy,
+            opaque_directories=base_gitlinks,
+        )
+        head_surfaces = collect_surfaces_for_root(
+            root=root,
+            context_policy=context_policy,
+            opaque_directories=head_gitlinks,
+        )
 
     base_surfaces = annotate_content_revisions(
         base_surfaces,

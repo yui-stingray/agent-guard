@@ -5,6 +5,7 @@ Why: keep repository metadata discovery separate from workflow and MCP scanners.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from .surface_inventory_core import (
@@ -33,11 +34,21 @@ def policy_kind(path: str) -> str:
     return "agent_guard_policy"
 
 
-def collect_documented_guard_surfaces(root: Path) -> list[dict[str, object]]:
+def collect_documented_guard_surfaces(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
     doc_files: list[Path] = []
     for pattern in DOC_GLOBS:
-        doc_files.extend(repo_bound_glob(root, pattern))
+        doc_files.extend(
+            repo_bound_glob(
+                root,
+                pattern,
+                opaque_directories=opaque_directories,
+            )
+        )
     for doc_file in sorted(
         path for path in doc_files if is_repo_bound_path(path, root) and path.is_file()
     ):
@@ -63,7 +74,11 @@ def collect_documented_guard_surfaces(root: Path) -> list[dict[str, object]]:
     return surfaces
 
 
-def collect_committed_evidence_surfaces(root: Path) -> list[dict[str, object]]:
+def collect_committed_evidence_surfaces(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
     for rel_base in (".agent-guard/evidence", "docs/evidence-samples"):
         base = root / rel_base
@@ -71,7 +86,13 @@ def collect_committed_evidence_surfaces(root: Path) -> list[dict[str, object]]:
             continue
         if not base.is_dir():
             continue
-        for path in sorted(repo_bound_glob(root, f"{rel_base}/*")):
+        for path in sorted(
+            repo_bound_glob(
+                root,
+                f"{rel_base}/*",
+                opaque_directories=opaque_directories,
+            )
+        ):
             if not is_repo_bound_path(path, root):
                 continue
             if not path.is_file():
@@ -88,14 +109,24 @@ def collect_committed_evidence_surfaces(root: Path) -> list[dict[str, object]]:
     return surfaces
 
 
-def collect_policy_surfaces(root: Path) -> list[dict[str, object]]:
+def collect_policy_surfaces(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[dict[str, object]]:
     policy_dir = root / ".agent-guard"
     if not is_repo_bound_path(policy_dir, root):
         return []
     if not policy_dir.is_dir():
         return []
     surfaces: list[dict[str, object]] = []
-    for path in sorted(repo_bound_glob(root, ".agent-guard/*.yaml")):
+    for path in sorted(
+        repo_bound_glob(
+            root,
+            ".agent-guard/*.yaml",
+            opaque_directories=opaque_directories,
+        )
+    ):
         if not path.is_file():
             continue
         display = rel_path(path, root)
