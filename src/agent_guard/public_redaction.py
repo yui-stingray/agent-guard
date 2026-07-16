@@ -17,7 +17,7 @@ SECRET_SHAPED_PUBLIC_TEXT_RE = re.compile(
 SHA256_PUBLIC_TEXT_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
 RAW_URL_PUBLIC_TEXT_RE = re.compile(r"https?://[^\s\"'`<>()]+")
 LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(
-    r"(?:(?:/home|/mnt/c/Users)/(?:[^\s:'\"]+/)*[^\s:'\"]+|"
+    r"(?:(?:/home|/mnt/c/Users)/(?:[^/\s:'\"]+/)*[^/\s:'\"]+|"
     r"[A-Za-z]:[\\/]+Users[\\/]+(?:[^\\/\s:'\"]+[\\/]+)*[^\\/\s:'\"]+)"
 )
 
@@ -40,7 +40,7 @@ def sanitize_public_value(value: object) -> object:
     if isinstance(value, list):
         return [sanitize_public_value(item) for item in value]
     if isinstance(value, tuple):
-        return [sanitize_public_value(item) for item in value]
+        return tuple(sanitize_public_value(item) for item in value)
     return value
 
 

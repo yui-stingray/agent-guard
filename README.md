@@ -289,6 +289,12 @@ agent-guard drift check --root . --profile recommended --schema-version v2 --jso
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
+```
+
+The following optional PR review command is available from source only and is
+not part of the published `0.2.4` package:
+
+```bash
 agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml --base-ref <base-ref> --json
 ```
 
@@ -632,8 +638,10 @@ files from the source tree:
   `recommended`, and `strict` adoption levels.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
   artifact manifest for reviewer handoff.
-- `agent-guard.surface_delta.v1.schema.json`: sanitized PR base/head agent
-  surface delta evidence (see Surface delta evidence below).
+
+The unreleased source tree additionally contains
+`agent-guard.surface_delta.v1.schema.json` for sanitized PR base/head agent
+surface delta evidence. It is not present in the published `0.2.4` wheel.
 
 For `context check`, it returns:
 - exit `0` on clean
@@ -642,11 +650,21 @@ For `context check`, it returns:
 
 ### Surface delta evidence
 
+> **Release status:** this section documents unreleased source behavior and is
+> not available in the published `0.2.4` package.
+
 `agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>`
 computes a sanitized diff of surface inventory v2 between a fetched base ref
 and the current working tree: which agent-facing surfaces (context files,
 skills, MCP servers, workflows, policies, hooks) were added, removed, or
-modified. `changed_fields` lists metadata field names only, never values, and
+modified. The base snapshot is built from raw Git tree/blob objects for the
+requested repository root; release-archive attributes (`export-ignore` and
+`export-subst`) are not applied, and configured clean/process/smudge filters
+are not executed. Tree metadata is filtered against the requested root and
+inventory patterns, including context `scan.exclude`, before blobs are read,
+so unrelated tracked blobs are not materialized. Repository-external
+symlink targets are not followed while collecting either snapshot.
+`changed_fields` lists metadata field names only, never values, and
 the section never emits the base ref name, raw diffs, MCP args/env values, or
 instruction/description text. Repeated records retain their count, while
 line-number and workflow-step-position-only moves remain unchanged. Content-only
@@ -890,13 +908,19 @@ agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard mcp check --root <repo> [--policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
-agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> [--schema-version <v1>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--surface-delta-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]
 agent-guard drift check --root <repo> [--profile <minimal|recommended|strict>] [--schema-version <v1|v2>] [--base-ref <ref>] [--json]
+```
+
+Unreleased source-only CLI additions:
+
+```bash
+agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> [--schema-version <v1>] [--json]
+agent-guard report --root <repo> --context-policy <yaml> --surface-delta-base-ref <ref> [--format <markdown|json|github-annotations>] [--output <path>]
 ```
 
 Policy path arguments are resolved relative to the relevant repository root

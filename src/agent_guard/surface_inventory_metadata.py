@@ -7,7 +7,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .surface_inventory_core import parse_agent_guard_command, rel_path
+from .surface_inventory_core import (
+    is_repo_bound_path,
+    parse_agent_guard_command,
+    rel_path,
+    repo_bound_glob,
+)
 
 
 DOC_GLOBS = ("README.md", "docs/*.md")
@@ -32,8 +37,10 @@ def collect_documented_guard_surfaces(root: Path) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
     doc_files: list[Path] = []
     for pattern in DOC_GLOBS:
-        doc_files.extend(root.glob(pattern))
-    for doc_file in sorted(path for path in doc_files if path.is_file()):
+        doc_files.extend(repo_bound_glob(root, pattern))
+    for doc_file in sorted(
+        path for path in doc_files if is_repo_bound_path(path, root) and path.is_file()
+    ):
         doc_path = rel_path(doc_file, root)
         try:
             lines = doc_file.read_text(encoding="utf-8").splitlines()
@@ -58,10 +65,15 @@ def collect_documented_guard_surfaces(root: Path) -> list[dict[str, object]]:
 
 def collect_committed_evidence_surfaces(root: Path) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    for base in (root / ".agent-guard" / "evidence", root / "docs" / "evidence-samples"):
+    for rel_base in (".agent-guard/evidence", "docs/evidence-samples"):
+        base = root / rel_base
+        if not is_repo_bound_path(base, root):
+            continue
         if not base.is_dir():
             continue
-        for path in sorted(base.glob("*")):
+        for path in sorted(repo_bound_glob(root, f"{rel_base}/*")):
+            if not is_repo_bound_path(path, root):
+                continue
             if not path.is_file():
                 continue
             surfaces.append(
@@ -78,10 +90,12 @@ def collect_committed_evidence_surfaces(root: Path) -> list[dict[str, object]]:
 
 def collect_policy_surfaces(root: Path) -> list[dict[str, object]]:
     policy_dir = root / ".agent-guard"
+    if not is_repo_bound_path(policy_dir, root):
+        return []
     if not policy_dir.is_dir():
         return []
     surfaces: list[dict[str, object]] = []
-    for path in sorted(policy_dir.glob("*.yaml")):
+    for path in sorted(repo_bound_glob(root, ".agent-guard/*.yaml")):
         if not path.is_file():
             continue
         display = rel_path(path, root)

@@ -291,6 +291,79 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "prove code correctness" in release_criteria
 
 
+def test_action_script_omits_empty_surface_delta_base_ref_from_report_args(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    call_log = tmp_path / "agent-guard-calls.jsonl"
+    agent_guard = bin_dir / "agent-guard"
+    agent_guard.write_text(
+        """#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+with Path(os.environ["AGENT_GUARD_CALL_LOG"]).open("a", encoding="utf-8") as fh:
+    fh.write(json.dumps(args) + "\\n")
+
+if args[:1] == ["report"] and "--output" in args:
+    Path(args[args.index("--output") + 1]).write_text('{"schema_version":"agent-guard.result.v1"}\\n', encoding="utf-8")
+if args[:1] == ["render-report"] and "--output" in args:
+    Path(args[args.index("--output") + 1]).write_text("{}\\n", encoding="utf-8")
+
+print("{}")
+""",
+        encoding="utf-8",
+    )
+    agent_guard.chmod(0o755)
+    context_policy = tmp_path / ".agent-guard" / "context-policy.yaml"
+    context_policy.parent.mkdir(parents=True)
+    context_policy.write_text("{}\n", encoding="utf-8")
+
+    def run_action(*, surface_delta_base_ref: str) -> list[list[str]]:
+        call_log.write_text("", encoding="utf-8")
+        output_name = (surface_delta_base_ref or "empty").replace("/", "-")
+        output_file = tmp_path / f"github-output-{output_name}.txt"
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}{os.pathsep}{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
+        env["GITHUB_OUTPUT"] = str(output_file)
+        env["RUNNER_TEMP"] = str(tmp_path)
+        env["AGENT_GUARD_CALL_LOG"] = str(call_log)
+        env["AGENT_GUARD_BASE_REF"] = ""
+        env["AGENT_GUARD_SURFACE_DELTA_BASE_REF"] = surface_delta_base_ref
+        env["AGENT_GUARD_ROOT"] = "."
+        env["AGENT_GUARD_CONTEXT_POLICY"] = ".agent-guard/context-policy.yaml"
+        env["AGENT_GUARD_PATH_POLICY"] = ".agent-guard/path-policy.yaml"
+        env["AGENT_GUARD_CONTENT_POLICY"] = ".agent-guard/content-policy.yaml"
+        env["AGENT_GUARD_MCP_POLICY"] = ""
+        env["AGENT_GUARD_CONTENT_SCAN_DIR"] = "."
+        env["AGENT_GUARD_WORKFLOW_POLICY"] = ".agent-guard/workflow-policy.yaml"
+        env["AGENT_GUARD_DIGEST_POLICY"] = ".agent-guard/context-digest-policy.yaml"
+        env["AGENT_GUARD_EVIDENCE_DIR"] = ".agent-guard/evidence"
+        env["AGENT_GUARD_GITHUB_ANNOTATIONS"] = "false"
+        env["AGENT_GUARD_CONFORMANCE_PROFILE"] = "recommended"
+
+        result = run_bash_script(action_evidence_script(), cwd=tmp_path, env=env, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        return [
+            json.loads(line)
+            for line in call_log.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    empty_calls = run_action(surface_delta_base_ref="")
+    empty_report_call = next(args for args in empty_calls if args[:1] == ["report"])
+    assert "--surface-delta-base-ref" not in empty_report_call
+
+    populated_calls = run_action(surface_delta_base_ref="origin/main")
+    populated_report_call = next(args for args in populated_calls if args[:1] == ["report"])
+    assert "--surface-delta-base-ref" in populated_report_call
+    assert populated_report_call[populated_report_call.index("--surface-delta-base-ref") + 1] == "origin/main"
+
+
 def test_action_script_resolves_subdirectory_root_without_raw_log_leak(tmp_path: Path, request) -> None:
     if str(tmp_path).startswith("/mnt/c/") and Path("/tmp").is_dir():
         local_tmp = tempfile.TemporaryDirectory(prefix="agent-guard-action-", dir="/tmp")

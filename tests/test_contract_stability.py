@@ -93,6 +93,8 @@ def test_compatibility_doc_freezes_emitted_artifacts_and_volatile_fields() -> No
     assert "Volatile fields" in docs
     assert "`generated_at`" in docs
     assert "schema version will not change without a new schema identifier" in docs_single_line
+    assert "unreleased source only" in docs_single_line
+    assert "not present in the published `0.2.4` wheel" in docs_single_line
 
 
 def test_release_criteria_use_batched_contract_stability_cadence() -> None:

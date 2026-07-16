@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -57,6 +58,14 @@ def find_wheel(version: str) -> Path:
     return wheels[0]
 
 
+def venv_python_path(venv_dir: Path, *, platform_name: str = os.name) -> Path:
+    """Return the interpreter path created by venv on the target platform."""
+
+    if platform_name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
 def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     """Run a subprocess and return its completed process."""
     result = subprocess.run(command, cwd=cwd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -76,7 +85,7 @@ def main() -> int:
         temp = Path(temp_dir)
         venv_dir = temp / "venv"
         venv.EnvBuilder(with_pip=True).create(venv_dir)
-        python = venv_dir / "bin" / "python"
+        python = venv_python_path(venv_dir)
         run([str(python), "-m", "pip", "install", "--quiet", str(wheel)], cwd=temp)
         smoke = textwrap.dedent(
             f"""
@@ -121,6 +130,9 @@ def main() -> int:
                     assert "agent-policy-audit-event" in artifact_role["enum"]
                     surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
                     assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
+                    assert schema["properties"]["surface_delta"]["properties"]["schema_version"]["const"] == (
+                        "agent-guard.surface_delta.v1"
+                    )
                 else:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """

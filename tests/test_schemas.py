@@ -205,6 +205,19 @@ def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None
         validate_payload("agent-guard.surface_delta.v1.schema.json", resolved_without_details)
 
 
+def test_report_schema_embeds_surface_delta_contract() -> None:
+    report_schema = load_schema("agent-guard.report_evidence.v1.schema.json")
+    delta_schema = load_schema("agent-guard.surface_delta.v1.schema.json")
+    embedded = report_schema["properties"]["surface_delta"]
+    standalone_contract = {
+        key: value
+        for key, value in delta_schema.items()
+        if key not in {"$schema", "$id", "title"}
+    }
+
+    assert embedded == standalone_contract
+
+
 def test_surface_delta_schema_validates_unresolved_report_section(tmp_path: Path) -> None:
     subprocess.run(
         ["git", "init", "--quiet"],
@@ -252,6 +265,13 @@ def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+
+    payload["surface_delta"] = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": True,
+    }
+    with pytest.raises(AssertionError, match=r"\$\.surface_delta\.summary is required"):
+        validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
 
 
 def test_report_schema_validates_v2_report_cli_payload(tmp_path: Path) -> None:

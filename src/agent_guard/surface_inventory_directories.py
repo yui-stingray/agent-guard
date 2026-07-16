@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .surface_inventory_core import rel_path
+from .surface_inventory_core import is_repo_bound_path, rel_path, repo_bound_glob
 
 
 AGENT_SKILL_DIRS = (
@@ -36,16 +36,44 @@ AGENT_HOOK_FILES = (
 MAX_SURFACE_TREE_FILES = 1000
 
 
-def count_tree_files(base: Path, *, cap: int = MAX_SURFACE_TREE_FILES) -> tuple[int, bool]:
+def count_tree_files(
+    base: Path,
+    *,
+    root: Path | None = None,
+    cap: int = MAX_SURFACE_TREE_FILES,
+) -> tuple[int, bool]:
+    """Count repo-bound files without repeatedly traversing symlink cycles."""
+
+    root = base if root is None else root
+    if not is_repo_bound_path(base, root):
+        return 0, False
     if base.is_file():
         return 1, False
     count = 0
-    for item in base.rglob("*"):
-        if not item.is_file():
+    pending = [base]
+    visited: set[Path] = set()
+    while pending:
+        current = pending.pop()
+        try:
+            resolved_current = current.resolve(strict=True)
+        except (OSError, RuntimeError):
             continue
-        count += 1
-        if count >= cap:
-            return count, True
+        if resolved_current in visited:
+            continue
+        visited.add(resolved_current)
+        try:
+            children = sorted(current.iterdir())
+        except OSError:
+            continue
+        for item in children:
+            if not is_repo_bound_path(item, root):
+                continue
+            if item.is_file():
+                count += 1
+                if count >= cap:
+                    return count, True
+            elif item.is_dir():
+                pending.append(item)
     return count, False
 
 
@@ -58,11 +86,20 @@ def collect_directory_surfaces(
     surfaces: list[dict[str, object]] = []
     for rel_base, kind in entries:
         base = root / rel_base
+        if not is_repo_bound_path(base, root):
+            continue
         if not base.is_dir():
             continue
-        children = sorted(item for item in base.iterdir() if item.is_dir() or item.is_file())
+        raw_children = list(base.iterdir())
+        children = sorted(
+            item
+            for item in raw_children
+            if is_repo_bound_path(item, root) and (item.is_dir() or item.is_file())
+        )
         if not children:
-            file_count, truncated = count_tree_files(base)
+            if raw_children:
+                continue
+            file_count, truncated = count_tree_files(base, root=root)
             surfaces.append(
                 {
                     "surface": surface,
@@ -75,7 +112,7 @@ def collect_directory_surfaces(
             )
             continue
         for child in children:
-            file_count, truncated = count_tree_files(child)
+            file_count, truncated = count_tree_files(child, root=root)
             surfaces.append(
                 {
                     "surface": surface,
@@ -92,7 +129,7 @@ def collect_directory_surfaces(
 def collect_hook_surfaces(root: Path) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
     for pattern, kind in AGENT_HOOK_FILES:
-        for path in sorted(root.glob(pattern)):
+        for path in sorted(repo_bound_glob(root, pattern)):
             if not path.is_file():
                 continue
             surfaces.append(

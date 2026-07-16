@@ -314,7 +314,10 @@ def load_context_policy(path: Path) -> dict[str, object]:
     if not path.exists():
         raise FileNotFoundError(f"policy file not found: {path}")
 
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"context policy YAML is not parseable: {path}") from exc
     if not isinstance(loaded, dict):
         raise ValueError(f"policy file must be YAML object: {path}")
     return loaded

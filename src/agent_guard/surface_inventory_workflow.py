@@ -10,7 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from .surface_inventory_core import parse_agent_guard_command, rel_path, safe_metadata_path
+from .surface_inventory_core import (
+    is_repo_bound_path,
+    parse_agent_guard_command,
+    rel_path,
+    repo_bound_glob,
+    safe_metadata_path,
+)
 from .workflow_guard import collect_run_lines
 
 
@@ -26,12 +32,14 @@ def parse_output_artifact(command: str) -> str:
 
 def iter_workflow_files(root: Path) -> list[Path]:
     workflow_dir = root / ".github" / "workflows"
+    if not is_repo_bound_path(workflow_dir, root):
+        return []
     if not workflow_dir.is_dir():
         return []
     files: list[Path] = []
     for pattern in WORKFLOW_GLOBS:
-        files.extend(workflow_dir.glob(pattern))
-    return sorted(path for path in files if path.is_file())
+        files.extend(repo_bound_glob(root, f".github/workflows/{pattern}"))
+    return sorted(path for path in files if is_repo_bound_path(path, root) and path.is_file())
 
 
 def collect_workflow_artifact_surfaces(workflow: dict[str, object], *, workflow_path: str) -> list[dict[str, object]]:
@@ -70,6 +78,8 @@ def collect_workflow_artifact_surfaces(workflow: dict[str, object], *, workflow_
 def collect_workflow_surfaces(root: Path, *, include_artifacts: bool = False) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
     for workflow_file in iter_workflow_files(root):
+        if not is_repo_bound_path(workflow_file, root):
+            continue
         workflow_path = rel_path(workflow_file, root)
         try:
             loaded = yaml.safe_load(workflow_file.read_text(encoding="utf-8")) or {}

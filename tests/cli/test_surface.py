@@ -294,3 +294,96 @@ def test_surface_inventory_cli_v2_redacts_sensitive_mcp_server_names(tmp_path: P
     assert secret_server not in result.stdout
     assert local_server not in result.stdout
     assert str(tmp_path) not in result.stdout
+
+
+def test_surface_inventory_cli_v2_skips_repo_external_symlink_surfaces(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    policy = repo / "context_policy.yaml"
+    policy.parent.mkdir()
+    policy.write_text("{}\n", encoding="utf-8")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(
+        outside / "skills" / "outside-skill-marker" / "SKILL.md",
+        "outside skill marker content\n",
+    )
+    write(
+        outside / "workflows" / "outside-workflow-marker.yml",
+        "name: outside\n"
+        "jobs:\n"
+        "  outside_job_marker:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: agent-guard context check --root .\n",
+    )
+    write(outside / "hooks" / "outside-hook-marker.json", '{"marker": "outside hook marker content"}\n')
+    write(outside / "cursor-hooks.json", '{"marker": "outside cursor hook marker content"}\n')
+    write(
+        outside / "mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "outside-mcp-marker": {"command": "npx", "args": ["outside-mcp@latest"]}
+                }
+            }
+        ),
+    )
+    write(outside / "codex-config.toml", '[mcp_servers.outside_codex_marker]\ncommand = "uvx"\n')
+    write(outside / "path-policy.yaml", "outside policy marker content\n")
+
+    (repo / ".github" / "skills").mkdir(parents=True)
+    (repo / ".github" / "skills" / "outside-skill-marker").symlink_to(
+        outside / "skills" / "outside-skill-marker",
+        target_is_directory=True,
+    )
+    (repo / ".github" / "workflows").symlink_to(outside / "workflows", target_is_directory=True)
+    (repo / ".github" / "hooks").symlink_to(outside / "hooks", target_is_directory=True)
+    (repo / ".cursor").mkdir()
+    (repo / ".cursor" / "hooks.json").symlink_to(outside / "cursor-hooks.json")
+    (repo / ".mcp.json").symlink_to(outside / "mcp.json")
+    (repo / ".codex").mkdir()
+    (repo / ".codex" / "config.toml").symlink_to(outside / "codex-config.toml")
+    (repo / ".agent-guard").mkdir()
+    (repo / ".agent-guard" / "path-policy.yaml").symlink_to(outside / "path-policy.yaml")
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    surfaces = payload["surface_inventory"]["surfaces"]
+    by_surface = payload["surface_inventory"]["summary"]["by_surface"]
+    assert by_surface == {"agent_context": 1}
+    assert surfaces == [
+        {
+            "surface": "agent_context",
+            "path": "AGENTS.md",
+            "kind": "agents_md",
+            "status": "scanned",
+            "size_bytes": len("Require approval before shell writes.\n".encode("utf-8")),
+            "line_count": 1,
+        }
+    ]
+    for forbidden in (
+        "outside-skill-marker",
+        "outside skill marker content",
+        "outside-workflow-marker",
+        "outside_job_marker",
+        "outside hook marker content",
+        "outside cursor hook marker content",
+        "outside-mcp-marker",
+        "outside_codex_marker",
+        "outside policy marker content",
+        str(repo),
+        str(outside),
+    ):
+        assert forbidden not in result.stdout

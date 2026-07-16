@@ -201,7 +201,8 @@ def test_readme_documents_report_evidence_contract() -> None:
         "[--schema-version <v1>] [--json]"
         in cli_reference
     )
-    assert "[--surface-delta-base-ref <ref>]" in cli_reference
+    assert "Unreleased source-only CLI additions" in cli_reference
+    assert "--surface-delta-base-ref <ref>" in cli_reference
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
     assert "not runtime vulnerability detection" in readme
@@ -506,8 +507,13 @@ def test_readme_documents_surface_delta_evidence() -> None:
     readme_single_line = " ".join(readme.split())
 
     assert "### Surface delta evidence" in readme
+    assert "unreleased source behavior" in readme
+    assert "not available in the published `0.2.4` package" in readme
+    assert "not part of the published `0.2.4` package" in readme
+    assert "Unreleased source-only CLI additions" in readme
     assert "agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>" in readme
     assert "agent-guard.surface_delta.v1.schema.json" in readme
+    assert "not present in the published `0.2.4` wheel" in readme
     assert "--surface-delta-base-ref <ref>" in readme
     assert "## Surface Delta Evidence" in readme
     assert '`changed_fields: ["content"]`' in readme
@@ -525,6 +531,7 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert "agent-guard.surface_delta.v1.schema.json" in docs
+    assert "not present in the published `0.2.4` wheel" in docs_single_line
     assert "controlled-vocabulary `changed_fields` names" in docs_single_line
     assert "It is review evidence, not a gate" in docs_single_line
     assert "never emitted to SARIF" in docs_single_line
@@ -534,6 +541,13 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     assert "existing file-backed context, policy, workflow, evidence artifact" in docs_single_line
     assert "never emits the instruction body or an internal content fingerprint value" in docs_single_line
     assert "Policy is always read from the current working tree, never from the base" in docs_single_line
+    assert "raw Git tree/blob objects" in docs_single_line
+    assert "export-ignore" in docs_single_line
+    assert "clean/process/smudge filters are not executed" in docs_single_line
+    assert "filtered against the requested repository root and inventory patterns" in docs_single_line
+    assert "context `scan.exclude`" in docs_single_line
+    assert "unrelated tracked blobs are not materialized" in docs_single_line
+    assert "repository-external symlink targets are not followed" in docs_single_line
 
 
 def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:

@@ -465,6 +465,305 @@ def test_archive_base_tree_fails_closed_without_data_filter(
         archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
 
 
+def test_surface_delta_reads_export_ignored_surface_from_raw_base_tree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md export-ignore\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes A.\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / "AGENTS.md", "Require approval before shell writes B.\n")
+    commit_all(repo, "head")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(result.stdout)["delta"]["entries"]
+    assert entries == [
+        {
+            "kind": "agent_context",
+            "path": "AGENTS.md",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_archive_base_tree_skips_unrelated_tracked_blob_materialization(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(repo / "large-unrelated.bin", "x" * (1024 * 1024))
+    commit_all(repo, "base")
+
+    archive_base_tree(toplevel=repo, base_ref="HEAD", dest=dest)
+
+    assert (dest / "AGENTS.md").is_file()
+    assert not (dest / "large-unrelated.bin").exists()
+
+
+def test_archive_base_tree_skips_context_excluded_blob_materialization(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(repo / "private" / "secret.md", "x" * (1024 * 1024))
+    commit_all(repo, "base")
+    policy = {
+        "scan": {
+            "include": ["**/*.md"],
+            "exclude": ["private/**"],
+        }
+    }
+
+    archive_base_tree(
+        toplevel=repo,
+        base_ref="HEAD",
+        dest=dest,
+        context_policy=policy,
+    )
+
+    assert (dest / "AGENTS.md").is_file()
+    assert not (dest / "private" / "secret.md").exists()
+
+
+def test_surface_delta_ignores_unrelated_unsafe_git_path(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(repo / "unrelated\\large.bin", "unrelated\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+
+
+def test_surface_delta_rejects_unsafe_git_path_in_surface_root(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".github" / "skills" / "unsafe\\name" / "SKILL.md", "unsafe path\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 2
+    assert "unsafe path in the base ref tree" in result.stdout
+    assert "unsafe\\name" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_surface_delta_materializes_custom_context_include(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "scan:\n  include:\n    - custom/**/*.md\n")
+    write(repo / "custom" / "nested" / "instructions.md", "base context\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / "custom" / "nested" / "instructions.md", "head context\n")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(result.stdout)["delta"]["entries"]
+    assert entries == [
+        {
+            "kind": "agent_context",
+            "path": "custom/nested/instructions.md",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "nested/AGENTS.md",
+        ".github/instructions/review.instructions.md",
+    ),
+)
+def test_surface_delta_materializes_default_recursive_context_includes(
+    tmp_path: Path,
+    relative_path: str,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / relative_path, "base context\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(repo / relative_path, "head context\n")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(result.stdout)["delta"]["entries"]
+    assert entries == [
+        {
+            "kind": "agent_context",
+            "path": relative_path,
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_surface_delta_does_not_apply_export_subst_to_base_blob(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md export-subst\n")
+    write(repo / "AGENTS.md", "$Format:%H$\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+
+
+def test_surface_delta_does_not_execute_smudge_filter(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md filter=surface-proof\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(repo / "smudge-filter.sh", "#!/bin/sh\n: > smudge-ran\ncat\n")
+    run_git(repo, "config", "filter.surface-proof.smudge", "sh smudge-filter.sh")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert not (repo / "smudge-ran").exists()
+
+
+def test_surface_delta_does_not_execute_clean_filter_for_changed_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md filter=surface-proof\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes A.\n")
+    write(repo / "clean-filter.sh", "#!/bin/sh\n: > clean-ran\ncat\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    run_git(repo, "config", "filter.surface-proof.clean", "sh clean-filter.sh")
+    write(repo / "AGENTS.md", "Require approval before shell writes B.\n")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (repo / "clean-ran").exists()
+
+
+def test_surface_delta_does_not_execute_process_filter_for_changed_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md filter=surface-proof\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes A.\n")
+    write(repo / "process-filter.sh", "#!/bin/sh\n: > process-ran\nexit 1\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    run_git(repo, "config", "filter.surface-proof.process", "sh process-filter.sh")
+    write(repo / "AGENTS.md", "Require approval before shell writes B.\n")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (repo / "process-ran").exists()
+
+
+def test_surface_delta_sanitizes_malformed_context_policy_parser_details(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+    marker = "TOP_SECRET_PARSE_MARKER"
+    write(repo / "context_policy.yaml", f"policy:\n  broken: [{marker}\n")
+
+    results = [
+        run_delta(repo, base),
+        run_cli(
+            "report",
+            "--root",
+            str(repo),
+            "--context-policy",
+            str(repo / "context_policy.yaml"),
+            "--surface-delta-base-ref",
+            base,
+            "--format",
+            "json",
+        ),
+    ]
+
+    for result in results:
+        assert result.returncode == 2
+        assert marker not in result.stdout
+        assert "broken:" not in result.stdout
+        assert str(tmp_path) not in result.stdout
+        assert "context policy YAML is not parseable" in result.stdout
+
+
+def test_surface_delta_fails_closed_on_external_base_symlink(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(outside / "AGENTS.md", "outside-private-marker\n")
+    (repo / "AGENTS.md").symlink_to(outside / "AGENTS.md")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 2
+    assert "outside-private-marker" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+    assert str(outside / "AGENTS.md") not in result.stdout
+
+
+def test_surface_delta_fails_closed_on_changed_external_head_symlink(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    write(outside / "AGENTS.md", "outside-private-marker\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    (repo / "AGENTS.md").unlink()
+    (repo / "AGENTS.md").symlink_to(outside / "AGENTS.md")
+    commit_all(repo, "head")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 2
+    assert "outside-private-marker" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+    assert str(outside / "AGENTS.md") not in result.stdout
+
+
 def test_surface_delta_cli_sanitizes_adversarial_mcp_and_instruction_content(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
@@ -675,6 +974,7 @@ def test_surface_delta_cli_supports_subdirectory_root(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)
     write(repo / "README.md", "root marker\n")
+    write(repo / "unsafe\\outside", "must not be listed for a subdirectory root\n")
     write_base_fixture(repo / "services" / "api")
     commit_all(repo, "base")
     base = base_sha(repo)

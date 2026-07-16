@@ -28,11 +28,14 @@ Installed wheels package these JSON Schema resources under
   surface inventory.
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
-- `agent-guard.surface_delta.v1.schema.json`: sanitized PR base/head agent
-  surface delta evidence emitted by `agent-guard surface delta` and by
-  `agent-guard report --surface-delta-base-ref`. It is review evidence, not a
-  gate: added/removed/modified counts and per-surface entries with
-  controlled-vocabulary `changed_fields` names (never values) and risk labels.
+
+The unreleased source tree additionally contains
+`agent-guard.surface_delta.v1.schema.json`; it is not present in the published
+`0.2.4` wheel. The schema covers sanitized PR base/head agent surface delta
+evidence emitted by `agent-guard surface delta` and by `agent-guard report
+--surface-delta-base-ref`. It is review evidence, not a gate:
+added/removed/modified counts and per-surface entries with controlled-vocabulary
+`changed_fields` names (never values) and risk labels.
 
 The `v1` schemas are intended to remain stable for downstream consumers.
 Compatible tightening may add enum constraints for values already emitted by
@@ -197,10 +200,19 @@ The JSON report is a compact statement of what `agent-guard` checked:
   used elsewhere in the report. It is deterministic review evidence, not a
   gate: it never changes the report's exit code and is never emitted to SARIF.
   Policy is always read from the current working tree, never from the base
-  ref; the base tree is materialized read-only and never executed as
-  instructions. Base-tree extraction requires the security-backported stdlib
-  tar extraction filter available from Python 3.11.4 and fails closed if that
-  filter is unavailable; there is no unfiltered fallback. `changed_fields`
+  ref; the base tree is materialized read-only from raw Git tree/blob objects
+  and never executed as instructions. This does not apply release-archive
+  `export-ignore` / `export-subst` attributes, and configured
+  clean/process/smudge filters are not executed. Git tree metadata is filtered
+  against the requested repository root and inventory patterns, including
+  context `scan.exclude`, before any blob is read, so unrelated tracked blobs
+  are not materialized. In addition,
+  repository-external symlink targets are not followed by surface inventory.
+  Raw blobs are streamed into a temporary synthetic tar rather than buffering
+  a repository archive in memory. Base-tree extraction requires the
+  security-backported stdlib tar extraction filter available from Python
+  3.11.4 and fails closed if that filter is unavailable; there is no
+  unfiltered fallback. `changed_fields`
   lists field *names* only, never before/after values. Repeated same-file
   records retain their multiplicity, while
   line-number and workflow-step-position-only moves remain unchanged. The

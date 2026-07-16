@@ -138,6 +138,58 @@
       },
       "additionalProperties": true
     },
+    "surface_delta": {
+      "type": "object",
+      "required": ["schema_version", "base_resolved"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"base_resolved": {"const": true}}
+          },
+          "then": {
+            "required": ["summary", "entries"]
+          }
+        }
+      ],
+      "properties": {
+        "schema_version": {"const": "agent-guard.surface_delta.v1"},
+        "base_resolved": {"type": "boolean"},
+        "summary": {
+          "type": "object",
+          "required": ["added", "removed", "modified", "unchanged"],
+          "properties": {
+            "added": {"type": "integer", "minimum": 0},
+            "removed": {"type": "integer", "minimum": 0},
+            "modified": {"type": "integer", "minimum": 0},
+            "unchanged": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "path", "name", "status", "changed_fields"],
+            "properties": {
+              "kind": {"type": "string"},
+              "path": {"type": "string"},
+              "name": {"type": "string"},
+              "status": {"type": "string", "enum": ["added", "removed", "modified"]},
+              "risk_labels": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "changed_fields": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "context_lock": {
       "type": "object",
       "required": ["policy", "status", "checked_count", "covered_count", "covered", "finding_count", "findings"],
