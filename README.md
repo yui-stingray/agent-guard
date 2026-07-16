@@ -649,7 +649,10 @@ skills, MCP servers, workflows, policies, hooks) were added, removed, or
 modified. `changed_fields` lists metadata field names only, never values, and
 the section never emits the base ref name, raw diffs, MCP args/env values, or
 instruction/description text. Repeated records retain their count, while
-line-number and workflow-step-position-only moves remain unchanged. It is
+line-number and workflow-step-position-only moves remain unchanged. Content-only
+changes inside existing skill, profile, and command surfaces are reported with
+`changed_fields: ["content"]`; neither content nor a content fingerprint value
+is published. It is
 deterministic review evidence, not a gate: exit `0` regardless of whether
 entries are present, exit `2` on
 configuration/runtime error such as an unfetched base ref. Pass

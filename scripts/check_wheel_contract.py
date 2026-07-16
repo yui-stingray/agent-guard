@@ -91,6 +91,7 @@ def main() -> int:
                 "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
                 "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
                 "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
+                "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
             }}
             schema_dir = resources.files("agent_guard.schemas")
             for filename, schema_version in schema_names.items():

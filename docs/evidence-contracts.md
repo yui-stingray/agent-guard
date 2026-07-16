@@ -201,6 +201,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
   instructions. `changed_fields` lists field *names* only, never before/after
   values. Repeated same-file records retain their multiplicity, while
   line-number and workflow-step-position-only moves remain unchanged. The
+  delta marks content-only changes inside existing skill, profile, and command
+  surfaces with the controlled field name `content`; it never emits the
+  instruction body or an internal content fingerprint value. The
   section omits base ref names, raw diffs, MCP args/env values, and
   instruction/description text.
 

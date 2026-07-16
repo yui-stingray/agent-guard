@@ -14,7 +14,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .surface_inventory import collect_agent_surface_inventory
 
@@ -28,6 +28,13 @@ _LOCATOR_FIELDS_BY_SURFACE = {
     "documented_guard_command": frozenset({"line"}),
     "evidence_artifact_reference": frozenset({"step_index"}),
     "workflow_reference": frozenset({"step_index"}),
+}
+_CONTENT_TRACKED_DIRECTORY_SURFACES = frozenset(
+    {"agent_skill", "agent_profile", "agent_command"}
+)
+_INTERNAL_CONTENT_REVISION_FIELD = "_content_revision"
+_PUBLIC_CHANGED_FIELD_ALIASES = {
+    _INTERNAL_CONTENT_REVISION_FIELD: "content",
 }
 _UNSAFE_BASE_REF_CHARS = "\x00\r\n"
 _BASE_REF_UNRESOLVED_MESSAGE = (
@@ -74,6 +81,7 @@ def run_git_command(cwd: Path, args: list[str]) -> subprocess.CompletedProcess[s
         ["git", "-C", str(cwd), *args],
         capture_output=True,
         text=True,
+        errors="surrogateescape",
         check=False,
     )
 
@@ -96,6 +104,62 @@ def repo_relative_root(*, root: Path, toplevel: Path) -> str:
         return root.resolve().relative_to(toplevel).as_posix()
     except ValueError as exc:
         raise SurfaceDeltaError("--root must stay inside the git repository") from exc
+
+
+def changed_repo_paths(*, root: Path, base_ref: str) -> tuple[str, ...]:
+    """Return Git-normalized changed paths relative to root without exposing them."""
+
+    try:
+        result = run_git_command(
+            root,
+            [
+                "diff",
+                "--relative",
+                "--name-only",
+                "-z",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=all",
+                "--no-renames",
+                base_ref,
+                "--",
+            ],
+        )
+    except FileNotFoundError as exc:
+        raise SurfaceDeltaError("surface delta requires git") from exc
+    if result.returncode != 0:
+        raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
+    return tuple(sorted(path for path in result.stdout.split("\0") if path))
+
+
+def surface_path_has_change(*, path: str, changed_paths: Sequence[str]) -> bool:
+    candidate = PurePosixPath(path)
+    if candidate.is_absolute() or not candidate.parts or ".." in candidate.parts:
+        return False
+    prefix = candidate.as_posix().rstrip("/")
+    return any(item == prefix or item.startswith(f"{prefix}/") for item in changed_paths)
+
+
+def annotate_directory_content_revisions(
+    surfaces: Sequence[object],
+    *,
+    changed_paths: Sequence[str],
+    revision: str,
+) -> list[object]:
+    """Add an internal-only marker when tracked directory content changed."""
+
+    annotated: list[object] = []
+    for item in surfaces:
+        if not isinstance(item, Mapping):
+            annotated.append(item)
+            continue
+        surface = dict(item)
+        if str(surface.get("surface", "")) in _CONTENT_TRACKED_DIRECTORY_SURFACES:
+            path = str(surface.get("path", ""))
+            if surface_path_has_change(path=path, changed_paths=changed_paths):
+                surface[_INTERNAL_CONTENT_REVISION_FIELD] = revision
+        annotated.append(surface)
+    return annotated
 
 
 def run_git_archive(*, toplevel: Path, base_ref: str) -> subprocess.CompletedProcess[bytes]:
@@ -155,7 +219,12 @@ def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) ->
         for field in _LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ())
     )
     keys = (set(base) | set(head)) - ignored_fields
-    return tuple(sorted(key for key in keys if base.get(key) != head.get(key)))
+    changed_fields = {
+        _PUBLIC_CHANGED_FIELD_ALIASES.get(key, key)
+        for key in keys
+        if base.get(key) != head.get(key)
+    }
+    return tuple(sorted(changed_fields))
 
 
 def canonical_surface(surface: Mapping[str, object]) -> str:
@@ -328,6 +397,18 @@ def build_surface_delta_report(
 
         base_surfaces = collect_surfaces_for_root(root=base_root, context_policy=context_policy)
         head_surfaces = collect_surfaces_for_root(root=root, context_policy=context_policy)
+
+    changed_paths = changed_repo_paths(root=root, base_ref=base_ref)
+    base_surfaces = annotate_directory_content_revisions(
+        base_surfaces,
+        changed_paths=changed_paths,
+        revision="base",
+    )
+    head_surfaces = annotate_directory_content_revisions(
+        head_surfaces,
+        changed_paths=changed_paths,
+        revision="head",
+    )
 
     entries, summary = build_surface_delta_entries(
         base_surfaces=base_surfaces,
