@@ -7,9 +7,11 @@ Why: turn ad hoc PR agent-surface review into deterministic, sanitized evidence
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import tarfile
 import tempfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,9 +21,14 @@ from .surface_inventory import collect_agent_surface_inventory
 
 SURFACE_DELTA_SCHEMA_VERSION_V1 = "agent-guard.surface_delta.v1"
 
-# Identity fields key a surface entry (added/removed/modified matching) and are
-# never listed in changed_fields; every other field is compared by name only.
+# Public identity fields group related records before collision-safe multiset
+# matching. Locator-only moves do not change the represented surface.
 _IDENTITY_FIELDS = frozenset({"surface", "path", "server_name", "name"})
+_LOCATOR_FIELDS_BY_SURFACE = {
+    "documented_guard_command": frozenset({"line"}),
+    "evidence_artifact_reference": frozenset({"step_index"}),
+    "workflow_reference": frozenset({"step_index"}),
+}
 _UNSAFE_BASE_REF_CHARS = "\x00\r\n"
 _BASE_REF_UNRESOLVED_MESSAGE = (
     "surface delta could not resolve --base-ref; fetch it explicitly in CI "
@@ -109,10 +116,11 @@ def archive_base_tree(*, toplevel: Path, base_ref: str, dest: Path) -> None:
     try:
         with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as tar:
             extract_filter = getattr(tarfile, "data_filter", None)
-            if extract_filter is not None:
-                tar.extractall(path=dest, filter=extract_filter)
-            else:  # pragma: no cover - only reachable on interpreters missing the safety filter
-                tar.extractall(path=dest)
+            if extract_filter is None:
+                raise SurfaceDeltaError(
+                    "surface delta requires a safe tar extraction filter"
+                )
+            tar.extractall(path=dest, filter=extract_filter)
     except (tarfile.TarError, OSError) as exc:
         raise SurfaceDeltaError("surface delta could not extract the base ref tree") from exc
 
@@ -140,16 +148,61 @@ def surface_entry_risk_labels(surface: Mapping[str, object]) -> tuple[str, ...]:
 def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) -> tuple[str, ...]:
     """Return changed metadata field *names* only; values never leave this function."""
 
-    keys = (set(base) | set(head)) - _IDENTITY_FIELDS
+    surface_kinds = {str(base.get("surface", "")), str(head.get("surface", ""))}
+    ignored_fields = _IDENTITY_FIELDS | frozenset(
+        field
+        for surface_kind in surface_kinds
+        for field in _LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ())
+    )
+    keys = (set(base) | set(head)) - ignored_fields
     return tuple(sorted(key for key in keys if base.get(key) != head.get(key)))
 
 
-def index_surfaces(surfaces: Sequence[object]) -> dict[tuple[str, str, str], dict[str, object]]:
-    indexed: dict[tuple[str, str, str], dict[str, object]] = {}
+def canonical_surface(surface: Mapping[str, object]) -> str:
+    return json.dumps(surface, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def surface_match_fingerprint(surface: Mapping[str, object]) -> str:
+    surface_kind = str(surface.get("surface", ""))
+    ignored_fields = _LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ())
+    comparable = {key: value for key, value in surface.items() if key not in ignored_fields}
+    return canonical_surface(comparable)
+
+
+def bucket_surfaces(
+    surfaces: Sequence[object],
+) -> dict[tuple[str, str, str], list[dict[str, object]]]:
+    buckets: dict[tuple[str, str, str], list[dict[str, object]]] = {}
     for item in surfaces:
         if isinstance(item, Mapping):
-            indexed[surface_entry_key(item)] = dict(item)
-    return indexed
+            buckets.setdefault(surface_entry_key(item), []).append(dict(item))
+    for bucket in buckets.values():
+        bucket.sort(key=canonical_surface)
+    return buckets
+
+
+def subtract_identical_surfaces(
+    *,
+    base_surfaces: Sequence[Mapping[str, object]],
+    head_surfaces: Sequence[Mapping[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], int]:
+    base_by_fingerprint = {surface_match_fingerprint(item): dict(item) for item in base_surfaces}
+    head_by_fingerprint = {surface_match_fingerprint(item): dict(item) for item in head_surfaces}
+    base_counts = Counter(surface_match_fingerprint(item) for item in base_surfaces)
+    head_counts = Counter(surface_match_fingerprint(item) for item in head_surfaces)
+    common_counts = base_counts & head_counts
+
+    base_remaining = [
+        base_by_fingerprint[fingerprint]
+        for fingerprint in sorted(base_counts)
+        for _ in range(base_counts[fingerprint] - common_counts[fingerprint])
+    ]
+    head_remaining = [
+        head_by_fingerprint[fingerprint]
+        for fingerprint in sorted(head_counts)
+        for _ in range(head_counts[fingerprint] - common_counts[fingerprint])
+    ]
+    return base_remaining, head_remaining, sum(common_counts.values())
 
 
 def build_surface_delta_entries(
@@ -157,52 +210,71 @@ def build_surface_delta_entries(
     base_surfaces: Sequence[object],
     head_surfaces: Sequence[object],
 ) -> tuple[list[SurfaceDeltaEntry], dict[str, int]]:
-    base_index = index_surfaces(base_surfaces)
-    head_index = index_surfaces(head_surfaces)
-    base_keys = set(base_index)
-    head_keys = set(head_index)
+    base_buckets = bucket_surfaces(base_surfaces)
+    head_buckets = bucket_surfaces(head_surfaces)
 
     entries: list[SurfaceDeltaEntry] = []
-    for kind, path, name in head_keys - base_keys:
-        entries.append(
-            SurfaceDeltaEntry(
-                kind=kind,
-                path=path,
-                name=name,
-                status="added",
-                risk_labels=surface_entry_risk_labels(head_index[(kind, path, name)]),
-            )
-        )
-    for kind, path, name in base_keys - head_keys:
-        entries.append(
-            SurfaceDeltaEntry(
-                kind=kind,
-                path=path,
-                name=name,
-                status="removed",
-                risk_labels=surface_entry_risk_labels(base_index[(kind, path, name)]),
-            )
-        )
-
     unchanged_count = 0
-    for key in base_keys & head_keys:
-        changed_fields = diff_entry_fields(base_index[key], head_index[key])
-        if not changed_fields:
-            unchanged_count += 1
-            continue
-        kind, path, name = key
-        entries.append(
-            SurfaceDeltaEntry(
-                kind=kind,
-                path=path,
-                name=name,
-                status="modified",
-                risk_labels=surface_entry_risk_labels(head_index[key]),
-                changed_fields=changed_fields,
-            )
+    for key in sorted(set(base_buckets) | set(head_buckets)):
+        base_remaining, head_remaining, unchanged = subtract_identical_surfaces(
+            base_surfaces=base_buckets.get(key, []),
+            head_surfaces=head_buckets.get(key, []),
         )
+        unchanged_count += unchanged
+        kind, path, name = key
+        paired_count = min(len(base_remaining), len(head_remaining))
 
-    entries.sort(key=lambda entry: (entry.kind, entry.path, entry.name))
+        for base_item, head_item in zip(
+            base_remaining[:paired_count],
+            head_remaining[:paired_count],
+            strict=True,
+        ):
+            changed_fields = diff_entry_fields(base_item, head_item)
+            if not changed_fields:
+                unchanged_count += 1
+                continue
+            entries.append(
+                SurfaceDeltaEntry(
+                    kind=kind,
+                    path=path,
+                    name=name,
+                    status="modified",
+                    risk_labels=surface_entry_risk_labels(head_item),
+                    changed_fields=changed_fields,
+                )
+            )
+
+        for head_item in head_remaining[paired_count:]:
+            entries.append(
+                SurfaceDeltaEntry(
+                    kind=kind,
+                    path=path,
+                    name=name,
+                    status="added",
+                    risk_labels=surface_entry_risk_labels(head_item),
+                )
+            )
+        for base_item in base_remaining[paired_count:]:
+            entries.append(
+                SurfaceDeltaEntry(
+                    kind=kind,
+                    path=path,
+                    name=name,
+                    status="removed",
+                    risk_labels=surface_entry_risk_labels(base_item),
+                )
+            )
+
+    entries.sort(
+        key=lambda entry: (
+            entry.kind,
+            entry.path,
+            entry.name,
+            entry.status,
+            entry.changed_fields,
+            entry.risk_labels,
+        )
+    )
     summary = {
         "added": sum(1 for entry in entries if entry.status == "added"),
         "removed": sum(1 for entry in entries if entry.status == "removed"),

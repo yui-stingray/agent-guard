@@ -199,8 +199,10 @@ The JSON report is a compact statement of what `agent-guard` checked:
   Policy is always read from the current working tree, never from the base
   ref; the base tree is materialized read-only and never executed as
   instructions. `changed_fields` lists field *names* only, never before/after
-  values, and the section omits base ref names, raw diffs, MCP args/env
-  values, and instruction/description text.
+  values. Repeated same-file records retain their multiplicity, while
+  line-number and workflow-step-position-only moves remain unchanged. The
+  section omits base ref names, raw diffs, MCP args/env values, and
+  instruction/description text.
 
 For failure reading, a missing implicit MCP policy in recommended evidence is a
 sanitized violation report: `mcp_config` records `mcp_policy_missing`, and

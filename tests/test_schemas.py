@@ -12,6 +12,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
@@ -186,6 +188,50 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
         schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
     )
     assert artifact_role["enum"] == ["report", "agent-policy-audit-event"]
+
+
+def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None:
+    unresolved = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": False,
+    }
+    resolved_without_details = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": True,
+    }
+
+    validate_payload("agent-guard.surface_delta.v1.schema.json", unresolved)
+    with pytest.raises(AssertionError, match=r"\$\.summary is required"):
+        validate_payload("agent-guard.surface_delta.v1.schema.json", resolved_without_details)
+
+
+def test_surface_delta_schema_validates_unresolved_report_section(tmp_path: Path) -> None:
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    write(tmp_path / "context_policy.yaml", "{}\n")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        "context_policy.yaml",
+        "--surface-delta-base-ref",
+        "refs/does-not-exist",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["surface_delta"]["base_resolved"] is False
+    validate_payload("agent-guard.surface_delta.v1.schema.json", payload["surface_delta"])
 
 
 def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:

@@ -13,7 +13,11 @@ Why: keep static guard releases auditable while the package is still alpha.
   names (never values) and risk labels. It is deterministic review evidence,
   not a gate, and is never emitted to SARIF. Added the packaged
   `agent-guard.surface_delta.v1.schema.json` schema and the matching
-  `action.yml` `surface-delta-base-ref` input.
+  `action.yml` `surface-delta-base-ref` input. Repeated records retain their
+  multiplicity instead of overwriting one another, locator-only line/step moves
+  remain unchanged, unresolved-base report sections validate against the same
+  schema, and archive extraction fails closed when the safe tar filter is not
+  available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

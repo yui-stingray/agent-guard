@@ -497,7 +497,7 @@ def test_readme_documents_surface_delta_evidence() -> None:
     assert "## Surface Delta Evidence" in readme
     assert (
         "agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml "
-        "--base-ref origin/main --json"
+        "--base-ref <base-ref> --json"
         in readme
     )
 
@@ -515,9 +515,15 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
 
 def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
+    surface_delta_section = actions.split("## Surface Delta Evidence On Pull Requests", 1)[1].split(
+        "## Expanded Workflow Step", 1
+    )[0]
 
     assert "## Surface Delta Evidence On Pull Requests" in actions
     assert "surface-delta-base-ref: origin/${{ github.base_ref }}" in actions
     assert "${{ github.event.pull_request.base.sha }}" in actions
     assert "fetch-depth: 0" in actions
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
+    assert "currently unreleased" in surface_delta_section
+    assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" in surface_delta_section
+    assert "yui-stingray/agent-guard@v0.2.4" not in surface_delta_section

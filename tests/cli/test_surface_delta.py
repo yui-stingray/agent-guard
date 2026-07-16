@@ -7,6 +7,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from agent_guard import surface_delta as surface_delta_module
+from agent_guard.surface_delta import (
+    SurfaceDeltaError,
+    archive_base_tree,
+    build_surface_delta_entries,
+)
 from tests.cli.helpers import run_cli, run_git, write
 
 
@@ -165,6 +173,140 @@ def test_surface_delta_cli_is_deterministic(tmp_path: Path) -> None:
     assert first.returncode == 0
     assert second.returncode == 0
     assert first.stdout == second.stdout
+
+
+def test_surface_delta_cli_preserves_multiple_workflow_references(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write_base_fixture(repo)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(
+        repo / ".github" / "workflows" / "ci.yml",
+        "name: ci\n"
+        "jobs:\n"
+        "  added:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: agent-guard report --root . --format json\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: agent-guard context check --root . --policy context_policy.yaml\n",
+    )
+    commit_all(repo, "add second workflow reference")
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    delta = json.loads(result.stdout)["delta"]
+    workflow_entries = [
+        entry for entry in delta["entries"] if entry["kind"] == "workflow_reference"
+    ]
+    assert [entry["status"] for entry in workflow_entries] == ["added"]
+    assert delta["summary"]["added"] >= 1
+
+
+def test_build_surface_delta_entries_preserves_same_key_multiplicity() -> None:
+    existing = {
+        "surface": "workflow_reference",
+        "path": ".github/workflows/ci.yml",
+        "kind": "agent_guard_command",
+        "status": "referenced",
+        "job_id": "existing",
+        "step_index": 1,
+        "command": {"scanner": "report", "command": ""},
+    }
+    added = {
+        "surface": "workflow_reference",
+        "path": ".github/workflows/ci.yml",
+        "kind": "agent_guard_command",
+        "status": "referenced",
+        "job_id": "added",
+        "step_index": 1,
+        "command": {"scanner": "context", "command": "check"},
+    }
+
+    entries, summary = build_surface_delta_entries(
+        base_surfaces=[existing],
+        head_surfaces=[added, existing],
+    )
+
+    assert summary == {"added": 1, "removed": 0, "modified": 0, "unchanged": 1}
+    assert [entry.status for entry in entries] == ["added"]
+
+
+def test_build_surface_delta_entries_preserves_duplicate_redacted_mcp_names() -> None:
+    retained = {
+        "surface": "mcp_server_reference",
+        "path": ".mcp.json",
+        "server_name": "<redacted-server>",
+        "status": "referenced",
+        "transport": "stdio",
+        "command_basename": "uvx",
+    }
+    removed = {
+        "surface": "mcp_server_reference",
+        "path": ".mcp.json",
+        "server_name": "<redacted-server>",
+        "status": "referenced",
+        "transport": "stdio",
+        "command_basename": "npx",
+    }
+
+    entries, summary = build_surface_delta_entries(
+        base_surfaces=[retained, removed],
+        head_surfaces=[retained],
+    )
+
+    assert summary == {"added": 0, "removed": 1, "modified": 0, "unchanged": 1}
+    assert [entry.status for entry in entries] == ["removed"]
+
+
+@pytest.mark.parametrize(
+    ("surface", "locator_field"),
+    (
+        ("documented_guard_command", "line"),
+        ("workflow_reference", "step_index"),
+        ("evidence_artifact_reference", "step_index"),
+    ),
+)
+def test_build_surface_delta_entries_ignores_locator_only_moves(
+    surface: str,
+    locator_field: str,
+) -> None:
+    base = {
+        "surface": surface,
+        "path": ".github/workflows/ci.yml" if "reference" in surface else "README.md",
+        "kind": "agent_guard_command",
+        "status": "referenced",
+        "command": {"scanner": "report", "command": ""},
+        locator_field: 2,
+    }
+    head = {**base, locator_field: 7}
+
+    entries, summary = build_surface_delta_entries(
+        base_surfaces=[base],
+        head_surfaces=[head],
+    )
+
+    assert entries == []
+    assert summary == {"added": 0, "removed": 0, "modified": 0, "unchanged": 1}
+
+
+def test_archive_base_tree_fails_closed_without_data_filter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "README.md", "base\n")
+    commit_all(repo, "base")
+    monkeypatch.delattr(surface_delta_module.tarfile, "data_filter", raising=False)
+
+    with pytest.raises(SurfaceDeltaError, match="safe tar extraction filter"):
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
 
 
 def test_surface_delta_cli_sanitizes_adversarial_mcp_and_instruction_content(tmp_path: Path) -> None:

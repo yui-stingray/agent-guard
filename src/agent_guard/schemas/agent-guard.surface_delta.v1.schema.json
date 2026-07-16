@@ -3,7 +3,17 @@
   "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.surface_delta.v1.schema.json",
   "title": "agent-guard sanitized PR base/head agent surface delta evidence v1",
   "type": "object",
-  "required": ["schema_version", "base_resolved", "summary", "entries"],
+  "required": ["schema_version", "base_resolved"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"base_resolved": {"const": true}}
+      },
+      "then": {
+        "required": ["summary", "entries"]
+      }
+    }
+  ],
   "properties": {
     "schema_version": {"const": "agent-guard.surface_delta.v1"},
     "base_resolved": {"type": "boolean"},
