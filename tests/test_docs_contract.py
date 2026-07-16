@@ -32,6 +32,13 @@ def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
 
+def test_readme_documents_python_patch_floor() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "Python 3.11.4+" in readme
+    assert "Requires Python 3.11.4+." in readme
+
+
 def test_onboarding_commands_pin_the_current_package_version() -> None:
     version = pyproject_version()
     readme = README.read_text(encoding="utf-8")
@@ -188,6 +195,13 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "MCP configuration metadata" in readme
     assert "--mcp-config-check" in readme
     assert "--mcp-policy" in readme
+    cli_reference = readme[readme.index("## CLI") : readme.index("## Releases")]
+    assert (
+        "agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> "
+        "[--schema-version <v1>] [--json]"
+        in cli_reference
+    )
+    assert "[--surface-delta-base-ref <ref>]" in cli_reference
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
     assert "not runtime vulnerability detection" in readme
@@ -514,6 +528,8 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     assert "controlled-vocabulary `changed_fields` names" in docs_single_line
     assert "It is review evidence, not a gate" in docs_single_line
     assert "never emitted to SARIF" in docs_single_line
+    assert "tar extraction filter available from Python 3.11.4" in docs_single_line
+    assert "there is no unfiltered fallback" in docs_single_line
     assert "controlled field name `content`" in docs_single_line
     assert "existing file-backed context, policy, workflow, evidence artifact" in docs_single_line
     assert "never emits the instruction body or an internal content fingerprint value" in docs_single_line

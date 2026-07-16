@@ -41,6 +41,12 @@ def project_version() -> str:
         return str(tomllib.load(handle)["project"]["version"])
 
 
+def project_requires_python() -> str:
+    """Return pyproject.toml [project].requires-python."""
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        return str(tomllib.load(handle)["project"]["requires-python"])
+
+
 def find_wheel(version: str) -> Path:
     """Return the built wheel for the current project version."""
     wheels = sorted(DIST.glob(f"yui_agent_guard-{version}-*.whl"))
@@ -64,6 +70,7 @@ def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def main() -> int:
     version = project_version()
+    requires_python = project_requires_python()
     wheel = find_wheel(version)
     with tempfile.TemporaryDirectory(prefix="agent-guard-wheel-") as temp_dir:
         temp = Path(temp_dir)
@@ -76,10 +83,12 @@ def main() -> int:
             import json
             import agent_guard
             from importlib import resources
+            from importlib.metadata import metadata
 
             expected_exports = {sorted(EXPECTED_EXPORTS)!r}
             assert sorted(agent_guard.__all__) == expected_exports
             assert agent_guard.__version__ == {version!r}
+            assert metadata("yui-agent-guard")["Requires-Python"] == {requires_python!r}
             assert agent_guard.scan_paths is agent_guard.scan_content_paths
             for name in expected_exports:
                 assert getattr(agent_guard, name) is not None

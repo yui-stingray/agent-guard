@@ -198,8 +198,11 @@ The JSON report is a compact statement of what `agent-guard` checked:
   gate: it never changes the report's exit code and is never emitted to SARIF.
   Policy is always read from the current working tree, never from the base
   ref; the base tree is materialized read-only and never executed as
-  instructions. `changed_fields` lists field *names* only, never before/after
-  values. Repeated same-file records retain their multiplicity, while
+  instructions. Base-tree extraction requires the security-backported stdlib
+  tar extraction filter available from Python 3.11.4 and fails closed if that
+  filter is unavailable; there is no unfiltered fallback. `changed_fields`
+  lists field *names* only, never before/after values. Repeated same-file
+  records retain their multiplicity, while
   line-number and workflow-step-position-only moves remain unchanged. The
   delta marks content-only changes to existing file-backed context, policy,
   workflow, evidence artifact, skill, profile, command, hook, and MCP

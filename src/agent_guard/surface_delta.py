@@ -16,6 +16,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .public_redaction import sanitize_public_mapping
 from .surface_inventory import collect_agent_surface_inventory
 
 
@@ -79,7 +80,7 @@ class SurfaceDeltaEntry:
         if self.risk_labels:
             payload["risk_labels"] = list(self.risk_labels)
         payload["changed_fields"] = list(self.changed_fields)
-        return payload
+        return sanitize_public_mapping(payload)
 
 
 def is_safe_base_ref_arg(base_ref: str) -> bool:

@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Raised the minimum supported Python version from 3.11 to 3.11.4 so every
+  supported installation includes the security-backported tar extraction
+  filter required by fail-closed surface delta base-tree materialization. No
+  unfiltered or project-maintained tar extraction fallback is used.
 - Added `agent-guard surface delta --base-ref <ref>` and
   `agent-guard report --surface-delta-base-ref <ref>`: sanitized PR base/head
   agent surface delta evidence (surface inventory v2 diff) reporting
@@ -16,9 +20,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   `action.yml` `surface-delta-base-ref` input. Repeated records retain their
   multiplicity instead of overwriting one another, locator-only line/step moves
   remain unchanged, content-only edits to all direct file-backed surfaces are
-  reported without publishing content or fingerprint values, unresolved-base
-  report sections validate against the same schema, and archive extraction
-  fails closed when the safe tar filter is not available.
+  reported without publishing content or fingerprint values, public locator
+  fields redact secret-, URL-, hash-, and absolute-path-shaped text before JSON
+  emission, unresolved-base report sections validate against the same schema,
+  and archive extraction fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

@@ -12,6 +12,7 @@ import pytest
 from agent_guard import surface_delta as surface_delta_module
 from agent_guard.surface_delta import (
     SurfaceDeltaError,
+    SurfaceDeltaEntry,
     archive_base_tree,
     build_surface_delta_entries,
 )
@@ -446,6 +447,10 @@ def test_surface_path_change_matches_descendants_but_not_sibling_prefixes() -> N
     )
 
 
+def test_supported_runtime_provides_safe_tar_filter() -> None:
+    assert callable(getattr(surface_delta_module.tarfile, "data_filter", None))
+
+
 def test_archive_base_tree_fails_closed_without_data_filter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -539,6 +544,60 @@ def test_surface_delta_cli_sanitizes_adversarial_mcp_and_instruction_content(tmp
     assert malicious_instruction not in annotations_result.stdout
     assert malicious_skill not in annotations_result.stdout
     assert "_content_revision" not in annotations_result.stdout
+
+
+@pytest.mark.parametrize(
+    "unsafe_locator",
+    (
+        "skills/ghp_" + ("A" * 24),
+        "https://evidence.example.invalid/private",
+        "a" * 64,
+        "/home/maintainer/private/policy.yaml",
+        r"C:\Users\maintainer\private\policy.yaml",
+    ),
+)
+def test_surface_delta_entry_redacts_public_locator_shapes(unsafe_locator: str) -> None:
+    payload = SurfaceDeltaEntry(
+        kind="agent_skill",
+        path=unsafe_locator,
+        name=unsafe_locator,
+        status="added",
+    ).to_dict()
+    serialized = json.dumps(payload, sort_keys=True)
+
+    assert payload["path"] != unsafe_locator
+    assert payload["name"] != unsafe_locator
+    assert unsafe_locator not in serialized
+
+
+def test_surface_delta_json_outputs_redact_secret_shaped_surface_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write_base_fixture(repo)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+    secret_like = "ghp_" + ("A" * 24)
+    write(repo / ".github" / "skills" / secret_like / "SKILL.md", "reviewer skill\n")
+
+    delta_result = run_delta(repo, base)
+    report_result = run_cli(
+        "report",
+        "--root",
+        str(repo),
+        "--context-policy",
+        str(repo / "context_policy.yaml"),
+        "--surface-delta-base-ref",
+        base,
+        "--format",
+        "json",
+    )
+
+    assert delta_result.returncode == 0, delta_result.stdout + delta_result.stderr
+    assert report_result.returncode in (0, 1), report_result.stdout + report_result.stderr
+    assert secret_like not in delta_result.stdout
+    assert secret_like not in report_result.stdout
+    assert "<redacted>" in delta_result.stdout
+    assert "<redacted>" in report_result.stdout
 
 
 def test_surface_delta_cli_exit_2_when_base_ref_unresolvable(tmp_path: Path) -> None:
