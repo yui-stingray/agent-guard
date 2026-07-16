@@ -67,6 +67,7 @@ _CONTENT_TRACKED_SURFACES = frozenset(
     }
 )
 _INTERNAL_CONTENT_REVISION_FIELD = "_content_revision"
+_CHECKOUT_TRANSFORMED_METADATA_FIELDS = frozenset({"size_bytes"})
 _PUBLIC_CHANGED_FIELD_ALIASES = {
     _INTERNAL_CONTENT_REVISION_FIELD: "content",
 }
@@ -468,10 +469,72 @@ def materialization_scope(path: str, plan: SurfaceMaterializationPlan) -> str | 
     return None
 
 
+def inventory_pattern_literal_root(pattern: str) -> str:
+    """Return the fixed path prefix that precedes any glob component."""
+
+    parts: list[str] = []
+    for part in PurePosixPath(pattern.rstrip("/")).parts:
+        if has_glob_magic(part):
+            break
+        parts.append(part)
+    return PurePosixPath(*parts).as_posix() if parts else ""
+
+
+def materialization_ancestor_roots(
+    path: str,
+    plan: SurfaceMaterializationPlan,
+) -> dict[str, tuple[str, ...]]:
+    """Return selected literal roots that may live below a symlink ancestor."""
+
+    prefix = f"{path.rstrip('/')}/"
+    fixed = {
+        root
+        for pattern in plan.fixed_includes
+        if (root := inventory_pattern_literal_root(pattern))
+        and (root == path or root.startswith(prefix))
+    }
+    context = {
+        root
+        for pattern in plan.context_includes
+        if (root := inventory_pattern_literal_root(pattern))
+        and (root == path or root.startswith(prefix))
+        and not is_excluded(PurePosixPath(root), plan.context_excludes)
+    }
+    return {
+        "fixed": tuple(sorted(fixed)),
+        "context": tuple(sorted(context)),
+    }
+
+
 def path_is_at_or_below(path: str, roots: Sequence[str]) -> bool:
     """Return whether a Git path is an explicitly selected root or descendant."""
 
     return any(path == root or path.startswith(f"{root}/") for root in roots)
+
+
+def path_is_symlink_ancestor_of_root(path: str, roots: Sequence[str]) -> bool:
+    """Return whether a symlink path is an ancestor of an explicit root."""
+
+    prefix = f"{path.rstrip('/')}/"
+    return any(root.startswith(prefix) for root in roots)
+
+
+def symlink_follow_requests(
+    *,
+    path: str,
+    mode: str,
+    roots: Sequence[str],
+    scope: str,
+) -> set[tuple[str, str]]:
+    """Map selected roots to bounded suffixes that a symlink must expose."""
+
+    requests: set[tuple[str, str]] = set()
+    for root in roots:
+        if path == root or path.startswith(f"{root}/"):
+            requests.add((scope, ""))
+        elif mode == "120000" and root.startswith(f"{path.rstrip('/')}/"):
+            requests.add((scope, root[len(path.rstrip('/')) + 1 :]))
+    return requests
 
 
 def run_git_tree_list(
@@ -567,18 +630,39 @@ def parse_git_tree_entries(
             and not explicit_fixed_root_paths
             and not explicit_context_root_paths
         )
-        if materialization_plan is not None and materialization_plan_matches(
-            raw_relative_path, materialization_plan
-        ):
-            selected = True
-        if explicit_fixed_root_paths and path_is_at_or_below(
-            raw_relative_path, explicit_fixed_root_paths
+        if materialization_plan is not None:
+            if materialization_plan_matches(raw_relative_path, materialization_plan):
+                selected = True
+            elif mode == "120000" and any(
+                materialization_ancestor_roots(raw_relative_path, materialization_plan).values()
+            ):
+                selected = True
+        if explicit_fixed_root_paths and (
+            path_is_at_or_below(raw_relative_path, explicit_fixed_root_paths)
+            or (
+                mode == "120000"
+                and path_is_symlink_ancestor_of_root(
+                    raw_relative_path, explicit_fixed_root_paths
+                )
+            )
         ):
             selected = True
         if (
             explicit_context_root_paths
-            and path_is_at_or_below(raw_relative_path, explicit_context_root_paths)
-            and not is_excluded(PurePosixPath(raw_relative_path), context_excludes)
+            and (
+                (
+                    path_is_at_or_below(raw_relative_path, explicit_context_root_paths)
+                    and not is_excluded(PurePosixPath(raw_relative_path), context_excludes)
+                )
+                or (
+                    mode == "120000"
+                    and any(
+                        root.startswith(f"{raw_relative_path.rstrip('/')}/")
+                        and not is_excluded(PurePosixPath(root), context_excludes)
+                        for root in explicit_context_root_paths
+                    )
+                )
+            )
         ):
             selected = True
         if not selected:
@@ -773,15 +857,29 @@ def expand_git_tree_symlink_targets(
     """Add bounded repository-internal target chains for selected symlinks."""
 
     selected = {os.path.normcase(entry.path): entry for entry in entries}
-    selected_scopes: dict[str, str] = {}
+    selected_requests: dict[str, set[tuple[str, str]]] = {}
     prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
     for key, entry in selected.items():
         relative_path = entry.path[len(prefix) :] if prefix else entry.path
         scope = materialization_scope(relative_path, materialization_plan)
-        if scope is None:
+        requests = {(scope, "")} if scope is not None else set()
+        if entry.mode == "120000":
+            ancestor_roots = materialization_ancestor_roots(
+                relative_path, materialization_plan
+            )
+            for ancestor_scope, roots in ancestor_roots.items():
+                requests.update(
+                    symlink_follow_requests(
+                    path=relative_path,
+                    mode=entry.mode,
+                    roots=roots,
+                    scope=ancestor_scope,
+                )
+                )
+        if not requests:
             raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
-        selected_scopes[key] = scope
-    processed_scopes: dict[str, str] = {}
+        selected_requests[key] = requests
+    processed_requests: dict[str, frozenset[tuple[str, str]]] = {}
     symlink_targets: dict[str, bytes] = {}
     normalized_targets: dict[str, str] = {}
     expanded_entry_count = 0
@@ -791,7 +889,8 @@ def expand_git_tree_symlink_targets(
         pending = [
             entry
             for key, entry in selected.items()
-            if entry.mode == "120000" and processed_scopes.get(key) != selected_scopes[key]
+            if entry.mode == "120000"
+            and processed_requests.get(key) != frozenset(selected_requests[key])
         ]
         if not pending:
             break
@@ -831,11 +930,17 @@ def expand_git_tree_symlink_targets(
                 raise SurfaceDeltaError(
                     "surface delta found a symlink cycle in the base ref tree"
                 )
-            if selected_scopes[key] == "fixed":
-                fixed_roots.add(normalized_target)
-            else:
-                context_roots.add(normalized_target)
-            processed_scopes[key] = selected_scopes[key]
+            for scope, suffix in selected_requests[key]:
+                expansion_root = (
+                    PurePosixPath(normalized_target, suffix).as_posix()
+                    if suffix
+                    else normalized_target
+                )
+                if scope == "fixed":
+                    fixed_roots.add(expansion_root)
+                else:
+                    context_roots.add(expansion_root)
+            processed_requests[key] = frozenset(selected_requests[key])
 
         discovered = parse_git_tree_entries(
             raw_listing,
@@ -847,19 +952,29 @@ def expand_git_tree_symlink_targets(
         for entry in discovered:
             key = os.path.normcase(entry.path)
             relative_path = entry.path[len(prefix) :] if prefix else entry.path
-            discovered_scope = (
-                "fixed"
-                if path_is_at_or_below(relative_path, tuple(fixed_roots))
-                else "context"
+            requests = symlink_follow_requests(
+                path=relative_path,
+                mode=entry.mode,
+                roots=tuple(fixed_roots),
+                scope="fixed",
             )
+            requests.update(
+                symlink_follow_requests(
+                    path=relative_path,
+                    mode=entry.mode,
+                    roots=tuple(context_roots),
+                    scope="context",
+                )
+            )
+            if not requests:
+                raise SurfaceDeltaError("surface delta found an unsafe materialization scope")
             existing = selected.get(key)
             if existing is not None:
                 if existing != entry:
                     raise SurfaceDeltaError(
                         "surface delta found duplicate paths in the base ref tree"
                     )
-                if discovered_scope == "fixed":
-                    selected_scopes[key] = "fixed"
+                selected_requests[key].update(requests)
                 continue
             expanded_entry_count += 1
             if expanded_entry_count > _MAX_SYMLINK_TARGET_ENTRIES:
@@ -867,7 +982,7 @@ def expand_git_tree_symlink_targets(
                     "surface delta found too many symlink target entries in the base ref tree"
                 )
             selected[key] = entry
-            selected_scopes[key] = discovered_scope
+            selected_requests[key] = requests
 
     return sorted(selected.values(), key=lambda entry: entry.path), symlink_targets
 
@@ -1082,6 +1197,12 @@ def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) ->
         for surface_kind in surface_kinds
         for field in _LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ())
     )
+    if (
+        surface_kinds.issubset(_CONTENT_TRACKED_SURFACES)
+        and _INTERNAL_CONTENT_REVISION_FIELD not in base
+        and _INTERNAL_CONTENT_REVISION_FIELD not in head
+    ):
+        ignored_fields |= _CHECKOUT_TRANSFORMED_METADATA_FIELDS
     keys = (set(base) | set(head)) - ignored_fields
     changed_fields = {
         _PUBLIC_CHANGED_FIELD_ALIASES.get(key, key)
@@ -1099,7 +1220,12 @@ def canonical_surface(surface: Mapping[str, object]) -> str:
 
 def surface_match_fingerprint(surface: Mapping[str, object]) -> str:
     surface_kind = str(surface.get("surface", ""))
-    ignored_fields = _LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ())
+    ignored_fields = set(_LOCATOR_FIELDS_BY_SURFACE.get(surface_kind, ()))
+    if (
+        surface_kind in _CONTENT_TRACKED_SURFACES
+        and _INTERNAL_CONTENT_REVISION_FIELD not in surface
+    ):
+        ignored_fields.update(_CHECKOUT_TRANSFORMED_METADATA_FIELDS)
     comparable = {key: value for key, value in surface.items() if key not in ignored_fields}
     return canonical_surface(comparable)
 

@@ -581,6 +581,28 @@ def test_surface_delta_reads_export_ignored_surface_from_raw_base_tree(tmp_path:
     ]
 
 
+def test_surface_delta_ignores_clean_crlf_checkout_size_difference(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / ".gitattributes", "AGENTS.md text eol=crlf\n")
+    write(repo / "AGENTS.md", "Require approval before shell writes.\n")
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    (repo / "AGENTS.md").unlink()
+    run_git(repo, "checkout", "--", "AGENTS.md")
+
+    assert b"\r\n" in (repo / "AGENTS.md").read_bytes()
+    assert run_git(repo, "status", "--porcelain").stdout == ""
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    delta = json.loads(result.stdout)["delta"]
+    assert delta["entries"] == []
+    assert delta["summary"]["modified"] == 0
+
+
 def test_archive_base_tree_skips_unrelated_tracked_blob_materialization(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     dest = tmp_path / "base-tree"
@@ -762,6 +784,95 @@ def test_surface_delta_maps_internal_directory_symlink_target_change(tmp_path: P
         {
             "kind": "agent_skill",
             "path": "shared/reviewer",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_archive_base_tree_materializes_only_selected_symlink_ancestor_descendants(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    dest = tmp_path / "base-tree"
+    init_repo(repo)
+    write(repo / "config" / "github" / "skills" / "reviewer" / "SKILL.md", "base\n")
+    write(repo / "config" / "github" / "unrelated.bin", "private marker\n")
+    (repo / ".github").symlink_to("config/github", target_is_directory=True)
+    commit_all(repo, "base")
+
+    archive_base_tree(toplevel=repo, base_ref="HEAD", dest=dest)
+
+    assert (dest / ".github").is_symlink()
+    assert (dest / "config" / "github" / "skills" / "reviewer" / "SKILL.md").is_file()
+    assert not (dest / "config" / "github" / "unrelated.bin").exists()
+
+
+def test_surface_delta_symlink_ancestor_is_unchanged(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    write(repo / "config" / "github" / "skills" / "reviewer" / "SKILL.md", "base\n")
+    (repo / ".github").symlink_to("config/github", target_is_directory=True)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    delta = json.loads(result.stdout)["delta"]
+    assert delta["entries"] == []
+    assert delta["summary"]["modified"] == 0
+
+
+def test_surface_delta_maps_symlink_ancestor_target_only_change(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    skill = repo / "config" / "github" / "skills" / "reviewer" / "SKILL.md"
+    write(skill, "base\n")
+    (repo / ".github").symlink_to("config/github", target_is_directory=True)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(skill, "head\n")
+    commit_all(repo, "head")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_skill",
+            "path": "config/github/skills/reviewer",
+            "name": "",
+            "status": "modified",
+            "changed_fields": ["content"],
+        }
+    ]
+
+
+def test_surface_delta_materializes_symlink_ancestor_chain(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "context_policy.yaml", "{}\n")
+    skill = repo / "config" / "github" / "skills" / "reviewer" / "SKILL.md"
+    write(skill, "base\n")
+    (repo / "links").mkdir()
+    (repo / "links" / "github").symlink_to("../config/github", target_is_directory=True)
+    (repo / ".github").symlink_to("links/github", target_is_directory=True)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+
+    write(skill, "head\n")
+    commit_all(repo, "head")
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == [
+        {
+            "kind": "agent_skill",
+            "path": "config/github/skills/reviewer",
             "name": "",
             "status": "modified",
             "changed_fields": ["content"],
