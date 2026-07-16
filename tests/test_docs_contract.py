@@ -32,6 +32,13 @@ def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
 
+def test_readme_documents_python_patch_floor() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "Python 3.11.4+" in readme
+    assert "Requires Python 3.11.4+." in readme
+
+
 def test_onboarding_commands_pin_the_current_package_version() -> None:
     version = pyproject_version()
     readme = README.read_text(encoding="utf-8")
@@ -188,6 +195,14 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "MCP configuration metadata" in readme
     assert "--mcp-config-check" in readme
     assert "--mcp-policy" in readme
+    cli_reference = readme[readme.index("## CLI") : readme.index("## Releases")]
+    assert (
+        "agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> "
+        "[--schema-version <v1>] [--json]"
+        in cli_reference
+    )
+    assert "Unreleased source-only CLI additions" in cli_reference
+    assert "--surface-delta-base-ref <ref>" in cli_reference
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
     assert "not runtime vulnerability detection" in readme
@@ -485,3 +500,71 @@ def test_readme_documents_operational_example_policy_coverage() -> None:
     assert '- "**/*.sh"' in readme
     assert "destructive_rm_root" in readme
     assert "local_artifacts" in readme
+
+
+def test_readme_documents_surface_delta_evidence() -> None:
+    readme = README.read_text(encoding="utf-8")
+    readme_single_line = " ".join(readme.split())
+
+    assert "### Surface delta evidence" in readme
+    assert "unreleased source behavior" in readme
+    assert "not available in the published `0.2.4` package" in readme
+    assert "not part of the published `0.2.4` package" in readme
+    assert "Unreleased source-only CLI additions" in readme
+    assert "agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>" in readme
+    assert "agent-guard.surface_delta.v1.schema.json" in readme
+    assert "not present in the published `0.2.4` wheel" in readme
+    assert "--surface-delta-base-ref <ref>" in readme
+    assert "## Surface Delta Evidence" in readme
+    assert '`changed_fields: ["content"]`' in readme
+    assert "existing file-backed context, policy, workflow, evidence artifact" in readme_single_line
+    assert "neither content nor a content fingerprint value is published" in readme_single_line
+    assert (
+        "agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml "
+        "--base-ref <base-ref> --json"
+        in readme
+    )
+
+
+def test_evidence_contract_docs_cover_surface_delta() -> None:
+    docs = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
+
+    assert "agent-guard.surface_delta.v1.schema.json" in docs
+    assert "not present in the published `0.2.4` wheel" in docs_single_line
+    assert "controlled-vocabulary `changed_fields` names" in docs_single_line
+    assert "It is review evidence, not a gate" in docs_single_line
+    assert "never emitted to SARIF" in docs_single_line
+    assert "tar extraction filter available from Python 3.11.4" in docs_single_line
+    assert "there is no unfiltered fallback" in docs_single_line
+    assert "controlled field name `content`" in docs_single_line
+    assert "existing file-backed context, policy, workflow, evidence artifact" in docs_single_line
+    assert "never emits the instruction body or an internal content fingerprint value" in docs_single_line
+    assert "Policy is always read from the current working tree, never from the base" in docs_single_line
+    assert "raw Git tree/blob objects" in docs_single_line
+    assert "export-ignore" in docs_single_line
+    assert "clean/process/smudge filters are not executed" in docs_single_line
+    assert "filtered against the requested repository root and inventory patterns" in docs_single_line
+    assert "context `scan.exclude`" in docs_single_line
+    assert "unrelated tracked blobs are not materialized" in docs_single_line
+    assert "Repository-external symlink targets are not followed" in docs_single_line
+    assert "git merge-base <base-ref> HEAD" in docs_single_line
+    assert "repository-relative alias paths and resolved in-repo target paths" in docs_single_line
+    assert "before expansion through context-selected symlinks" in docs_single_line
+    assert "Target values are never published" in docs_single_line
+
+
+def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
+    actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
+    surface_delta_section = actions.split("## Surface Delta Evidence On Pull Requests", 1)[1].split(
+        "## Expanded Workflow Step", 1
+    )[0]
+
+    assert "## Surface Delta Evidence On Pull Requests" in actions
+    assert "surface-delta-base-ref: origin/${{ github.base_ref }}" in actions
+    assert "${{ github.event.pull_request.base.sha }}" in actions
+    assert "fetch-depth: 0" in actions
+    assert "never emitted to SARIF" in actions or "never SARIF" in actions
+    assert "currently unreleased" in surface_delta_section
+    assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" in surface_delta_section
+    assert "yui-stingray/agent-guard@v0.2.4" not in surface_delta_section

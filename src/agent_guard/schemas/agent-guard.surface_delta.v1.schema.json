@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.surface_delta.v1.schema.json",
+  "title": "agent-guard sanitized PR base/head agent surface delta evidence v1",
+  "type": "object",
+  "required": ["schema_version", "base_resolved"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"base_resolved": {"const": true}}
+      },
+      "then": {
+        "required": ["summary", "entries"]
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": {"const": "agent-guard.surface_delta.v1"},
+    "base_resolved": {"type": "boolean"},
+    "summary": {
+      "type": "object",
+      "required": ["added", "removed", "modified", "unchanged"],
+      "properties": {
+        "added": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0},
+        "modified": {"type": "integer", "minimum": 0},
+        "unchanged": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "name", "status", "changed_fields"],
+        "properties": {
+          "kind": {"type": "string"},
+          "path": {"type": "string"},
+          "name": {"type": "string"},
+          "status": {"type": "string", "enum": ["added", "removed", "modified"]},
+          "risk_labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "broad_authorization_scope",
+                "filesystem_root_reference",
+                "inline_authorization_value",
+                "inline_env_value",
+                "instruction_like_description",
+                "latest_package",
+                "secret_shaped_inline_value",
+                "unsafe_url_scheme",
+                "unpinned_package"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "artifact_path",
+                "command",
+                "command_basename",
+                "content",
+                "env_vars",
+                "file_count",
+                "filesystem_root",
+                "job_id",
+                "kind",
+                "line_count",
+                "package_manager",
+                "remote_host",
+                "risky_patterns",
+                "size_bytes",
+                "status",
+                "transport",
+                "truncated",
+                "version_pinned"
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -6,6 +6,43 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Raised the minimum supported Python version from 3.11 to 3.11.4 so every
+  supported installation includes the security-backported tar extraction
+  filter required by fail-closed surface delta base-tree materialization. No
+  unfiltered or project-maintained tar extraction fallback is used.
+- Added `agent-guard surface delta --base-ref <ref>` and
+  `agent-guard report --surface-delta-base-ref <ref>`: sanitized PR base/head
+  agent surface delta evidence (surface inventory v2 diff) reporting
+  added/removed/modified surfaces with controlled-vocabulary `changed_fields`
+  names (never values) and risk labels. It is deterministic review evidence,
+  not a gate, and is never emitted to SARIF. Added the packaged
+  `agent-guard.surface_delta.v1.schema.json` schema and the matching
+  `action.yml` `surface-delta-base-ref` input. Repeated records retain their
+  multiplicity instead of overwriting one another, locator-only line/step moves
+  remain unchanged, content-only edits to all direct file-backed surfaces are
+  reported without publishing content or fingerprint values, the supplied base
+  ref is resolved to its merge base with `HEAD` so an advanced base branch does
+  not create false PR removals, public `changed_fields` and risk labels are
+  schema-enumerated, public locator
+  fields redact secret-, URL-, hash-, and absolute-path-shaped text before JSON
+  emission, unresolved-base report sections validate against the same schema,
+  and base snapshots now stream raw Git tree/blob objects without applying
+  `export-ignore` or `export-subst`. Configured clean/process/smudge filters
+  are not executed, and tree metadata is filtered against the requested root
+  and inventory patterns, including context `scan.exclude`, before any blob is
+  read, so unrelated tracked blobs are not materialized. Selected repository-
+  internal symlink targets and chains use bounded expansion so target-only
+  changes remain comparable; repository-external, `.git`, cyclic, and otherwise
+  unsafe targets fail closed, while context `scan.exclude` is applied to both
+  repository-relative alias paths and resolved in-repo target paths before
+  expansion through context-selected symlinks. Target values are never
+  published. Tracked submodules are treated as opaque parent-repository
+  boundaries: initialized checkout contents and dirty/untracked files do not
+  affect the delta, while gitlink pin changes emit only the controlled
+  `content` field name without object ids or submodule content. Opaque paths
+  are pruned before collector reads, and otherwise unrepresented boundaries use
+  the controlled `git_submodule` kind.
+  Synthetic tar extraction fails closed when the safe tar filter is not available.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

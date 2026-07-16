@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Sequence
 
 import yaml
 
@@ -314,7 +314,10 @@ def load_context_policy(path: Path) -> dict[str, object]:
     if not path.exists():
         raise FileNotFoundError(f"policy file not found: {path}")
 
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"context policy YAML is not parseable: {path}") from exc
     if not isinstance(loaded, dict):
         raise ValueError(f"policy file must be YAML object: {path}")
     return loaded
@@ -357,11 +360,168 @@ def is_excluded(rel_path: Path, exclude: Iterable[str]) -> bool:
     return any(glob_matches(rel_path, pattern) for pattern in exclude)
 
 
-def iter_context_files(*, root: Path, policy: dict[str, object]) -> list[Path]:
+def _relative_path_is_opaque(
+    path: Path,
+    opaque_directories: Sequence[str],
+) -> bool:
+    relative = path.as_posix()
+    return any(
+        relative == opaque or relative.startswith(f"{opaque.rstrip('/')}/")
+        for opaque in opaque_directories
+    )
+
+
+def _directory_is_excluded(path: Path, exclude: Iterable[str]) -> bool:
+    return is_excluded(path, exclude) or is_excluded(path / "__agent_guard_probe__", exclude)
+
+
+def _is_within_relative_path(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _context_glob_matches(path: Path, pattern: str) -> bool:
+    if glob_matches(path, pattern):
+        return True
+    variants = {pattern}
+    pending = [pattern]
+    while pending and len(variants) < 32:
+        current = pending.pop()
+        start = 0
+        while len(variants) < 32:
+            index = current.find("**/", start)
+            if index < 0:
+                break
+            candidate = current[:index] + current[index + 3 :]
+            if candidate not in variants:
+                variants.add(candidate)
+                pending.append(candidate)
+            start = index + 1
+    return any(path.match(candidate) for candidate in variants)
+
+
+def _context_candidate_matches(
+    *,
+    alias_path: Path,
+    resolved_path: Path,
+    include: Sequence[str],
+    literal_directories: Sequence[tuple[Path, Path]],
+) -> bool:
+    for pattern in include:
+        if _context_glob_matches(alias_path, pattern) or _context_glob_matches(
+            resolved_path,
+            pattern,
+        ):
+            return True
+    return any(
+        _is_within_relative_path(alias_path, alias_root)
+        or _is_within_relative_path(resolved_path, resolved_root)
+        for alias_root, resolved_root in literal_directories
+    )
+
+
+def _iter_context_files_pruned(
+    *,
+    root: Path,
+    include: Sequence[str],
+    exclude: Sequence[str],
+    opaque_directories: Sequence[str],
+) -> list[Path]:
+    literal_directories: list[tuple[Path, Path]] = []
+    for pattern in include:
+        if has_glob_magic(pattern):
+            continue
+        target = root / pattern
+        try:
+            resolved_target = target.resolve(strict=True)
+            resolved_relative = resolved_target.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if target.is_dir() and not (
+            _relative_path_is_opaque(Path(pattern), opaque_directories)
+            or _relative_path_is_opaque(resolved_relative, opaque_directories)
+        ):
+            literal_directories.append((Path(pattern), resolved_relative))
+
+    files: list[Path] = []
+    seen_files: set[Path] = set()
+    pending: list[tuple[Path, frozenset[Path]]] = [(root, frozenset())]
+    while pending:
+        current, ancestors = pending.pop()
+        try:
+            resolved_current = current.resolve(strict=True)
+            resolved_current.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if resolved_current in ancestors:
+            continue
+        child_ancestors = ancestors | {resolved_current}
+        try:
+            children = sorted(current.iterdir(), reverse=True)
+        except OSError:
+            continue
+        for path in children:
+            try:
+                alias_relative = path.relative_to(root)
+                resolved_path = path.resolve(strict=True)
+                resolved_relative = resolved_path.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if (
+                _relative_path_is_opaque(alias_relative, opaque_directories)
+                or _relative_path_is_opaque(resolved_relative, opaque_directories)
+            ):
+                continue
+            try:
+                is_directory = path.is_dir()
+                is_file = path.is_file()
+            except OSError:
+                continue
+            if is_directory:
+                if _directory_is_excluded(alias_relative, exclude) or _directory_is_excluded(
+                    resolved_relative,
+                    exclude,
+                ):
+                    continue
+                pending.append((path, child_ancestors))
+                continue
+            if not is_file or is_excluded(alias_relative, exclude) or is_excluded(
+                resolved_relative,
+                exclude,
+            ):
+                continue
+            if resolved_path in seen_files or not _context_candidate_matches(
+                alias_path=alias_relative,
+                resolved_path=resolved_relative,
+                include=include,
+                literal_directories=literal_directories,
+            ):
+                continue
+            seen_files.add(resolved_path)
+            files.append(path)
+    return sorted(files)
+
+
+def iter_context_files(
+    *,
+    root: Path,
+    policy: dict[str, object],
+    opaque_directories: Sequence[str] = (),
+) -> list[Path]:
     root = root.resolve()
     scan_cfg = scan_section(policy)
     include = normalize_string_list(scan_cfg.get("include", [])) or DEFAULT_INCLUDE
     exclude = [*DEFAULT_EXCLUDE, *normalize_string_list(scan_cfg.get("exclude", []))]
+    if opaque_directories:
+        return _iter_context_files_pruned(
+            root=root,
+            include=include,
+            exclude=exclude,
+            opaque_directories=opaque_directories,
+        )
 
     seen: set[Path] = set()
     files: list[Path] = []
@@ -370,7 +530,11 @@ def iter_context_files(*, root: Path, policy: dict[str, object]) -> list[Path]:
         if has_glob_magic(pattern):
             candidates = root.glob(pattern)
         else:
-            target = (root / pattern).resolve()
+            target = root / pattern
+            try:
+                target.resolve().relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
             if target.is_dir():
                 candidates = target.rglob("*")
             else:
@@ -380,12 +544,18 @@ def iter_context_files(*, root: Path, policy: dict[str, object]) -> list[Path]:
             if not path.is_file():
                 continue
             try:
-                rel = path.resolve().relative_to(root)
-            except ValueError:
+                alias_rel = path.relative_to(root)
+                resolved_path = path.resolve()
+                resolved_rel = resolved_path.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
                 continue
-            if is_excluded(rel, exclude) or path in seen:
+            if (
+                is_excluded(alias_rel, exclude)
+                or is_excluded(resolved_rel, exclude)
+                or resolved_path in seen
+            ):
                 continue
-            seen.add(path)
+            seen.add(resolved_path)
             files.append(path)
 
     return sorted(files)
@@ -554,10 +724,19 @@ def boundary_summary(context_files: tuple[ContextInventoryEntry, ...]) -> tuple[
     return tuple(summary)
 
 
-def collect_context_inventory(*, root: Path, policy: dict[str, object]) -> ContextInventory:
+def collect_context_inventory(
+    *,
+    root: Path,
+    policy: dict[str, object],
+    opaque_directories: Sequence[str] = (),
+) -> ContextInventory:
     root = root.resolve()
     entries: list[ContextInventoryEntry] = []
-    for path in iter_context_files(root=root, policy=policy):
+    for path in iter_context_files(
+        root=root,
+        policy=policy,
+        opaque_directories=opaque_directories,
+    ):
         rel = display_path(path, root)
         read_status, data, text = read_inventory_text(path)
         line_count = len(text.splitlines()) if text is not None else None

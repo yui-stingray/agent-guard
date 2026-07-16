@@ -29,7 +29,7 @@ def test_executable_action_dependencies_are_pinned_to_full_commit_shas() -> None
 
 def test_ci_covers_supported_current_python_versions_and_ttfe() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    for version in ("3.11", "3.12", "3.13", "3.14"):
+    for version in ("3.11.4", "3.12", "3.13", "3.14"):
         assert f"'{version}'" in workflow
     assert "Replay 15-minute onboarding path" in workflow
     assert "--max-elapsed-ms 900000" in workflow

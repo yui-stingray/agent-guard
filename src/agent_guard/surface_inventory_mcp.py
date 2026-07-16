@@ -8,10 +8,11 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
 
-from .surface_inventory_core import rel_path
+from .surface_inventory_core import is_repo_bound_path, rel_path, repo_bound_glob
 from .surface_inventory_mcp_safety import (
     AUTH_OPTION_RE,
     BROAD_AUTHORIZATION_SCOPE_VALUES,
@@ -52,16 +53,28 @@ MCP_CONFIG_FILES = (
 
 
 def load_structured_config(path: Path) -> object:
+    if not path.is_file():
+        raise FileNotFoundError(path)
     if path.suffix == ".toml":
         with path.open("rb") as handle:
             return tomllib.load(handle)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def iter_mcp_config_files(root: Path) -> list[tuple[Path, str]]:
+def iter_mcp_config_files(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[tuple[Path, str]]:
     files: list[tuple[Path, str]] = []
     for pattern, kind in MCP_CONFIG_FILES:
-        for path in sorted(root.glob(pattern)):
+        for path in sorted(
+            repo_bound_glob(
+                root,
+                pattern,
+                opaque_directories=opaque_directories,
+            )
+        ):
             if path.is_file():
                 files.append((path, kind))
     return files
@@ -151,9 +164,18 @@ def mcp_server_maps(config: object) -> dict[str, object]:
     return {}
 
 
-def collect_mcp_config_surfaces(root: Path) -> list[dict[str, object]]:
+def collect_mcp_config_surfaces(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    for path, kind in iter_mcp_config_files(root):
+    for path, kind in iter_mcp_config_files(
+        root,
+        opaque_directories=opaque_directories,
+    ):
+        if not is_repo_bound_path(path, root):
+            continue
         display_path = rel_path(path, root)
         try:
             loaded = load_structured_config(path)

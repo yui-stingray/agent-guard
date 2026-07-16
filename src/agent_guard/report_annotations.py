@@ -59,6 +59,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     drift = as_mapping(payload.get("policy_spec_drift"))
+    surface_delta = as_mapping(payload.get("surface_delta"))
     conformance = as_mapping(payload.get("conformance"))
     findings = as_sequence(payload.get("findings"))
     path_findings = as_sequence(path.get("findings"))
@@ -69,6 +70,7 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
     drift_findings = as_sequence(drift.get("findings"))
+    surface_delta_entries = as_sequence(surface_delta.get("entries"))
     conformance_findings = as_sequence(conformance.get("findings"))
 
     lines: list[str] = []
@@ -208,6 +210,19 @@ def render_github_annotations_report(payload: Mapping[str, object]) -> str:
                 title=f"agent-guard drift: {rule_id}",
                 message=f"policy/spec drift: {finding.get('reason', '-')}{risk_theme_message_suffix(themes)}",
                 file=finding.get("file", ""),
+            )
+        )
+
+    for item in surface_delta_entries:
+        entry = as_mapping(item)
+        kind = entry.get("kind", "-")
+        status = entry.get("status", "-")
+        lines.append(
+            github_annotation(
+                level="notice",
+                title=f"agent-guard surface delta: {kind}",
+                message=f"surface delta: {status} ({kind})",
+                file=entry.get("path", ""),
             )
         )
 

@@ -10,6 +10,7 @@ import tomllib
 from pathlib import Path
 
 import agent_guard
+from scripts.check_wheel_contract import venv_python_path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,20 @@ def pyproject_version() -> str:
 
 def test_package_version_matches_pyproject() -> None:
     assert agent_guard.__version__ == pyproject_version()
+
+
+def test_package_requires_safe_tar_filter_runtime() -> None:
+    with PYPROJECT.open("rb") as fh:
+        pyproject = tomllib.load(fh)
+
+    assert pyproject["project"]["requires-python"] == ">=3.11.4"
+
+
+def test_wheel_contract_uses_platform_specific_venv_interpreter() -> None:
+    venv_dir = Path("contract-venv")
+
+    assert venv_python_path(venv_dir, platform_name="posix") == venv_dir / "bin" / "python"
+    assert venv_python_path(venv_dir, platform_name="nt") == venv_dir / "Scripts" / "python.exe"
 
 
 def test_dev_extra_includes_benchmark_schema_tools() -> None:
@@ -62,6 +77,7 @@ def test_schema_resources_are_present_in_package_tree() -> None:
         "agent-guard.report_evidence.v1.schema.json",
         "agent-guard.conformance.v1.schema.json",
         "agent-guard.evidence_pack_manifest.v1.schema.json",
+        "agent-guard.surface_delta.v1.schema.json",
     }
 
     assert SCHEMA_DIR.is_dir()

@@ -29,6 +29,14 @@ Installed wheels package these JSON Schema resources under
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
 
+The unreleased source tree additionally contains
+`agent-guard.surface_delta.v1.schema.json`; it is not present in the published
+`0.2.4` wheel. The schema covers sanitized PR base/head agent surface delta
+evidence emitted by `agent-guard surface delta` and by `agent-guard report
+--surface-delta-base-ref`. It is review evidence, not a gate:
+added/removed/modified counts and per-surface entries with controlled-vocabulary
+`changed_fields` names (never values) and risk labels.
+
 The `v1` schemas are intended to remain stable for downstream consumers.
 Compatible tightening may add enum constraints for values already emitted by
 `agent-guard`, but raw repository content, hash values, local paths, secrets,
@@ -185,6 +193,50 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `--base-ref` or `--drift-base-ref` is supplied, it can also flag
   baseline-sensitive guard policy, digest policy, workflow, action metadata, or
   hook metadata changes as review-required evidence.
+- Optional `surface_delta` is emitted when `--surface-delta-base-ref` is
+  supplied. It reports which agent surfaces (context files, skills, MCP
+  servers, workflows, policies, hooks) were added, removed, or modified
+  relative to `git merge-base <base-ref> HEAD`, computed from the same surface
+  inventory v2 used elsewhere in the report. The working tree remains the head
+  side, so uncommitted changes are included without misclassifying additions on
+  an advanced base branch as PR removals. It is deterministic review evidence,
+  not a gate: it never changes the report's exit code and is never emitted to
+  SARIF.
+  Policy is always read from the current working tree, never from the base
+  ref; the base tree is materialized read-only from raw Git tree/blob objects
+  and never executed as instructions. This does not apply release-archive
+  `export-ignore` / `export-subst` attributes, and configured
+  clean/process/smudge filters are not executed. Git tree metadata is filtered
+  against the requested repository root and inventory patterns, including
+  context `scan.exclude`, before any blob is read, so unrelated tracked blobs
+  are not materialized. Selected repository-internal symlink targets and chains
+  are added with bounded expansion so target-only changes remain comparable.
+  Repository-external symlink targets are not followed; external, `.git`,
+  cyclic, and otherwise unsafe targets fail closed. Context `scan.exclude` is
+  applied to both repository-relative alias paths and resolved in-repo target
+  paths before expansion through context-selected symlinks. Target values are
+  never published. Tracked submodules are opaque boundaries in the parent
+  repository delta: initialized checkout contents and dirty/untracked
+  submodule files are excluded, while a superproject gitlink pin change is
+  represented only by the controlled `content` field name. Object ids and
+  submodule contents are never published, and opaque paths are pruned before
+  collector file reads. A boundary without an existing skill, profile, or
+  command surface is represented by the controlled `git_submodule` kind;
+  submodule-internal surfaces require a separate scan rooted in that repository.
+  Raw blobs are streamed into a temporary synthetic tar rather than buffering
+  a repository archive in memory. Base-tree extraction requires the
+  security-backported stdlib tar extraction filter available from Python
+  3.11.4 and fails closed if that filter is unavailable; there is no
+  unfiltered fallback. `changed_fields`
+  lists schema-enumerated field *names* only, never before/after values. Repeated same-file
+  records retain their multiplicity, while
+  line-number and workflow-step-position-only moves remain unchanged. The
+  delta marks content-only changes to existing file-backed context, policy,
+  workflow, evidence artifact, skill, profile, command, hook, and MCP
+  configuration surfaces with the controlled field name `content`; it never
+  emits the instruction body or an internal content fingerprint value. The
+  section omits base ref names, raw diffs, MCP args/env values, and
+  instruction/description text.
 
 For failure reading, a missing implicit MCP policy in recommended evidence is a
 sanitized violation report: `mcp_config` records `mcp_policy_missing`, and

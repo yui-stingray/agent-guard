@@ -12,6 +12,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
@@ -24,6 +26,7 @@ EXPECTED_SCHEMAS = {
     "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
     "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
     "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+    "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
 }
 
 
@@ -187,6 +190,102 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
     assert artifact_role["enum"] == ["report", "agent-policy-audit-event"]
 
 
+def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None:
+    unresolved = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": False,
+    }
+    resolved_without_details = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": True,
+    }
+
+    validate_payload("agent-guard.surface_delta.v1.schema.json", unresolved)
+    with pytest.raises(AssertionError, match=r"\$\.summary is required"):
+        validate_payload("agent-guard.surface_delta.v1.schema.json", resolved_without_details)
+
+
+def test_surface_delta_schema_pins_public_vocabularies() -> None:
+    schema = load_schema("agent-guard.surface_delta.v1.schema.json")
+    entry = schema["properties"]["entries"]["items"]
+
+    assert schema["additionalProperties"] is False
+    assert entry["additionalProperties"] is False
+    assert entry["properties"]["changed_fields"]["items"]["enum"] == [
+        "artifact_path",
+        "command",
+        "command_basename",
+        "content",
+        "env_vars",
+        "file_count",
+        "filesystem_root",
+        "job_id",
+        "kind",
+        "line_count",
+        "package_manager",
+        "remote_host",
+        "risky_patterns",
+        "size_bytes",
+        "status",
+        "transport",
+        "truncated",
+        "version_pinned",
+    ]
+    assert entry["properties"]["risk_labels"]["items"]["enum"] == [
+        "broad_authorization_scope",
+        "filesystem_root_reference",
+        "inline_authorization_value",
+        "inline_env_value",
+        "instruction_like_description",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unsafe_url_scheme",
+        "unpinned_package",
+    ]
+
+
+def test_report_schema_embeds_surface_delta_contract() -> None:
+    report_schema = load_schema("agent-guard.report_evidence.v1.schema.json")
+    delta_schema = load_schema("agent-guard.surface_delta.v1.schema.json")
+    embedded = report_schema["properties"]["surface_delta"]
+    standalone_contract = {
+        key: value
+        for key, value in delta_schema.items()
+        if key not in {"$schema", "$id", "title"}
+    }
+
+    assert embedded == standalone_contract
+
+
+def test_surface_delta_schema_validates_unresolved_report_section(tmp_path: Path) -> None:
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    write(tmp_path / "context_policy.yaml", "{}\n")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        "context_policy.yaml",
+        "--surface-delta-base-ref",
+        "refs/does-not-exist",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["surface_delta"]["base_resolved"] is False
+    validate_payload("agent-guard.surface_delta.v1.schema.json", payload["surface_delta"])
+
+
 def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")
@@ -205,6 +304,13 @@ def test_report_schema_validates_success_cli_payload(tmp_path: Path) -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
+
+    payload["surface_delta"] = {
+        "schema_version": "agent-guard.surface_delta.v1",
+        "base_resolved": True,
+    }
+    with pytest.raises(AssertionError, match=r"\$\.surface_delta\.summary is required"):
+        validate_payload("agent-guard.report_evidence.v1.schema.json", payload)
 
 
 def test_report_schema_validates_v2_report_cli_payload(tmp_path: Path) -> None:

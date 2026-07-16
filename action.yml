@@ -51,6 +51,14 @@ inputs:
       must fetch this ref before running the action.
     required: false
     default: ""
+  surface-delta-base-ref:
+    description: >-
+      Optional git ref used to embed sanitized PR agent-surface delta evidence
+      (added/removed/modified surfaces relative to this ref). The caller must
+      fetch this ref before running the action. Empty disables surface delta
+      evidence.
+    required: false
+    default: ""
   evidence-dir:
     description: Directory where JSON and Markdown evidence files are written, relative to root unless absolute.
     required: false
@@ -118,6 +126,7 @@ runs:
       shell: bash
       env:
         AGENT_GUARD_BASE_REF: ${{ inputs.base-ref }}
+        AGENT_GUARD_SURFACE_DELTA_BASE_REF: ${{ inputs.surface-delta-base-ref }}
         AGENT_GUARD_ROOT: ${{ inputs.root }}
         AGENT_GUARD_CONTEXT_POLICY: ${{ inputs.context-policy }}
         AGENT_GUARD_PATH_POLICY: ${{ inputs.path-policy }}
@@ -177,6 +186,7 @@ runs:
         validate_no_control_chars "digest-policy" "$AGENT_GUARD_DIGEST_POLICY" || exit 2
         validate_no_control_chars "evidence-dir" "$AGENT_GUARD_EVIDENCE_DIR" || exit 2
         validate_no_control_chars "base-ref" "$AGENT_GUARD_BASE_REF" || exit 2
+        validate_no_control_chars "surface-delta-base-ref" "$AGENT_GUARD_SURFACE_DELTA_BASE_REF" || exit 2
 
         case "$conformance_profile" in
           minimal|recommended|strict) ;;
@@ -247,6 +257,7 @@ runs:
         workflow_policy="$(policy_path "$workflow_policy_arg")"
         digest_policy="$(policy_path "$digest_policy_arg")"
         base_ref="${AGENT_GUARD_BASE_REF:-}"
+        surface_delta_base_ref="${AGENT_GUARD_SURFACE_DELTA_BASE_REF:-}"
 
         agent-guard context check --root "$root" --policy "$context_policy_arg" --json > "$raw_dir/context.json"
         record_status "$?"
@@ -310,6 +321,9 @@ runs:
         fi
         if [ -n "$base_ref" ]; then
           report_args+=(--drift-base-ref "$base_ref")
+        fi
+        if [ -n "$surface_delta_base_ref" ]; then
+          report_args+=(--surface-delta-base-ref "$surface_delta_base_ref")
         fi
 
         report_args+=(--conformance-profile "$conformance_profile")

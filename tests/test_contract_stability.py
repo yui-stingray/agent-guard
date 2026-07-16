@@ -43,6 +43,10 @@ FROZEN_SCHEMA_CONTRACTS = {
         "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.result.v1.schema.json",
         {"schema_version": "agent-guard.result.v1"},
     ),
+    "agent-guard.surface_delta.v1.schema.json": (
+        "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.surface_delta.v1.schema.json",
+        {"schema_version": "agent-guard.surface_delta.v1"},
+    ),
 }
 
 DOCUMENTED_ARTIFACTS = (
@@ -52,6 +56,7 @@ DOCUMENTED_ARTIFACTS = (
     "agent-guard.report_evidence.v1",
     "agent-guard.conformance.v1",
     "agent-guard.evidence_pack_manifest.v1",
+    "agent-guard.surface_delta.v1",
     "agent-guard.agb_results.v1",
     "agent-guard.evidence_results.v1",
     "agent-guard.alignment.v1",
@@ -88,6 +93,8 @@ def test_compatibility_doc_freezes_emitted_artifacts_and_volatile_fields() -> No
     assert "Volatile fields" in docs
     assert "`generated_at`" in docs
     assert "schema version will not change without a new schema identifier" in docs_single_line
+    assert "unreleased source only" in docs_single_line
+    assert "not present in the published `0.2.4` wheel" in docs_single_line
 
 
 def test_release_criteria_use_batched_contract_stability_cadence() -> None:

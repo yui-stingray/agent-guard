@@ -11,7 +11,7 @@ name = "yui-agent-guard"
 version = "0.2.4"
 description = "Static repository guardrails for agent-touched codebases."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11.4"
 license = "MIT"
 authors = [{ name = "yui-stingray" }]
 keywords = ["agent", "guardrails", "security", "policy", "ai-agents"]

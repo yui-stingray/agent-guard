@@ -15,6 +15,7 @@ from ..evidence_pack import build_evidence_pack_manifest
 from ..mcp_guard import build_mcp_config_report, load_mcp_policy
 from ..profiles import PROFILE_NAMES
 from ..report_render import emit_report_output, render_report_output
+from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
 from ..taxonomy import annotate_finding
 from ..workflow_guard import load_workflow_policy, scan_workflow_policy
@@ -76,6 +77,11 @@ def add_report_parser(top) -> None:
         "--drift-base-ref",
         default="",
         help="optional git base ref passed to policy/spec drift evidence",
+    )
+    report.add_argument(
+        "--surface-delta-base-ref",
+        default="",
+        help="optional git base ref used to embed sanitized PR surface delta evidence",
     )
     report.add_argument(
         "--surface-inventory-version",
@@ -276,6 +282,38 @@ def run_report(args: argparse.Namespace) -> int:
                 base_ref=args.drift_base_ref,
             )
             annotate_report_findings("policy_spec_drift", drift_report)
+        surface_delta_base_ref_arg = str(args.surface_delta_base_ref).strip()
+        surface_delta_report: dict[str, object] | None = None
+        if surface_delta_base_ref_arg:
+            surface_delta_report = build_surface_delta_report(
+                root=root,
+                context_policy=policy,
+                base_ref=surface_delta_base_ref_arg,
+            )
+    except SurfaceDeltaError as exc:
+        payload = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=scrub_report_error_message(str(exc)),
+            extra={
+                "command": "report",
+                "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                    "format": args.format,
+                    "scope": scope,
+                    "sanitized": True,
+                },
+                "surface_delta": {
+                    "schema_version": "agent-guard.surface_delta.v1",
+                    "base_resolved": False,
+                },
+            },
+        )
+        emit_report_output(render_report_output(payload, args.format), args.output)
+        return 2
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -534,6 +572,7 @@ def run_report(args: argparse.Namespace) -> int:
             **({"digest": digest_report} if digest_report else {}),
             **({"workflow": workflow_report} if workflow_report else {}),
             **({"policy_spec_drift": drift_report} if drift_report else {}),
+            **({"surface_delta": surface_delta_report} if surface_delta_report else {}),
         },
     )
     evidence_pack_manifest: dict[str, object] | None = None

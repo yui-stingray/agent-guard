@@ -7,7 +7,7 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.2.4` alpha. Vendor-neutral, static-only, Python 3.11+, with one
+**Status**: `0.2.4` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
 runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
@@ -161,7 +161,7 @@ From a source checkout, install the package in editable mode:
 pip install -e .
 ```
 
-Requires Python 3.11+. The only runtime dependency is `PyYAML`.
+Requires Python 3.11.4+. The only runtime dependency is `PyYAML`.
 
 ## Quick start
 
@@ -289,6 +289,13 @@ agent-guard drift check --root . --profile recommended --schema-version v2 --jso
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
+```
+
+The following optional PR review command is available from source only and is
+not part of the published `0.2.4` package:
+
+```bash
+agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml --base-ref <base-ref> --json
 ```
 
 Recommended split:
@@ -632,10 +639,59 @@ files from the source tree:
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
   artifact manifest for reviewer handoff.
 
+The unreleased source tree additionally contains
+`agent-guard.surface_delta.v1.schema.json` for sanitized PR base/head agent
+surface delta evidence. It is not present in the published `0.2.4` wheel.
+
 For `context check`, it returns:
 - exit `0` on clean
 - exit `1` on violation
 - exit `2` on configuration/runtime error
+
+### Surface delta evidence
+
+> **Release status:** this section documents unreleased source behavior and is
+> not available in the published `0.2.4` package.
+
+`agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>`
+computes a sanitized diff of surface inventory v2 between the merge base of a
+fetched base ref and `HEAD`, including current working-tree changes: which
+agent-facing surfaces (context files, skills, MCP servers, workflows, policies,
+hooks) were added, removed, or modified. Resolving `git merge-base <ref> HEAD`
+prevents base-branch-only additions from appearing as PR removals when the base
+branch advances. The base snapshot is built from raw Git tree/blob objects for
+the requested repository root; release-archive attributes (`export-ignore` and
+`export-subst`) are not applied, and configured clean/process/smudge filters are
+not executed. Tree metadata is filtered against the requested root and inventory
+patterns, including context `scan.exclude`, before blobs are read, so unrelated
+tracked blobs are not materialized. Selected repository-internal symlink targets
+and chains are materialized with bounded expansion so target-only changes remain
+comparable. Repository-external symlink targets are not followed; external,
+`.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
+alias paths and resolved in-repo target paths are not expanded through
+context-selected symlinks. Target values are never published.
+Tracked submodules are opaque boundaries for the parent repository delta:
+initialized checkout contents and dirty/untracked submodule files are not
+inventoried, while a superproject gitlink pin change is reported only as
+`changed_fields: ["content"]` without publishing an object id or submodule
+content. Opaque paths are pruned before collector file reads. When no existing
+skill/profile/command surface represents the boundary, the delta uses the
+controlled `git_submodule` kind. Scan each submodule as its own repository when
+its internal surfaces also require review evidence.
+`changed_fields` lists metadata field names only, never values, and
+the section never emits the base ref name, raw diffs, MCP args/env values, or
+instruction/description text. Repeated records retain their count, while
+line-number and workflow-step-position-only moves remain unchanged. Content-only
+changes to existing file-backed context, policy, workflow, evidence artifact,
+skill, profile, command, hook, and MCP configuration surfaces are reported with
+`changed_fields: ["content"]`; neither content nor a content fingerprint value
+is published. It is
+deterministic review evidence, not a gate: exit `0` regardless of whether
+entries are present, exit `2` on
+configuration/runtime error such as an unfetched base ref. Pass
+`--surface-delta-base-ref <ref>` to `agent-guard report` to embed the same
+evidence as an optional `surface_delta` section (Markdown heading
+`## Surface Delta Evidence`, informational GitHub annotations, never SARIF).
 
 ### Path guard
 
@@ -782,6 +838,9 @@ policy:
       message: "agent context should not broadly auto-allow risky tools"
 ```
 
+For symlinked context files, `scan.exclude` is evaluated against both the
+repository-relative alias path and the resolved in-repo target path.
+
 Use `forbidden_patterns` to replace the default context rules, or
 `extra_forbidden_patterns` to append repository-specific rules. A ready-to-run
 copy lives in [`examples/agent_context_policy.yaml`](examples/agent_context_policy.yaml).
@@ -872,6 +931,13 @@ agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]
 agent-guard drift check --root <repo> [--profile <minimal|recommended|strict>] [--schema-version <v1|v2>] [--base-ref <ref>] [--json]
+```
+
+Unreleased source-only CLI additions:
+
+```bash
+agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> [--schema-version <v1>] [--json]
+agent-guard report --root <repo> --context-policy <yaml> --surface-delta-base-ref <ref> [--format <markdown|json|github-annotations>] [--output <path>]
 ```
 
 Policy path arguments are resolved relative to the relevant repository root

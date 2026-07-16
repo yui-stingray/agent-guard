@@ -14,6 +14,19 @@ from urllib.parse import parse_qsl, urlparse
 PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "uvx", "python", "python3", "node", "deno", "docker"}
 MCP_URL_KEYS = ("url", "uri", "endpoint", "serverUrl", "server_url")
 SAFE_MCP_URL_SCHEMES = {"http", "https", "sse"}
+MCP_RISKY_PATTERNS = frozenset(
+    {
+        "broad_authorization_scope",
+        "filesystem_root_reference",
+        "inline_authorization_value",
+        "inline_env_value",
+        "instruction_like_description",
+        "latest_package",
+        "secret_shaped_inline_value",
+        "unsafe_url_scheme",
+        "unpinned_package",
+    }
+)
 AUTH_FIELD_NAMES = {
     "api_key",
     "apikey",

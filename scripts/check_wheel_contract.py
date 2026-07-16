@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -41,6 +42,12 @@ def project_version() -> str:
         return str(tomllib.load(handle)["project"]["version"])
 
 
+def project_requires_python() -> str:
+    """Return pyproject.toml [project].requires-python."""
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        return str(tomllib.load(handle)["project"]["requires-python"])
+
+
 def find_wheel(version: str) -> Path:
     """Return the built wheel for the current project version."""
     wheels = sorted(DIST.glob(f"yui_agent_guard-{version}-*.whl"))
@@ -49,6 +56,14 @@ def find_wheel(version: str) -> Path:
             f"expected exactly one yui_agent_guard {version} wheel in {DIST}, got {len(wheels)}"
         )
     return wheels[0]
+
+
+def venv_python_path(venv_dir: Path, *, platform_name: str = os.name) -> Path:
+    """Return the interpreter path created by venv on the target platform."""
+
+    if platform_name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
 
 
 def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -64,22 +79,25 @@ def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def main() -> int:
     version = project_version()
+    requires_python = project_requires_python()
     wheel = find_wheel(version)
     with tempfile.TemporaryDirectory(prefix="agent-guard-wheel-") as temp_dir:
         temp = Path(temp_dir)
         venv_dir = temp / "venv"
         venv.EnvBuilder(with_pip=True).create(venv_dir)
-        python = venv_dir / "bin" / "python"
+        python = venv_python_path(venv_dir)
         run([str(python), "-m", "pip", "install", "--quiet", str(wheel)], cwd=temp)
         smoke = textwrap.dedent(
             f"""
             import json
             import agent_guard
             from importlib import resources
+            from importlib.metadata import metadata
 
             expected_exports = {sorted(EXPECTED_EXPORTS)!r}
             assert sorted(agent_guard.__all__) == expected_exports
             assert agent_guard.__version__ == {version!r}
+            assert metadata("yui-agent-guard")["Requires-Python"] == {requires_python!r}
             assert agent_guard.scan_paths is agent_guard.scan_content_paths
             for name in expected_exports:
                 assert getattr(agent_guard, name) is not None
@@ -91,6 +109,7 @@ def main() -> int:
                 "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
                 "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
                 "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
+                "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
             }}
             schema_dir = resources.files("agent_guard.schemas")
             for filename, schema_version in schema_names.items():
@@ -111,6 +130,9 @@ def main() -> int:
                     assert "agent-policy-audit-event" in artifact_role["enum"]
                     surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
                     assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
+                    assert schema["properties"]["surface_delta"]["properties"]["schema_version"]["const"] == (
+                        "agent-guard.surface_delta.v1"
+                    )
                 else:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """

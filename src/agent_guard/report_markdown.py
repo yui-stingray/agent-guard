@@ -25,6 +25,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     digest = as_mapping(payload.get("digest"))
     workflow = as_mapping(payload.get("workflow"))
     drift = as_mapping(payload.get("policy_spec_drift"))
+    surface_delta = as_mapping(payload.get("surface_delta"))
     conformance = as_mapping(payload.get("conformance"))
     evidence_pack_manifest = as_mapping(payload.get("evidence_pack_manifest"))
     inventory = as_mapping(payload.get("inventory"))
@@ -45,6 +46,7 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
     digest_findings = as_sequence(digest.get("findings"))
     workflow_findings = as_sequence(workflow.get("findings"))
     drift_findings = as_sequence(drift.get("findings"))
+    surface_delta_entries = as_sequence(surface_delta.get("entries"))
     conformance_findings = as_sequence(conformance.get("findings"))
     manifest_gates = as_sequence(evidence_pack_manifest.get("gates"))
 
@@ -470,6 +472,46 @@ def render_markdown_evidence_report(payload: Mapping[str, object]) -> str:
             )
         else:
             lines.append("No policy/spec drift was detected.")
+
+    if surface_delta:
+        lines.extend(["", "## Surface Delta Evidence", ""])
+        delta_summary = as_mapping(surface_delta.get("summary"))
+        lines.extend(
+            markdown_table(
+                ("Metric", "Value"),
+                (
+                    ("Added", delta_summary.get("added", 0)),
+                    ("Removed", delta_summary.get("removed", 0)),
+                    ("Modified", delta_summary.get("modified", 0)),
+                    ("Unchanged", delta_summary.get("unchanged", 0)),
+                ),
+            )
+        )
+        if surface_delta_entries:
+            lines.append("")
+            delta_rows = []
+            for item in surface_delta_entries:
+                entry = as_mapping(item)
+                changed_fields = as_sequence(entry.get("changed_fields"))
+                risk_labels = as_sequence(entry.get("risk_labels"))
+                delta_rows.append(
+                    (
+                        entry.get("kind", "-"),
+                        entry.get("path", "-"),
+                        entry.get("name", "") or "-",
+                        entry.get("status", "-"),
+                        "; ".join(str(item) for item in changed_fields) if changed_fields else "-",
+                        "; ".join(str(item) for item in risk_labels) if risk_labels else "-",
+                    )
+                )
+            lines.extend(
+                markdown_table(
+                    ("Kind", "Path", "Name", "Status", "Changed fields", "Risk labels"),
+                    delta_rows,
+                )
+            )
+        else:
+            lines.append("No agent surface changes were detected relative to the base ref.")
 
     if conformance:
         lines.extend(["", "## Conformance Evidence", ""])

@@ -20,7 +20,7 @@ from .cli.mcp import add_mcp_parser, run_mcp_check
 from .cli.path import add_path_parser, run_path_check
 from .cli.report import add_report_parser, run_report
 from .cli.render_report import add_render_report_parser, run_report_render
-from .cli.surface import add_surface_parser, run_surface_inventory
+from .cli.surface import add_surface_parser, run_surface_delta, run_surface_inventory
 from .cli.workflow import add_workflow_parser, run_workflow_check
 
 
@@ -83,6 +83,8 @@ def main() -> int:
         return run_workflow_check(args)
     if args.scanner == "surface" and args.command == "inventory":
         return run_surface_inventory(args)
+    if args.scanner == "surface" and args.command == "delta":
+        return run_surface_delta(args)
     if args.scanner == "mcp" and args.command == "check":
         return run_mcp_check(args)
     if args.scanner == "drift" and args.command == "check":

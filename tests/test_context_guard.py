@@ -71,6 +71,34 @@ def test_default_policy_scans_common_agent_context_files(tmp_path: Path) -> None
     }
 
 
+@pytest.mark.parametrize(
+    "exclude_pattern",
+    [
+        "context/private/**",
+        "storage/context-root/private/**",
+    ],
+)
+def test_context_excludes_apply_to_symlink_alias_and_resolved_paths(
+    tmp_path: Path,
+    exclude_pattern: str,
+) -> None:
+    write(tmp_path / "storage" / "context-root" / "public.md", "public\n")
+    write(tmp_path / "storage" / "context-root" / "private" / "secret.md", "private\n")
+    (tmp_path / "context").symlink_to("storage/context-root", target_is_directory=True)
+    policy = {
+        "scan": {
+            "include": ["context/**/*.md"],
+            "exclude": [exclude_pattern],
+        }
+    }
+
+    paths = iter_context_files(root=tmp_path, policy=policy)
+
+    assert [path.relative_to(tmp_path).as_posix() for path in paths] == [
+        "context/public.md"
+    ]
+
+
 def test_default_policy_flags_unsafe_agent_instructions(tmp_path: Path) -> None:
     write(
         tmp_path / "AGENTS.md",
