@@ -124,8 +124,14 @@ def test_contributing_keeps_runtime_expansion_out_of_scope() -> None:
 
 def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
+    headings = [line for line in changelog.splitlines() if line.startswith("## ")]
+    unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.0 - 2026-07-17", maxsplit=1
+    )[0]
 
-    assert "## Unreleased\n\n## 0.3.0 - 2026-07-17" in changelog
+    assert headings[:2] == ["## Unreleased", "## 0.3.0 - 2026-07-17"]
+    assert "Hardened the packaged evidence consumer" in unreleased
+    assert "AWS access-key-ID-shaped" in unreleased
     assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
     assert "surface delta --base-ref <ref>" in changelog
     assert "Recursively sanitized standalone Surface Inventory output" in changelog

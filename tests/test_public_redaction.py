@@ -17,6 +17,16 @@ def test_unix_local_path_redaction_handles_bounded_separator_overlap_input() -> 
     assert redact_public_text(f"before {path} after") == "before <absolute-path> after"
 
 
+def test_aws_access_key_id_shapes_are_redacted_without_leak() -> None:
+    values = ("AKIA" + ("A" * 16), "ASIA" + ("B" * 16))
+
+    for value in values:
+        redacted = redact_public_text(f"before {value} after")
+
+        assert redacted == "before <redacted> after"
+        assert value not in redacted
+
+
 def test_sanitize_public_value_preserves_tuple_type() -> None:
     value = ("safe", "/home/alice/private/policy.yaml", {"key": ("https://example.invalid/path",)})
 
