@@ -86,9 +86,11 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
     assert f"python -m pip install yui-agent-guard=={version}" in quickstart
 
     bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
-    assert bootstrap.index("agent-guard init --root . --json") < bootstrap.index(
+    assert bootstrap.index("agent-guard init --root . --print") < bootstrap.index(
         "agent-guard init --root . --write"
     )
+    assert "uvx --python 3.12" in readme
+    assert "without a persistent install" in readme
 
 
 def test_readme_opening_states_the_bounded_value_contract() -> None:
@@ -125,7 +127,7 @@ def test_quickstart_documents_windows_without_activation() -> None:
     assert "Windows PowerShell users" in readme
     assert "avoid activation and execution-policy friction" in quickstart
     assert rf".\.venv\Scripts\python.exe -m pip install yui-agent-guard=={version}" in quickstart
-    assert r".\.venv\Scripts\agent-guard.exe init --root . --json" in quickstart
+    assert r".\.venv\Scripts\agent-guard.exe init --root . --print" in quickstart
     assert r".\.venv\Scripts\agent-guard.exe init --root . --write" in quickstart
     assert r".\.venv\Scripts\agent-guard.exe report --root ." in quickstart
 
@@ -211,6 +213,7 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "agent-guard.result.v1" in readme
     assert "--format <markdown|json|github-annotations|sarif>" in readme
     assert "--output <path>" in readme
+    assert "--stderr-summary" in readme
     assert "Use `--format json`" in readme
     assert "Packaged JSON schemas" in readme
     assert "agent-guard.context_inventory.v1.schema.json" in readme
@@ -239,6 +242,8 @@ def test_readme_documents_report_evidence_contract() -> None:
         in cli_reference
     )
     assert "Unreleased source-only CLI additions" not in cli_reference
+    assert "agent-guard init --root <repo> [--print] [--write] [--skip-existing] [--force] [--json]" in cli_reference
+    assert "[--output <path>] [--stderr-summary]" in cli_reference
     assert "--surface-delta-base-ref <ref>" in cli_reference
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
@@ -290,7 +295,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "live OAuth flow is correctly implemented" in docs
     assert "docs/threat-model.md" in docs
     assert "static evidence boundary" in docs
-    assert "Review the `init --json` plan before" in docs
+    assert "Review the `init --print` plan before" in docs
     assert "agent-guard init --root . --write" in docs
     assert (
         "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml "
@@ -319,7 +324,9 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "agent-guard mcp check --root ." in quickstart
     assert "--policy .agent-guard/mcp-policy.yaml" in quickstart
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in quickstart
-    assert "agent-guard init --root . --json" in quickstart
+    assert "agent-guard init --root . --print" in quickstart
+    assert "agent-guard init --root . --write --skip-existing" in quickstart
+    assert "does not mean those preserved files are trusted" in quickstart_single_line
     assert "agent-guard context lock --root ." in quickstart
     assert ".agent-guard/context-digest-policy.yaml" in quickstart
     assert "agent-guard report --root ." in quickstart
@@ -330,6 +337,12 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
         "--evidence-preset recommended --format json"
         in readme
     )
+    assert "--stderr-summary" in quickstart
+    assert "`--output` creates parent directories" in quickstart
+    assert "Exit `1` from this first `report` command is a diagnostic success" in quickstart_single_line
+    assert "Exit `>=2` is a" in quickstart
+    assert "Python 3.11.4+ requirement applies to the tool environment" in quickstart
+    assert "The packaged GitHub Action provisions its own Python" in quickstart
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
         "--evidence-preset recommended"
@@ -378,6 +391,13 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "packaged action always generates the recommended evidence preset" in actions_single_line
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
     assert "status=0" in actions
+    assert "record_status() {" in actions
+    assert (
+        'if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then'
+        in actions
+    )
+    assert 'record_status "$?"' in actions
+    assert "code=$?" not in actions
     assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
     assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in actions
     assert "mcp-policy" in actions

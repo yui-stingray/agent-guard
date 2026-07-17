@@ -28,7 +28,7 @@ jobs:
 ```
 
 ```bash
-agent-guard init --root . --json
+agent-guard init --root . --print
 ```
 """
 
@@ -36,7 +36,7 @@ agent-guard init --root . --json
         "python3 -m venv .venv",
         ". .venv/bin/activate",
         "python -m pip install yui-agent-guard",
-        "agent-guard init --root . --json",
+        "agent-guard init --root . --print",
     ]
 
 

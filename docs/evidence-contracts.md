@@ -92,7 +92,7 @@ Choose the smallest profile that matches the review decision you need:
 
 Minimal first pass:
 
-1. Run `agent-guard init --root . --json` and review the proposed starter
+1. Run `agent-guard init --root . --print` and review the proposed starter
    `.agent-guard` policies and evidence workflow before writing them.
 2. Add repo-local policies under `.agent-guard/`, starting with
    `context-policy.yaml`.
@@ -116,12 +116,12 @@ Move to recommended evidence after the starter files are reviewed:
    embed the event body.
 5. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
-Example commands for a new repository. Review the `init --json` plan before
+Example commands for a new repository. Review the `init --print` plan before
 writing starter files, and generate the digest policy before checking context
 lock coverage:
 
 ```bash
-agent-guard init --root . --json
+agent-guard init --root . --print
 agent-guard init --root . --write
 agent-guard context inventory --root . --policy .agent-guard/context-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json

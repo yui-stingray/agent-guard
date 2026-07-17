@@ -204,50 +204,43 @@ jobs:
         run: |
           set +e
           status=0
+          record_status() {
+            code="$1"
+            if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then
+              status="$code"
+            fi
+          }
           mkdir -p .agent-guard/evidence
           raw_parent="${RUNNER_TEMP:-/tmp}"
           mkdir -p "$raw_parent"
           raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
           trap 'rm -rf "$raw_dir"' EXIT
           agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json > "$raw_dir/path.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json > "$raw_dir/content.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           exit "$status"
       - name: Upload evidence
         if: always()
@@ -259,7 +252,7 @@ jobs:
 """.replace("__AGENT_GUARD_VERSION__", PACKAGE_VERSION)
 
 
-NEXT_STEPS = [
+PREVIEW_NEXT_STEPS = [
     "Review every planned file before writing it to the repository.",
     "Run `agent-guard init --write` only after the printed plan is acceptable.",
     "Document the guard commands in README.md before expecting `agent-guard drift check` to pass cleanly.",
@@ -267,6 +260,36 @@ NEXT_STEPS = [
     "Treat raw per-scanner JSON as local or CI-internal; publish only the sanitized report, render-report, or evidence-pack outputs after review.",
     "Do not treat MCP evidence as runtime MCP validation, live OAuth validation, or MCP tool-poisoning detection.",
     "Commit generated evidence only when it is deliberately sanitized sample data; otherwise upload it as a CI artifact.",
+]
+
+
+WRITE_NEXT_STEPS = [
+    "Review every written and preserved starter file before relying on the bundle.",
+    (
+        "Run `agent-guard report --root . --context-policy "
+        ".agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy "
+        ".agent-guard/mcp-policy.yaml --stderr-summary --format json --output "
+        ".agent-guard/evidence/agent-guard-report.json` and review the sanitized "
+        "report before publication."
+    ),
+    (
+        "Run `agent-guard conformance check --root . --evidence "
+        ".agent-guard/evidence/agent-guard-report.json --profile recommended --json` "
+        "and review the result before treating the bundle as ready."
+    ),
+    (
+        "Treat exit code 1 as policy findings that require review; treat exit code "
+        ">=2 as an execution/configuration error that must be fixed before relying "
+        "on evidence."
+    ),
+    (
+        "Treat raw per-scanner JSON as local or CI-internal; publish only the "
+        "sanitized report, render-report, or evidence-pack outputs after review."
+    ),
+    (
+        "Do not treat MCP evidence as runtime MCP validation, live OAuth validation, "
+        "or MCP tool-poisoning detection."
+    ),
 ]
 
 
@@ -314,32 +337,48 @@ def build_init_plan(*, root: Path, force: bool = False) -> dict[str, object]:
         "mode": "print",
         "file_count": len(files),
         "files": files,
-        "next_steps": NEXT_STEPS,
+        "next_steps": PREVIEW_NEXT_STEPS,
     }
 
 
-def write_init_plan(*, root: Path, force: bool = False) -> tuple[dict[str, object], int]:
+def write_init_plan(
+    *,
+    root: Path,
+    force: bool = False,
+    skip_existing: bool = False,
+) -> tuple[dict[str, object], int]:
     plan = build_init_plan(root=root, force=force)
     files = plan["files"]
     assert isinstance(files, list)
     blocked = [item for item in files if isinstance(item, dict) and item.get("status") == "exists"]
-    if blocked:
+    if blocked and not skip_existing:
         return {**plan, "mode": "write", "status": "blocked"}, 1
 
-    written: list[dict[str, object]] = []
+    results: list[dict[str, object]] = []
     for item in INIT_FILES:
         target = resolve_init_path(root.resolve(), item.path)
+        if skip_existing and target.exists():
+            results.append({"path": item.path, "status": "skipped_existing"})
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(item.content, encoding="utf-8")
-        written.append({"path": item.path, "status": "written"})
-    return {
+        results.append({"path": item.path, "status": "written"})
+
+    written_count = sum(1 for item in results if item["status"] == "written")
+    skipped_count = sum(1 for item in results if item["status"] == "skipped_existing")
+    write_plan: dict[str, object] = {
         "schema_version": INIT_PLAN_SCHEMA_VERSION,
         "mode": "write",
         "status": "ok",
-        "file_count": len(written),
-        "files": written,
-        "next_steps": NEXT_STEPS,
-    }, 0
+        "file_count": len(results),
+        "written_count": written_count,
+        "skipped_count": skipped_count,
+        "files": results,
+        "next_steps": WRITE_NEXT_STEPS,
+    }
+    if skipped_count:
+        write_plan["bundle_state"] = "mixed_unverified"
+    return write_plan, 0
 
 
 def render_init_plan_text(plan: dict[str, object], *, include_content: bool) -> str:
@@ -349,8 +388,14 @@ def render_init_plan_text(plan: dict[str, object], *, include_content: bool) -> 
         f"Schema: {plan.get('schema_version')}",
         f"Mode: {plan.get('mode')}",
         f"Status: {plan.get('status', 'planned')}",
-        "",
     ]
+    if "bundle_state" in plan:
+        lines.append(f"Bundle state: {plan['bundle_state']}")
+    if "written_count" in plan:
+        lines.append(f"Written: {plan['written_count']}")
+    if "skipped_count" in plan:
+        lines.append(f"Skipped existing: {plan['skipped_count']}")
+    lines.append("")
     files = plan.get("files", [])
     if isinstance(files, list):
         for item in files:

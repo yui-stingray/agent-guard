@@ -16,6 +16,16 @@ from agent_guard.cli_registry import AGENT_GUARD_COMMANDS
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
 
 
+INIT_FILE_PATHS = [
+    ".agent-guard/context-policy.yaml",
+    ".agent-guard/path-policy.yaml",
+    ".agent-guard/content-policy.yaml",
+    ".agent-guard/mcp-policy.yaml",
+    ".agent-guard/workflow-policy.yaml",
+    ".github/workflows/agent-guard.yml",
+]
+
+
 def test_agent_guard_command_registry_matches_parser() -> None:
     parser = build_parser()
     top_action = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
@@ -38,14 +48,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert payload["schema_version"] == "agent-guard.init_plan.v1"
     assert payload["mode"] == "print"
     files = payload["files"]
-    assert [item["path"] for item in files] == [
-        ".agent-guard/context-policy.yaml",
-        ".agent-guard/path-policy.yaml",
-        ".agent-guard/content-policy.yaml",
-        ".agent-guard/mcp-policy.yaml",
-        ".agent-guard/workflow-policy.yaml",
-        ".github/workflows/agent-guard.yml",
-    ]
+    assert [item["path"] for item in files] == INIT_FILE_PATHS
     assert all(item["status"] == "create" for item in files)
     contents = {item["path"]: item["content"] for item in files}
     workflow = contents[".github/workflows/agent-guard.yml"]
@@ -77,6 +80,13 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
     ]
     assert "render_report_output" not in workflow
+    assert "record_status() {" in workflow
+    assert (
+        'if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then'
+        in workflow
+    )
+    assert 'record_status "$?"' in workflow
+    assert "code=$?" not in workflow
     assert (
         "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format markdown --output .agent-guard/evidence/agent-guard-report.md"
@@ -134,6 +144,8 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         in workflow_policy
     )
     next_steps = "\n".join(payload["next_steps"])
+    assert "Run `agent-guard init --write` only after the printed plan is acceptable." in next_steps
+    assert "--stderr-summary" not in next_steps
     assert "raw per-scanner JSON as local or CI-internal" in next_steps
     assert "publish only the sanitized report, render-report, or evidence-pack outputs" in next_steps
     assert "runtime MCP validation, live OAuth validation, or MCP tool-poisoning detection" in next_steps
@@ -166,6 +178,115 @@ def test_init_cli_written_workflow_policy_checks_generated_workflow(tmp_path: Pa
         finding_count=0,
         scanned_unit="checks",
     )
+
+
+def test_init_cli_write_next_steps_include_report_and_conformance_review(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    next_steps = "\n".join(payload["next_steps"])
+    assert payload["mode"] == "write"
+    assert "Run `agent-guard init --write` only after the printed plan is acceptable." not in next_steps
+    assert (
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --stderr-summary "
+        "--format json --output .agent-guard/evidence/agent-guard-report.json"
+        in next_steps
+    )
+    assert (
+        "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json "
+        "--profile recommended --json"
+        in next_steps
+    )
+    assert "Treat exit code 1 as policy findings that require review" in next_steps
+    assert "treat exit code >=2 as an execution/configuration error" in next_steps
+    assert "review" in next_steps.lower()
+
+
+def test_init_cli_skip_existing_all_existing_preserves_files(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+    before = {
+        rel_path: (tmp_path / rel_path).read_bytes()
+        for rel_path in INIT_FILE_PATHS
+    }
+
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--skip-existing", "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "agent-guard.init_plan.v1"
+    assert payload["mode"] == "write"
+    assert payload["status"] == "ok"
+    assert payload["bundle_state"] == "mixed_unverified"
+    assert payload["file_count"] == len(INIT_FILE_PATHS)
+    assert payload["written_count"] == 0
+    assert payload["skipped_count"] == len(INIT_FILE_PATHS)
+    assert [item["path"] for item in payload["files"]] == INIT_FILE_PATHS
+    assert all(item["status"] == "skipped_existing" for item in payload["files"])
+    assert all("content" not in item for item in payload["files"])
+    assert {
+        rel_path: (tmp_path / rel_path).read_bytes()
+        for rel_path in INIT_FILE_PATHS
+    } == before
+    next_steps = "\n".join(payload["next_steps"])
+    assert "Review every written and preserved starter file" in next_steps
+    assert "before treating the bundle as ready" in next_steps
+    assert "mixed_unverified" in json.dumps(payload, sort_keys=True)
+
+    text_result = run_cli("init", "--root", str(tmp_path), "--write", "--skip-existing")
+    assert text_result.returncode == 0
+    assert "Bundle state: mixed_unverified" in text_result.stdout
+    assert f"Skipped existing: {len(INIT_FILE_PATHS)}" in text_result.stdout
+    assert str(tmp_path) not in text_result.stdout
+
+
+def test_init_cli_skip_existing_partial_writes_only_missing_files(tmp_path: Path) -> None:
+    preserved = b"custom context bytes\n"
+    target = tmp_path / ".agent-guard" / "context-policy.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(preserved)
+    target.chmod(0o444)
+
+    try:
+        result = run_cli("init", "--root", str(tmp_path), "--write", "--skip-existing", "--json")
+    finally:
+        target.chmod(0o644)
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    statuses = {item["path"]: item["status"] for item in payload["files"]}
+    assert statuses[".agent-guard/context-policy.yaml"] == "skipped_existing"
+    assert all(statuses[rel_path] == "written" for rel_path in INIT_FILE_PATHS[1:])
+    assert payload["file_count"] == len(INIT_FILE_PATHS)
+    assert payload["written_count"] == len(INIT_FILE_PATHS) - 1
+    assert payload["skipped_count"] == 1
+    assert payload["bundle_state"] == "mixed_unverified"
+    assert target.read_bytes() == preserved
+    assert all((tmp_path / rel_path).exists() for rel_path in INIT_FILE_PATHS)
+    serialized = json.dumps(payload, sort_keys=True)
+    assert str(tmp_path) not in serialized
+    assert "custom context bytes" not in serialized
+
+
+def test_init_cli_skip_existing_rejects_invalid_modes_without_mutation(tmp_path: Path) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--skip-existing", "--json")
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "agent-guard.init_plan.v1"
+    assert payload["status"] == "error"
+    assert payload["error"] == "init --skip-existing requires --write"
+    assert not (tmp_path / ".agent-guard").exists()
+
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--skip-existing", "--force", "--json")
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["error"] == "init --skip-existing cannot be combined with --force"
+    assert not (tmp_path / ".agent-guard").exists()
 
 
 def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> None:
@@ -249,6 +370,19 @@ def test_init_cli_write_refuses_existing_files(tmp_path: Path) -> None:
     statuses = {item["path"]: item["status"] for item in payload["files"]}
     assert statuses[".agent-guard/context-policy.yaml"] == "exists"
     assert (tmp_path / ".agent-guard" / "context-policy.yaml").read_text(encoding="utf-8") == "existing\n"
+
+
+def test_init_cli_write_skip_existing_is_public_path_and_content_hygienic(tmp_path: Path) -> None:
+    write(tmp_path / ".agent-guard" / "context-policy.yaml", "private local override\n")
+
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--skip-existing", "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    serialized = json.dumps(payload, sort_keys=True)
+    assert str(tmp_path) not in serialized
+    assert "private local override" not in serialized
+    assert all(set(item) == {"path", "status"} for item in payload["files"])
 
 
 def test_init_cli_rejects_print_and_write_together(tmp_path: Path) -> None:

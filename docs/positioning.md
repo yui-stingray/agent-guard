@@ -64,7 +64,7 @@ security framework.
 
 For a new adopter, the intended first experience is the evidence report:
 
-1. run `agent-guard init --root . --json` and review the proposed policies;
+1. run `agent-guard init --root . --print` and review the proposed policies;
 2. write the starter files only after review;
 3. run the GitHub Action or `agent-guard report --evidence-preset recommended`;
 4. upload the JSON and Markdown evidence as CI artifacts;

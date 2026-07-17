@@ -61,7 +61,7 @@ after review:
 
 ```bash
 python -m pip install yui-agent-guard==0.3.0
-agent-guard init --root . --json
+agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
 ```
@@ -147,10 +147,11 @@ pip install yui-agent-guard
 ```
 
 To inspect the starter plan without a persistent install or repository writes,
-use `uvx` with the current release pinned:
+use `uvx` with the current release pinned. This is the quickest evaluation path
+when you do not want a tool installed into the target repository environment:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --json
+uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --print
 ```
 
 Windows PowerShell users can follow the non-activation virtual-environment
@@ -163,6 +164,10 @@ pip install -e .
 ```
 
 Requires Python 3.11.4+. The only runtime dependency is `PyYAML`.
+That requirement is for the `agent-guard` execution environment only. The
+repository being scanned can be Go, JavaScript, Ruby, a different Python
+version, or any other source tree because `agent-guard` reads repository files
+statically. The packaged GitHub Action provisions its own Python runtime.
 
 ## Quick start
 
@@ -172,22 +177,33 @@ standalone regex scanner.
 Preview starter policies and the evidence workflow:
 
 ```bash
-agent-guard init --root . --json
+agent-guard init --root . --print
 agent-guard init --root . --write
 ```
 
 Generate a sanitized evidence report:
 
 ```bash
-mkdir -p .agent-guard/evidence
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
 ```
 
 The command names the reviewed repo-local context policy explicitly so the
 policy choice remains visible in review. The recommended preset supplies the
 reviewed repo-local MCP policy and embeds recommended conformance plus an
-evidence-pack manifest. Run the standalone commands only when a separate
-consumer artifact is needed.
+evidence-pack manifest. `--output` creates parent directories as needed;
+`--stderr-summary` prints one sanitized status line for humans and CI logs after
+the report is written. Exit `1` is a diagnostic success: evidence was generated
+and findings or drift were found. Exit `>=2` is a usage, configuration, or
+runtime error that must be fixed before interpreting findings. Run the
+standalone commands only when a separate consumer artifact is needed.
+
+If the repository already has some reviewed guard files, use partial adoption
+only to preserve them with
+`agent-guard init --root . --write --skip-existing`. `--skip-existing` keeps
+existing files unchanged and writes only missing starter files. It is not a
+trust signal. Follow it with the recommended report and conformance review so
+maintainers can inspect which files were preserved, created, and still need
+policy or workflow alignment.
 
 `init --write` also creates `.github/workflows/agent-guard.yml`. Review and
 commit that generated workflow, or use the packaged alpha GitHub Action
@@ -917,7 +933,7 @@ for this repository's self-dogfood gate.
 ## CLI
 
 ```bash
-agent-guard init --root <repo> [--print] [--write] [--force] [--json]
+agent-guard init --root <repo> [--print] [--write] [--skip-existing] [--force] [--json]
 agent-guard api check --root <repo> --policy <yaml> [--json]
 agent-guard content check --repo-root <repo> --policy <yaml> --mode <registered|preregister|new> [--scan-dir <dir>] [--targets <paths...>] [--since-ref <ref>] [--no-untracked] [--json]
 agent-guard context check --root <repo> --policy <yaml> [--json]
@@ -925,7 +941,7 @@ agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard mcp check --root <repo> [--policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>] [--stderr-summary]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]

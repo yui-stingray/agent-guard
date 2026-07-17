@@ -185,44 +185,39 @@ jobs:
         run: |
           set +e
           status=0
+          record_status() {
+            code="$1"
+            if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then
+              status="$code"
+            fi
+          }
           mkdir -p .agent-guard/evidence
           raw_parent="${RUNNER_TEMP:-/tmp}"
           mkdir -p "$raw_parent"
           raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
           trap 'rm -rf "$raw_dir"' EXIT
           agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
-          code=$?
-          if [ "$code" -ne 0 ]; then status=$code; fi
+          record_status "$?"
           exit "$status"
       - name: Upload evidence
         if: always()

@@ -25,8 +25,16 @@ def run_init(args: argparse.Namespace) -> int:
     try:
         if args.print and args.write:
             raise ValueError("init --print cannot be combined with --write")
+        if args.skip_existing and not args.write:
+            raise ValueError("init --skip-existing requires --write")
+        if args.skip_existing and args.force:
+            raise ValueError("init --skip-existing cannot be combined with --force")
         if args.write:
-            plan, exit_code = write_init_plan(root=root, force=bool(args.force))
+            plan, exit_code = write_init_plan(
+                root=root,
+                force=bool(args.force),
+                skip_existing=bool(args.skip_existing),
+            )
             text = render_init_plan_text(plan, include_content=False)
         else:
             plan = build_init_plan(root=root, force=bool(args.force))
@@ -44,4 +52,3 @@ def run_init(args: argparse.Namespace) -> int:
 
     output_json_or_text(payload=plan, text=text, emit_json=bool(args.json))
     return exit_code
-

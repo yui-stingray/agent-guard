@@ -32,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--root", default=".", help="repository root path")
     init.add_argument("--print", action="store_true", help="print the planned starter files without writing")
     init.add_argument("--write", action="store_true", help="write starter files; refuses existing files unless --force")
+    init.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="with --write, preserve existing starter files and write only missing files",
+    )
     init.add_argument("--force", action="store_true", help="overwrite existing starter files when used with --write")
     init.add_argument("--json", action="store_true", help="emit JSON")
 

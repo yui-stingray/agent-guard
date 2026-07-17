@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from ..conformance import build_conformance_report
@@ -118,6 +119,11 @@ def add_report_parser(top) -> None:
         help="report output format",
     )
     report.add_argument("--output", default="", help="optional output path; stdout when omitted")
+    report.add_argument(
+        "--stderr-summary",
+        action="store_true",
+        help="emit one sanitized stderr summary after writing --output",
+    )
 
 
 def apply_report_evidence_preset(args: argparse.Namespace) -> None:
@@ -153,7 +159,22 @@ def apply_report_defaults(args: argparse.Namespace) -> None:
         args.surface_inventory_version = "v1"
 
 
+def emit_report_payload(args: argparse.Namespace, payload: dict[str, object]) -> None:
+    emit_report_output(render_report_output(payload, args.format), args.output)
+    if not bool(args.stderr_summary):
+        return
+    sys.stderr.write(
+        f"agent-guard report: status={payload.get('status', 'error')} "
+        f"exit_code={payload.get('exit_code', 2)} "
+        "output=written\n"
+    )
+
+
 def run_report(args: argparse.Namespace) -> int:
+    if bool(args.stderr_summary) and not str(args.output).strip():
+        sys.stderr.write("agent-guard report error: --stderr-summary requires --output\n")
+        return 2
+
     explicit_mcp_policy_arg = bool(str(args.mcp_policy).strip())
     apply_report_evidence_preset(args)
     apply_report_defaults(args)
@@ -312,7 +333,7 @@ def run_report(args: argparse.Namespace) -> int:
                 },
             },
         )
-        emit_report_output(render_report_output(payload, args.format), args.output)
+        emit_report_payload(args, payload)
         return 2
     except Exception as exc:
         payload = result_payload(
@@ -396,7 +417,7 @@ def run_report(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        emit_report_output(render_report_output(payload, args.format), args.output)
+        emit_report_payload(args, payload)
         return 2
 
     path_finding_count = int(path_report["finding_count"]) if path_report else 0
@@ -612,5 +633,5 @@ def run_report(args: argparse.Namespace) -> int:
             )
             payload["evidence_pack_manifest"] = evidence_pack_manifest
     payload = sanitize_public_mapping(payload)
-    emit_report_output(render_report_output(payload, args.format), args.output)
+    emit_report_payload(args, payload)
     return exit_code

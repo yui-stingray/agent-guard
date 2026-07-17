@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Reduced first-run friction with readable review-first init guidance, an
+  opt-in missing-only write mode for partially onboarded repositories,
+  mode-specific next steps, sanitized opt-in report status summaries, and
+  fail-closed exit-status precedence aligned across the generated workflow,
+  packaged Action, and manual workflow example.
 - Hardened the packaged evidence consumer to reject AWS access-key-ID-shaped
   values already redacted by public evidence producers, without emitting the
   matched value in validation errors.
