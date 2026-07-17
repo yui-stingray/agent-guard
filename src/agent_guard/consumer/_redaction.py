@@ -21,6 +21,8 @@ SECRET_VALUE_RE = re.compile(
     r"sk-[A-Za-z0-9_-]{20,}"
     r"|gh[pousr]_[A-Za-z0-9_]{20,}"
     r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|AKIA[0-9A-Z]{16}"
+    r"|ASIA[0-9A-Z]{16}"
     r"|xox[baprs]-[A-Za-z0-9-]{20,}"
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
     r")"

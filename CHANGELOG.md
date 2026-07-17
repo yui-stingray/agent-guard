@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Hardened the packaged evidence consumer to reject AWS access-key-ID-shaped
+  values already redacted by public evidence producers, without emitting the
+  matched value in validation errors.
+
 ## 0.3.0 - 2026-07-17
 
 - Raised the minimum supported Python version from 3.11 to 3.11.4 so every
