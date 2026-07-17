@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.0
+        uses: yui-stingray/agent-guard@v0.3.1
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -82,7 +82,7 @@ resolved relative to that root unless they are absolute paths:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.0
+        uses: yui-stingray/agent-guard@v0.3.1
         with:
           root: services/api
           conformance-profile: recommended
@@ -96,7 +96,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.0
+        uses: yui-stingray/agent-guard@v0.3.1
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -127,7 +127,7 @@ Fetch the base ref explicitly before running the action, the same way
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.0
+        uses: yui-stingray/agent-guard@v0.3.1
         with:
           conformance-profile: recommended
           surface-delta-base-ref: origin/${{ github.base_ref }}
@@ -144,7 +144,7 @@ stable merge-base anchor instead of a branch name that can move:
       - name: Fetch PR base commit
         run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.0
+        uses: yui-stingray/agent-guard@v0.3.1
         with:
           conformance-profile: recommended
           surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
@@ -243,7 +243,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.3.0
+  - uses: yui-stingray/agent-guard@v0.3.1
     id: agent-guard
   - name: Upload SARIF
     if: always()

@@ -126,14 +126,23 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.1 - 2026-07-17", maxsplit=1
+    )[0]
+    latest_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
         "## 0.3.0 - 2026-07-17", maxsplit=1
     )[0]
 
-    assert headings[:2] == ["## Unreleased", "## 0.3.0 - 2026-07-17"]
-    assert "Hardened the packaged evidence consumer" in unreleased
-    assert "AWS access-key-ID-shaped" in unreleased
-    assert "lower-bound token" in unreleased
-    assert "WSL-mounted Windows user paths" in unreleased
+    assert headings[:3] == [
+        "## Unreleased",
+        "## 0.3.1 - 2026-07-17",
+        "## 0.3.0 - 2026-07-17",
+    ]
+    assert not unreleased.strip()
+    assert "Released ahead of the default batch" in latest_release
+    assert "Hardened the packaged evidence consumer" in latest_release
+    assert "AWS access-key-ID-shaped" in latest_release
+    assert "lower-bound token" in latest_release
+    assert "WSL-mounted Windows user paths" in latest_release
     assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
     assert "surface delta --base-ref <ref>" in changelog
     assert "Recursively sanitized standalone Surface Inventory output" in changelog
