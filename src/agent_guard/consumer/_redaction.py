@@ -9,23 +9,20 @@ from collections.abc import Mapping, Sequence
 import re
 from typing import Any
 
+from ..public_redaction import LOCAL_PATH_PUBLIC_TEXT_RE, SECRET_SHAPED_PUBLIC_TEXT_RE
 from ._schema import require
 
 
 FORBIDDEN_PUBLIC_KEYS = frozenset({"matched_text", "raw_regex", "snippet"})
-LOCAL_PATH_RE = re.compile(r"(?:^|[\s\"'=:])(?:/(?:home|Users)/|[A-Za-z]:[\\/]+Users[\\/]+)")
+LOCAL_PATH_RE = re.compile(
+    rf"(?:{LOCAL_PATH_PUBLIC_TEXT_RE.pattern}|"
+    r"(?:^|[\s\"'=:])(?:/(?:home|Users)/|[A-Za-z]:[\\/]+Users[\\/]+))"
+)
 RAW_URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 SHA256_VALUE_RE = re.compile(r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{64}(?![A-Fa-f0-9])")
 SECRET_VALUE_RE = re.compile(
-    r"(?:"
-    r"sk-[A-Za-z0-9_-]{20,}"
-    r"|gh[pousr]_[A-Za-z0-9_]{20,}"
-    r"|github_pat_[A-Za-z0-9_]{20,}"
-    r"|AKIA[0-9A-Z]{16}"
-    r"|ASIA[0-9A-Z]{16}"
-    r"|xox[baprs]-[A-Za-z0-9-]{20,}"
-    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
-    r")"
+    rf"(?:{SECRET_SHAPED_PUBLIC_TEXT_RE.pattern}|"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
 
 
