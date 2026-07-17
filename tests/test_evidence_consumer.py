@@ -144,12 +144,15 @@ def test_evidence_consumer_rejects_unsanitized_fragments(tmp_path: Path) -> None
 
 def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path) -> None:
     cases = [
+        ("short_openai_key_shape", "sk-" + ("a" * 16), "secret-shaped value"),
         ("openai_key", "sk-" + ("a" * 24), "secret-shaped value"),
         ("github_token", "ghp_" + ("a" * 36), "secret-shaped value"),
         ("aws_access_key_id", "AKIA" + ("A" * 16), "secret-shaped value"),
         ("aws_temporary_access_key_id", "ASIA" + ("B" * 16), "secret-shaped value"),
+        ("short_slack_token_shape", "xoxb-" + ("a" * 10), "secret-shaped value"),
         ("sha256_value", "a" * 64, "raw sha256-shaped value"),
         ("raw_url", "http" + "s://example.com/private", "raw URL"),
+        ("wsl_windows_user_path", "/mnt/c/Users/example/private.txt", "raw local path"),
         ("private_key", "-----BEGIN " + "PRIVATE KEY-----", "secret-shaped value"),
     ]
 

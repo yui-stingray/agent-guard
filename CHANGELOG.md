@@ -9,6 +9,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Hardened the packaged evidence consumer to reject AWS access-key-ID-shaped
   values already redacted by public evidence producers, without emitting the
   matched value in validation errors.
+- Extended that fail-closed parity to the producer's existing lower-bound token
+  shapes and WSL-mounted Windows user paths without adding generic secret
+  scanning.
 
 ## 0.3.0 - 2026-07-17
 
