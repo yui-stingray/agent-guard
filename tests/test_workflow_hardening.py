@@ -112,6 +112,7 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     assert release_job["needs"] == "prepare-github-release"
     assert release_job["if"] == "needs.prepare-github-release.outputs.publish == 'true'"
     assert prepare_job["outputs"] == {
+        "prepared-sha": "${{ steps.tag.outputs.prepared-sha }}",
         "publish": "${{ steps.tag.outputs.publish }}",
         "tag": "${{ steps.tag.outputs.tag }}",
     }
@@ -187,6 +188,9 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     assert '[[ ! "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in tag_step["run"]
     assert 'echo "publish=false" >> "$GITHUB_OUTPUT"' in tag_step["run"]
     assert 'git rev-parse -q --verify "refs/tags/${tag}"' in tag_step["run"]
+    assert 'tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"' in tag_step["run"]
+    assert '[[ ! "$tag_sha" =~ ^[0-9a-f]{40}$ ]]' in tag_step["run"]
+    assert 'echo "prepared-sha=${tag_sha}"' in tag_step["run"]
     assert 'git merge-base --is-ancestor "$tag_sha" "$master_sha"' in tag_step["run"]
 
     marker = tmp_path / "must-not-exist"
@@ -286,7 +290,7 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     valid_release_result = run_tag_step("valid-release-output")
     assert valid_release_result.returncode == 0
     assert (tmp_path / "valid-release-output").read_text(encoding="utf-8") == (
-        "publish=true\ntag=v1.2.3\nversion=1.2.3\n"
+        f"publish=true\ntag=v1.2.3\nprepared-sha={tag_sha}\nversion=1.2.3\n"
     )
 
     mismatched_release_result = run_tag_step(
@@ -309,7 +313,7 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     )
     assert manual_release_result.returncode == 0
     assert (tmp_path / "manual-release-output").read_text(encoding="utf-8") == (
-        "publish=true\ntag=v1.2.3\nversion=1.2.3\n"
+        f"publish=true\ntag=v1.2.3\nprepared-sha={tag_sha}\nversion=1.2.3\n"
     )
 
     pypi_step = next(
@@ -354,6 +358,65 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     assert token_steps[0]["name"] == "Create or update GitHub release"
     assert token_steps[0]["env"] == {
         "GH_TOKEN": "${{ github.token }}",
+        "PREPARED_SHA": "${{ needs.prepare-github-release.outputs.prepared-sha }}",
         "TAG_NAME": "${{ needs.prepare-github-release.outputs.tag }}",
     }
+    assert '[[ ! "$PREPARED_SHA" =~ ^[0-9a-f]{40}$ ]]' in token_steps[0]["run"]
+    assert 'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}"' in token_steps[0]["run"]
+    assert 'gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}"' in token_steps[0]["run"]
+    assert '[ "$object_type" != "commit" ] || [ "$object_sha" != "$PREPARED_SHA" ]' in token_steps[0]["run"]
     assert "--verify-tag" in token_steps[0]["run"]
+
+    gh_log = tmp_path / "publish-gh.log"
+    release_marker = tmp_path / "release-mutated"
+    annotated_tag_sha = "1" * 40
+    wrong_commit_sha = "2" * 40
+    publish_shim_dir = tmp_path / "publish-bin"
+    publish_shim_dir.mkdir()
+    publish_gh_shim = publish_shim_dir / "gh"
+    publish_gh_shim.write_text(
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{gh_log}"
+if [ "$1" = "api" ]; then
+  case "$2" in
+    repos/example/agent-guard/git/ref/tags/v1.2.3)
+      printf '%s\\n' "tag {annotated_tag_sha}"
+      ;;
+    repos/example/agent-guard/git/tags/{annotated_tag_sha})
+      printf '%s\\n' "commit {wrong_commit_sha}"
+      ;;
+    *)
+      exit 2
+      ;;
+  esac
+elif [ "$1" = "release" ]; then
+  touch "{release_marker}"
+  exit 0
+else
+  exit 2
+fi
+""",
+        encoding="utf-8",
+    )
+    publish_gh_shim.chmod(0o755)
+    publish_result = subprocess.run(
+        ["bash", "-c", token_steps[0]["run"]],
+        env={
+            **os.environ,
+            "GH_TOKEN": "unused",
+            "GITHUB_REPOSITORY": "example/agent-guard",
+            "PATH": f"{publish_shim_dir}:{os.environ['PATH']}",
+            "PREPARED_SHA": tag_sha,
+            "TAG_NAME": "v1.2.3",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert publish_result.returncode == 1
+    publish_output = publish_result.stdout + publish_result.stderr
+    assert "release tag does not match prepared commit" in publish_output
+    assert tag_sha not in publish_output
+    assert wrong_commit_sha not in publish_output
+    assert not release_marker.exists()
+    assert "release view" not in gh_log.read_text(encoding="utf-8")

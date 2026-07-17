@@ -73,6 +73,56 @@ def test_metrics_handle_zero_denominators() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"rule": "approval_bypass", "path": "AGENTS.md"},
+        {"guard": 123, "rule": "approval_bypass", "path": "AGENTS.md"},
+        {"guard": " ", "rule": "approval_bypass", "path": "AGENTS.md"},
+        {"guard": "unsupported", "rule": "approval_bypass", "path": "AGENTS.md"},
+        {"guard": "context", "path": "AGENTS.md"},
+        {"guard": "context", "rule": ["approval_bypass"], "path": "AGENTS.md"},
+        {"guard": "context", "rule": " ", "path": "AGENTS.md"},
+        {"guard": "context", "rule": "approval_bypass"},
+        {"guard": "context", "rule": "approval_bypass", "path": {"file": "AGENTS.md"}},
+        {"guard": "context", "rule": "approval_bypass", "path": " "},
+        {"guard": "context", "rule": "approval_bypass", "path": "AGENTS.md", "reason": 123},
+        {"guard": "context", "rule": "approval_bypass", "path": "AGENTS.md", "reason": " "},
+    ],
+)
+def test_spec_from_expected_rejects_malformed_fields(item: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        agb_run.spec_from_expected(item)
+
+
+@pytest.mark.parametrize(
+    "guards",
+    [None, "context", [""], [123], ["context", "context"]],
+)
+def test_declared_guards_rejects_malformed_or_duplicate_entries(guards: object) -> None:
+    with pytest.raises(ValueError):
+        agb_run.declared_guards(
+            {
+                "guards": guards,
+                "expected_findings": [],
+                "forbidden_findings": [],
+            }
+        )
+
+
+def test_declared_guards_rejects_expected_guard_that_is_not_declared() -> None:
+    with pytest.raises(ValueError, match="must be declared"):
+        agb_run.declared_guards(
+            {
+                "guards": ["context"],
+                "expected_findings": [
+                    {"guard": "content", "rule": "pipe_to_shell", "path": "docs/install.md"}
+                ],
+                "forbidden_findings": [],
+            }
+        )
+
+
 def test_run_case_uses_declared_guards(tmp_path: Path, monkeypatch) -> None:
     case_dir = tmp_path / "case"
     write_expected(
@@ -478,6 +528,34 @@ def test_main_returns_diagnostic_json_for_malformed_expected_without_path_or_tra
     assert str(tmp_path) not in combined_output
 
 
+def test_main_rejects_malformed_expected_field_without_disclosing_value(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    case_dir = tmp_path / "fixtures" / "case"
+    private_value = f"unsupported-{tmp_path}"
+    write_expected(
+        case_dir,
+        {
+            "case_id": "case",
+            "guards": ["context"],
+            "expected_findings": [
+                {"guard": private_value, "rule": "approval_bypass", "path": "AGENTS.md"}
+            ],
+            "forbidden_findings": [],
+        },
+    )
+
+    assert agb_run.main(["--repo-root", str(tmp_path), "--fixtures", "fixtures"]) == 2
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["benchmark_error"] == {"type": "benchmark_fixture_error"}
+    assert private_value not in captured.out
+    assert str(tmp_path) not in captured.out
+    assert captured.err == ""
+
+
 def test_has_runner_errors_recognizes_benchmark_error() -> None:
     assert agb_run.has_runner_errors(
         {
@@ -487,6 +565,19 @@ def test_has_runner_errors_recognizes_benchmark_error() -> None:
     )
     assert agb_run.has_runner_errors({"benchmark_error": {}})
     assert agb_run.has_runner_errors({"cases": [{"errors": None}]})
+
+
+@pytest.mark.parametrize(
+    "cases",
+    [None, {}, "not-a-list", ["not-an-object"], [{"errors": None}]],
+)
+def test_has_runner_errors_rejects_malformed_cases(cases: object) -> None:
+    assert agb_run.has_runner_errors({"cases": cases})
+
+
+def test_has_runner_errors_accepts_missing_cases_and_empty_case_errors() -> None:
+    assert not agb_run.has_runner_errors({"overall": {}})
+    assert not agb_run.has_runner_errors({"cases": [{"errors": {}}]})
 
 
 def test_guard_command_supports_digest_and_drift(tmp_path: Path) -> None:
@@ -568,6 +659,17 @@ def test_guard_results_table_rejects_case_level_errors() -> None:
     assert "private diagnostic value" not in str(error.value)
 
 
+@pytest.mark.parametrize(
+    "cases",
+    [None, {}, "not-a-list", ["not-an-object"]],
+)
+def test_guard_results_table_rejects_malformed_cases(cases: object) -> None:
+    payload = {"by_guard": {}, "cases": cases}
+
+    with pytest.raises(agb_reporting.DiagnosticResultError, match="malformed case diagnostics"):
+        agb_reporting.guard_results_table(payload)
+
+
 def test_reporting_main_returns_2_for_diagnostic_result_without_table(
     tmp_path: Path,
     capsys,
@@ -590,3 +692,17 @@ def test_reporting_main_returns_2_for_diagnostic_result_without_table(
     assert captured.out == ""
     assert captured.err == "AGB result contains benchmark diagnostics; refusing to render metrics\n"
     assert "private diagnostic value" not in captured.err
+
+
+def test_reporting_main_returns_2_for_explicit_null_cases_without_table(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    result_path = tmp_path / "result.json"
+    result_path.write_text(json.dumps({"by_guard": {}, "cases": None}), encoding="utf-8")
+
+    assert agb_reporting.main([str(result_path)]) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "AGB result contains malformed case diagnostics; refusing to render metrics\n"

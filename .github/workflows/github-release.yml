@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      prepared-sha: ${{ steps.tag.outputs.prepared-sha }}
       publish: ${{ steps.tag.outputs.publish }}
       tag: ${{ steps.tag.outputs.tag }}
     permissions:
@@ -93,8 +94,12 @@ jobs:
             echo "::error::tag not found: ${tag}"
             exit 1
           }
+          tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"
+          if [[ ! "$tag_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve release tag commit"
+            exit 1
+          fi
           if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ]; then
-            tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"
             master_sha="$(git rev-parse "refs/remotes/origin/master^{commit}")"
             if [ "$tag_sha" != "$UPSTREAM_HEAD_SHA" ] \
                || ! git merge-base --is-ancestor "$tag_sha" "$master_sha"; then
@@ -106,6 +111,7 @@ jobs:
           {
             echo "publish=true"
             echo "tag=${tag}"
+            echo "prepared-sha=${tag_sha}"
             echo "version=${tag#v}"
           } >> "$GITHUB_OUTPUT"
 
@@ -155,9 +161,40 @@ jobs:
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          PREPARED_SHA: ${{ needs.prepare-github-release.outputs.prepared-sha }}
           TAG_NAME: ${{ needs.prepare-github-release.outputs.tag }}
         run: |
           set -euo pipefail
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+             || [[ ! "$PREPARED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::invalid prepared release metadata"
+            exit 1
+          fi
+          read -r object_type object_sha < <(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" \
+              --jq '.object.type + " " + .object.sha'
+          )
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if [[ ! "$object_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::release tag resolved to an invalid object"
+              exit 1
+            fi
+            if [ "$object_type" = "commit" ]; then
+              break
+            fi
+            if [ "$object_type" != "tag" ]; then
+              echo "::error::release tag resolved to an unsupported object"
+              exit 1
+            fi
+            read -r object_type object_sha < <(
+              gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}" \
+                --jq '.object.type + " " + .object.sha'
+            )
+          done
+          if [ "$object_type" != "commit" ] || [ "$object_sha" != "$PREPARED_SHA" ]; then
+            echo "::error::release tag does not match prepared commit"
+            exit 1
+          fi
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \

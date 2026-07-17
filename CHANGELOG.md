@@ -8,14 +8,16 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 - Made Agent-Guard Bench fail closed on guard runner errors, preserve raw
   comparisons for scoring, and redact finding metadata only at JSON output
-  boundaries while using controlled diagnostic labels.
+  boundaries while using controlled diagnostic labels. Malformed fixture
+  fields and case diagnostics are rejected instead of being scored or rendered.
 - Reduced remaining first-run friction with a top-level `--version` command,
   recovery-specific guidance for blocked starter writes, and earlier Python
   runtime requirement guidance.
 - Required a successful upstream PyPI publish job, trusted tag ancestry, and
   exact-version presence on PyPI before automatic GitHub Release publishing.
-  The write-capable GitHub Release job no longer persists checkout credentials
-  in its working copy.
+  The write-capable GitHub Release job re-resolves the tag and requires it to
+  match the prepared commit before mutation, and it no longer persists checkout
+  credentials in its working copy.
 
 ## 0.3.1 - 2026-07-17
 

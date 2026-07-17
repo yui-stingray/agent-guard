@@ -131,13 +131,37 @@ def load_expected(case_dir: Path) -> dict[str, Any]:
 def spec_from_expected(item: object, case_root: Path | None = None) -> FindingSpec:
     if not isinstance(item, dict):
         raise ValueError("expected finding entries must be objects")
-    path = str(item.get("path", item.get("file", ""))).strip()
+    guard = required_fixture_text(item, ("guard",), "guard")
+    if guard not in DEFAULT_GUARDS:
+        raise ValueError("unsupported AGB guard")
+    rule = required_fixture_text(item, ("rule", "rule_id"), "rule")
+    path = required_fixture_text(item, ("path", "file"), "path")
+    reason = optional_fixture_text(item, "reason")
     return FindingSpec(
-        guard=str(item.get("guard", "")).strip(),
-        rule=str(item.get("rule", item.get("rule_id", ""))).strip(),
+        guard=guard,
+        rule=rule,
         path=normalize_scoring_path(path, case_root) if case_root is not None else path,
-        reason=str(item.get("reason", "")).strip(),
+        reason=reason,
     )
+
+
+def required_fixture_text(item: dict[str, object], keys: tuple[str, ...], label: str) -> str:
+    for key in keys:
+        if key in item:
+            value = item[key]
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            raise ValueError(f"expected finding {label} must be a non-empty string")
+    raise ValueError(f"expected finding {label} must be a non-empty string")
+
+
+def optional_fixture_text(item: dict[str, object], key: str) -> str:
+    if key not in item:
+        return ""
+    value = item[key]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"expected finding {key} must be a non-empty string when present")
+    return value.strip()
 
 
 @lru_cache(maxsize=1)
@@ -231,14 +255,24 @@ def expected_specs(payload: dict[str, Any], key: str, case_root: Path | None = N
 
 def declared_guards(payload: dict[str, Any]) -> list[str]:
     raw = payload.get("guards", [])
-    if isinstance(raw, list) and raw:
-        guards = [str(item).strip() for item in raw if str(item).strip()]
+    if not isinstance(raw, list):
+        raise ValueError("AGB guards must be a list")
+    if raw:
+        if any(not isinstance(item, str) or not item.strip() for item in raw):
+            raise ValueError("AGB guards must contain non-empty strings")
+        guards = [item.strip() for item in raw]
     else:
         inferred = {item.guard for item in expected_specs(payload, "expected_findings")}
         inferred.update(item.guard for item in expected_specs(payload, "forbidden_findings"))
         guards = sorted(inferred) or list(DEFAULT_GUARDS)
+    if len(set(guards)) != len(guards):
+        raise ValueError("AGB guards must be unique")
     if any(guard not in DEFAULT_GUARDS for guard in guards):
         raise ValueError("unsupported AGB guard")
+    finding_guards = {item.guard for item in expected_specs(payload, "expected_findings")}
+    finding_guards.update(item.guard for item in expected_specs(payload, "forbidden_findings"))
+    if any(guard not in guards for guard in finding_guards):
+        raise ValueError("expected finding guard must be declared")
     return guards
 
 
@@ -395,13 +429,17 @@ def build_results(repo_root: Path, fixtures_root: Path) -> dict[str, object]:
 def has_runner_errors(payload: dict[str, object]) -> bool:
     if "benchmark_error" in payload:
         return True
-    cases = payload.get("cases", [])
-    if not isinstance(cases, list):
+    if "cases" not in payload:
         return False
-    return any(
-        isinstance(case, dict) and "errors" in case and case["errors"] != {}
-        for case in cases
-    )
+    cases = payload["cases"]
+    if not isinstance(cases, list):
+        return True
+    for case in cases:
+        if not isinstance(case, dict):
+            return True
+        if "errors" in case and case["errors"] != {}:
+            return True
+    return False
 
 
 def benchmark_error_payload(error: object = "benchmark_fixture_error") -> dict[str, object]:

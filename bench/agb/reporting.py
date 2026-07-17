@@ -30,14 +30,14 @@ def reject_diagnostic_result(payload: dict[str, Any]) -> None:
     if "benchmark_error" in payload:
         raise DiagnosticResultError("AGB result contains benchmark diagnostics; refusing to render metrics")
 
-    cases = payload.get("cases")
-    if cases is None:
+    if "cases" not in payload:
         return
+    cases = payload["cases"]
     if not isinstance(cases, list):
-        raise ValueError("AGB result JSON field must be an array: cases")
+        raise DiagnosticResultError("AGB result contains malformed case diagnostics; refusing to render metrics")
     for case in cases:
         if not isinstance(case, dict):
-            raise ValueError("AGB result JSON cases must contain objects")
+            raise DiagnosticResultError("AGB result contains malformed case diagnostics; refusing to render metrics")
         if "errors" in case and case["errors"] != {}:
             raise DiagnosticResultError("AGB result contains case diagnostics; refusing to render metrics")
 
