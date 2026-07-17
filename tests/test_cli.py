@@ -26,6 +26,14 @@ INIT_FILE_PATHS = [
 ]
 
 
+def test_agent_guard_version_does_not_require_subcommand() -> None:
+    result = run_cli("--version")
+
+    assert result.returncode == 0
+    assert result.stdout == f"agent-guard {AGENT_GUARD_VERSION}\n"
+    assert result.stderr == ""
+
+
 def test_agent_guard_command_registry_matches_parser() -> None:
     parser = build_parser()
     top_action = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
@@ -369,6 +377,15 @@ def test_init_cli_write_refuses_existing_files(tmp_path: Path) -> None:
     assert payload["status"] == "blocked"
     statuses = {item["path"]: item["status"] for item in payload["files"]}
     assert statuses[".agent-guard/context-policy.yaml"] == "exists"
+    next_steps = "\n".join(payload["next_steps"])
+    assert "agent-guard init --write` only after" not in next_steps
+    assert "Review the existing starter files in the repository" in next_steps
+    assert "agent-guard init --write --skip-existing" in next_steps
+    assert "agent-guard init --write --force" in next_steps
+    assert "intentionally reviewing" in next_steps
+    serialized = json.dumps(payload, sort_keys=True)
+    assert str(tmp_path) not in serialized
+    assert "existing\n" not in serialized
     assert (tmp_path / ".agent-guard" / "context-policy.yaml").read_text(encoding="utf-8") == "existing\n"
 
 

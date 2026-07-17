@@ -61,10 +61,17 @@ are reported in [Benchmark Results](benchmark-results.md).
 
 | Artifact | Schema version | Runner | Volatile fields | Stable consumer surface |
 | --- | --- | --- | --- | --- |
-| Agent-Guard Bench result | `agent-guard.agb_results.v1` | `bench/agb/run.py` | `generated_at` | Case count, overall metrics, per-guard metrics, and per-case false positive/negative details. |
+| Agent-Guard Bench result | `agent-guard.agb_results.v1` | `bench/agb/run.py` | `generated_at` | Case count, overall metrics, per-guard metrics, per-case false positive/negative details, and optional sanitized diagnostics in top-level `benchmark_error` or per-case `errors`. |
 | Evidence integrity result | `agent-guard.evidence_results.v1` | `bench/evidence/run.py` | `generated_at` | Overall status, passed/failed counts, and named integrity checks. |
 | Taxonomy alignment result | `agent-guard.alignment.v1` | `bench/alignment/run.py` | `generated_at` | Alignment status, emitted/missing counts, and named taxonomy checks. |
 | TTFE replay result | `agent-guard.ttfe_results.v1` | `bench/ttfe/run.sh` and `bench/ttfe/run.py` | `generated_at`, `elapsed_ms`, per-command timing fields | Quickstart command count, first nonzero command, failure point, setup metadata, and command records. |
+
+An AGB payload containing top-level `benchmark_error`, or a case with non-empty
+or malformed `errors`, is a diagnostic result rather than a measurement result.
+Consumers must fail closed before reading its counts or metrics. The bundled
+`bench.agb.reporting` helper returns exit `2` and does not render a table for
+these payloads. Diagnostic values are sanitized labels and must not be treated
+as scanner output, benchmark findings, or valid zero-case scores.
 
 ## Volatile Fields
 

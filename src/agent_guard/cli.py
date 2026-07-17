@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 
+from . import __version__ as PACKAGE_VERSION
 from .cli.api import add_api_parser, run_api_check
 from .cli.content import add_content_parser, run_content_check
 from .cli.context import add_context_parser, run_context_check, run_context_inventory, run_context_lock
@@ -26,6 +27,7 @@ from .cli.workflow import add_workflow_parser, run_workflow_check
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="static repository guardrails for agent-touched repos")
+    parser.add_argument("--version", action="version", version=f"agent-guard {PACKAGE_VERSION}")
     top = parser.add_subparsers(dest="scanner", required=True)
 
     init = top.add_parser("init", help="print or write review-first starter guard files")

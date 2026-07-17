@@ -20,30 +20,73 @@ on:
     types: [completed]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish-github-release:
-    name: publish GitHub release
+  prepare-github-release:
+    name: prepare GitHub release
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      prepared-sha: ${{ steps.tag.outputs.prepared-sha }}
+      publish: ${{ steps.tag.outputs.publish }}
+      tag: ${{ steps.tag.outputs.tag }}
+    permissions:
+      actions: read
+      contents: read
     steps:
+      - name: Verify upstream PyPI publication
+        id: upstream
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          published_count="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?filter=latest&per_page=100" \
+              --jq '[.jobs[] | select(.name == "publish to PyPI (OIDC)" and .conclusion == "success")] | length'
+          )"
+          if [[ "$published_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::upstream run did not complete PyPI publication"
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          UPSTREAM_EVENT: ${{ github.event.workflow_run.event }}
+          UPSTREAM_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          UPSTREAM_PUBLISHED: ${{ steps.upstream.outputs.published }}
+          UPSTREAM_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ] \
+             && { [ "$UPSTREAM_EVENT" != "push" ] \
+                  || [ "$UPSTREAM_PUBLISHED" != "true" ]; }; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_run" ]; then
+            tag="$UPSTREAM_TAG"
           else
-            tag="$(jq -r '.workflow_run.head_branch' "${GITHUB_EVENT_PATH}")"
+            tag="$INPUT_TAG"
           fi
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "::notice::not a version tag release: ${tag}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::not a version tag release"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -51,9 +94,24 @@ jobs:
             echo "::error::tag not found: ${tag}"
             exit 1
           }
+          tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"
+          if [[ ! "$tag_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve release tag commit"
+            exit 1
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ]; then
+            master_sha="$(git rev-parse "refs/remotes/origin/master^{commit}")"
+            if [ "$tag_sha" != "$UPSTREAM_HEAD_SHA" ] \
+               || ! git merge-base --is-ancestor "$tag_sha" "$master_sha"; then
+              echo "::notice::upstream release ref is not on protected master history"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           {
             echo "publish=true"
             echo "tag=${tag}"
+            echo "prepared-sha=${tag_sha}"
             echo "version=${tag#v}"
           } >> "$GITHUB_OUTPUT"
 
@@ -69,13 +127,74 @@ jobs:
           --version "${{ steps.tag.outputs.version }}"
           --write-notes release-notes.md
 
-      - name: Create or update GitHub release
+      - name: Verify published PyPI version
         if: steps.tag.outputs.publish == 'true'
+        run: >-
+          python scripts/check_pypi_release_state.py
+          --expect-present
+          --version "${{ steps.tag.outputs.version }}"
+
+      - name: Upload release notes artifact
+        if: steps.tag.outputs.publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-github-release:
+    name: publish GitHub release
+    needs: prepare-github-release
+    if: needs.prepare-github-release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download release notes artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-notes
+          path: .
+
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.tag.outputs.tag }}
+          PREPARED_SHA: ${{ needs.prepare-github-release.outputs.prepared-sha }}
+          TAG_NAME: ${{ needs.prepare-github-release.outputs.tag }}
         run: |
           set -euo pipefail
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+             || [[ ! "$PREPARED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::invalid prepared release metadata"
+            exit 1
+          fi
+          read -r object_type object_sha < <(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" \
+              --jq '.object.type + " " + .object.sha'
+          )
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if [[ ! "$object_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::release tag resolved to an invalid object"
+              exit 1
+            fi
+            if [ "$object_type" = "commit" ]; then
+              break
+            fi
+            if [ "$object_type" != "tag" ]; then
+              echo "::error::release tag resolved to an unsupported object"
+              exit 1
+            fi
+            read -r object_type object_sha < <(
+              gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}" \
+                --jq '.object.type + " " + .object.sha'
+            )
+          done
+          if [ "$object_type" != "commit" ] || [ "$object_sha" != "$PREPARED_SHA" ]; then
+            echo "::error::release tag does not match prepared commit"
+            exit 1
+          fi
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \
