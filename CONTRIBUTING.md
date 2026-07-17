@@ -16,7 +16,7 @@ stay small, deterministic, and easy to run in hooks or CI.
 
 ## Local setup
 
-Use Python 3.11 or newer.
+Use Python 3.11.4 or newer.
 
 ```bash
 python -m venv .venv

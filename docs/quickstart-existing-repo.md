@@ -10,7 +10,7 @@ If `uv` is available, preview the starter plan without installing a persistent
 tool or changing the repository:
 
 ```console
-uvx --python 3.12 --from yui-agent-guard==0.2.4 agent-guard init --root . --json
+uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --json
 ```
 
 Run these commands from the repository root on the first pass through an
@@ -22,7 +22,7 @@ recommended conformance and its evidence-pack manifest:
 ```bash
 python3 -m venv .venv && \
   . .venv/bin/activate && \
-  python -m pip install yui-agent-guard==0.2.4
+  python -m pip install yui-agent-guard==0.3.0
 agent-guard init --root . --json
 agent-guard init --root . --write
 agent-guard report \
@@ -39,7 +39,7 @@ reviewed write, and sanitized report sequence is:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.2.4
+.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.0
 .\.venv\Scripts\agent-guard.exe init --root . --json
 .\.venv\Scripts\agent-guard.exe init --root . --write
 .\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
@@ -88,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.4
+        uses: yui-stingray/agent-guard@v0.3.0
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -105,7 +105,7 @@ that selected root:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.4
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           root: services/api
           conformance-profile: recommended
@@ -161,14 +161,16 @@ agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
 ```
 
-The inventories are metadata only. Review repository-relative paths, agent
-context kinds, policy files, workflow references, documented guard-command
-metadata, evidence artifact references, agent skills/profiles/commands/hooks,
-MCP server names, MCP transports, command basenames, package-manager pin
-status, remote hosts, env var names, filesystem-root presence, line counts,
-file sizes, and permission-boundary status. They should not emit raw
-instructions, raw workflow commands, MCP args, env values, snippets, matched
-text, secrets, hook bodies, or local paths.
+The inventories are metadata only. Standalone `agent-guard surface inventory`
+output is recursively sanitized before the packaged Action writes it as an
+uploadable public artifact. Review repository-relative paths, agent context
+kinds, policy files, workflow references, documented guard-command metadata,
+evidence artifact references, agent skills/profiles/commands/hooks,
+MCP server names, MCP transports, command basenames, package-manager pin status, remote
+hosts, env var names, filesystem-root presence, line counts, file sizes, and
+permission-boundary status. They should not emit raw instructions, raw workflow
+commands, MCP args, env values, snippets, matched text, secrets, hook bodies,
+or local paths.
 
 Generate a digest policy for the discovered context files:
 
@@ -196,9 +198,10 @@ Keep generated evidence out of source control unless it is a deliberately
 sanitized sample. In CI, upload it as a build artifact instead.
 
 Do not treat every `--json` command as a public artifact. The report,
-render-report, conformance, and evidence-pack outputs are the sanitized review
-surfaces. Raw scanner JSON from commands such as `api check --json`, `content
-check --json`, `mcp check --json`, or `workflow check --json` may include
+render-report, standalone surface inventory, conformance, and evidence-pack
+outputs are the sanitized review surfaces. Raw scanner JSON from commands such
+as `api check --json`, `content check --json`, `mcp check --json`, or
+`workflow check --json` may include
 scanner-specific metadata or policy diagnostics depending on the scanner and
 should stay in local automation or temporary CI storage unless reviewed.
 

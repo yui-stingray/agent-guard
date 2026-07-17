@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from ..context_guard import load_context_policy
+from ..public_redaction import sanitize_public_mapping
 from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
 from .common import resolve_policy_arg, result_payload
@@ -60,7 +61,7 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
             extra={"command": "inventory"},
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(sanitize_public_mapping(payload), ensure_ascii=False))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -81,7 +82,7 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
         extra={"command": "inventory", "surface_inventory": inventory},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(sanitize_public_mapping(payload), ensure_ascii=False, sort_keys=True))
     else:
         print(f"surface-inventory: OK ({surface_count} surfaces)")
     return 0
@@ -143,4 +144,3 @@ def _emit_surface_delta_error(*, args: argparse.Namespace, root: Path, message: 
     else:
         print(f"ERROR: {payload.get('error', 'unknown error')}")
     return 2
-

@@ -6,6 +6,8 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.0 - 2026-07-17
+
 - Raised the minimum supported Python version from 3.11 to 3.11.4 so every
   supported installation includes the security-backported tar extraction
   filter required by fail-closed surface delta base-tree materialization. No
@@ -41,8 +43,11 @@ Why: keep static guard releases auditable while the package is still alpha.
   affect the delta, while gitlink pin changes emit only the controlled
   `content` field name without object ids or submodule content. Opaque paths
   are pruned before collector reads, and otherwise unrepresented boundaries use
-  the controlled `git_submodule` kind.
-  Synthetic tar extraction fails closed when the safe tar filter is not available.
+  the controlled `git_submodule` kind. Synthetic tar extraction fails closed
+  when the safe tar filter is not available.
+- Recursively sanitized standalone Surface Inventory output before GitHub
+  Action upload, preventing secret-shaped repository-relative metadata from
+  appearing raw in public review artifacts.
 - Reworked the README opening around agent-facing repository surfaces,
   concrete inventory/check/evidence value, and the reviewed bootstrap path
   without implying authorship, runtime protection, provenance, or compliance.

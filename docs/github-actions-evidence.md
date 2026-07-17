@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.4
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -42,7 +42,7 @@ diagnostics do not appear in workflow logs or uploaded public artifacts. Raw
 scanner JSON may include scanner-specific metadata or policy diagnostics
 depending on the scanner, so do not upload it publicly unless a maintainer has
 reviewed that exact output. The uploadable files from the packaged action are
-the sanitized report, SARIF report, surface inventory,
+the sanitized report, SARIF report, recursively sanitized surface inventory,
 conformance result, and evidence-pack manifest. Markdown, SARIF, and GitHub
 annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
@@ -82,7 +82,7 @@ resolved relative to that root unless they are absolute paths:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.4
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           root: services/api
           conformance-profile: recommended
@@ -96,7 +96,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.2.4
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -117,10 +117,7 @@ only on an advanced base branch as PR removals. This is deterministic review
 evidence, not a gate. It is never emitted to SARIF and does not fail the job by
 itself.
 
-This Action input is currently unreleased and is not available in `v0.2.4`.
-Replace `<release-tag-with-surface-delta>` with the first published release tag
-that includes the input; until then, use the checked-out CLI directly instead
-of passing an unsupported input to `v0.2.4`.
+This Action input is available in `v0.3.0`.
 
 Fetch the base ref explicitly before running the action, the same way
 `base-ref` requires it:
@@ -130,7 +127,7 @@ Fetch the base ref explicitly before running the action, the same way
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@<release-tag-with-surface-delta>
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           conformance-profile: recommended
           surface-delta-base-ref: origin/${{ github.base_ref }}
@@ -147,7 +144,7 @@ stable merge-base anchor instead of a branch name that can move:
       - name: Fetch PR base commit
         run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
       - id: agent-guard
-        uses: yui-stingray/agent-guard@<release-tag-with-surface-delta>
+        uses: yui-stingray/agent-guard@v0.3.0
         with:
           conformance-profile: recommended
           surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
@@ -251,7 +248,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.2.4
+  - uses: yui-stingray/agent-guard@v0.3.0
     id: agent-guard
   - name: Upload SARIF
     if: always()
