@@ -10,8 +10,13 @@ If `uv` is available, preview the starter plan without installing a persistent
 tool or changing the repository:
 
 ```console
-uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --json
+uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --print
 ```
+
+This pinned `uvx` path is for evaluation and human review without a persistent
+install. The TTFE benchmark still uses the local-wheelhouse golden path below
+so CI proves the current checkout can be built, installed, and replayed before
+release.
 
 Run these commands from the repository root on the first pass through an
 un-onboarded repository. This four-command golden path creates an isolated
@@ -23,15 +28,23 @@ recommended conformance and its evidence-pack manifest:
 python3 -m venv .venv && \
   . .venv/bin/activate && \
   python -m pip install yui-agent-guard==0.3.0
-agent-guard init --root . --json
+agent-guard init --root . --print
 agent-guard init --root . --write
 agent-guard report \
   --root . \
   --context-policy .agent-guard/context-policy.yaml \
   --evidence-preset recommended \
   --format json \
-  --output .agent-guard/evidence/agent-guard-report.json
+  --output .agent-guard/evidence/agent-guard-report.json \
+  --stderr-summary
 ```
+
+`--output` creates parent directories, so no separate `mkdir` is needed.
+`--stderr-summary` prints one sanitized status line after the report is written,
+which is useful when the JSON artifact is saved instead of printed. Exit `1`
+from this first `report` command is a diagnostic success: the command completed,
+generated evidence, and found onboarding findings or drift. Exit `>=2` is a
+usage, configuration, or runtime error; fix that before interpreting findings.
 
 On Windows PowerShell, avoid activation and execution-policy friction by
 calling the virtual-environment executables directly. The same dry-run,
@@ -40,9 +53,9 @@ reviewed write, and sanitized report sequence is:
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.0
-.\.venv\Scripts\agent-guard.exe init --root . --json
+.\.venv\Scripts\agent-guard.exe init --root . --print
 .\.venv\Scripts\agent-guard.exe init --root . --write
-.\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
+.\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
 ```
 
 On this initial diagnostic path, findings and drift are useful output. If
@@ -61,6 +74,13 @@ added before the repository is green.
 Existing files are not overwritten unless `--force` is used. The dry-run in the
 four-command path is intentional: review its proposed files before running the
 following `init --write` command.
+
+For partial adoption, preserve reviewed files that are already present with
+`agent-guard init --root . --write --skip-existing`. This writes only missing
+starter files and leaves existing files unchanged. It does not mean those
+preserved files are trusted. Run the recommended report and conformance review
+afterward, then inspect the init plan statuses, report findings, and
+conformance findings before treating the repository as onboarded.
 
 Before treating `agent-guard drift check` as a clean gate, document the chosen
 guard commands in the repository README. The drift gate intentionally reports
@@ -115,6 +135,10 @@ The action and CLI resolve relative policy paths such as
 `.agent-guard/context-policy.yaml` and `.agent-guard/mcp-policy.yaml` under the
 selected root. Use absolute paths only for local experiments; repo-external
 policy files do not satisfy recommended or strict reviewed-policy conformance.
+The `agent-guard` Python 3.11.4+ requirement applies to the tool environment,
+not the selected project root. A target service can use another language or
+another Python version. The packaged GitHub Action provisions its own Python
+runtime for `agent-guard`.
 
 Treat each reviewed project root as its own evidence boundary. Do not aggregate
 raw scanner JSON across services, and do not use one service's

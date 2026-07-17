@@ -42,7 +42,15 @@ surrounding packaged report schema until a standalone schema is added.
 | Agent surface inventory | `agent-guard.agent_surface_inventory.v2` | `agent-guard surface inventory --schema-version v2`, recommended report evidence | none | v2 adds static MCP, skills, profiles, commands, hooks, and evidence-artifact metadata. |
 | Policy/spec drift | `agent-guard.policy_spec_drift.v1` | `agent-guard drift check`, report evidence | none | Repository policy/spec alignment findings. |
 | Policy/spec drift | `agent-guard.policy_spec_drift.v2` | `agent-guard drift check --schema-version v2`, recommended report evidence | none | v2 can include baseline-sensitive change evidence when `--base-ref` is supplied. |
-| Init plan | `agent-guard.init_plan.v1` | `agent-guard init --json` | none | Starter-file plan output; consumers should treat embedded file content as local setup data, not public review evidence. |
+| Init plan | `agent-guard.init_plan.v1` | `agent-guard init --json` | none | Starter-file plan output for automation/API use; consumers should treat embedded file content as local setup data, not public review evidence. |
+
+`agent-guard.init_plan.v1` may add optional fields to make write behavior easier
+to audit. The opt-in missing-only write mode uses per-file `written` and
+`skipped_existing` statuses, `written_count` and `skipped_count`, and
+`bundle_state: mixed_unverified` when existing files are preserved. Those
+fields are additive local setup metadata. They do not make `init` output public
+evidence and do not replace the recommended report, conformance, or
+evidence-pack review surfaces.
 
 ## Benchmark Result Schemas
 

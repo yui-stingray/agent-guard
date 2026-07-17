@@ -134,7 +134,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'base_ref="${AGENT_GUARD_BASE_REF:-}"' in action_script
     assert 'root="${AGENT_GUARD_ROOT:-.}"' in action_script
     assert "minimal|recommended|strict" in action_script
-    assert '[ "$code" -eq 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }' in action_script
+    assert '[ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }' in action_script
     assert "validate_no_control_chars" in action_script
     assert "write_output" in action_script
     assert 'drift_args+=(--base-ref "$base_ref")' in action_script
