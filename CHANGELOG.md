@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.1 - 2026-07-17
+
+- Released ahead of the default batch so installed evidence consumers receive
+  the fail-closed public-redaction parity fixes together with the reviewed
+  onboarding behavior that produces those artifacts.
 - Reduced first-run friction with readable review-first init guidance, an
   opt-in missing-only write mode for partially onboarded repositories,
   mode-specific next steps, sanitized opt-in report status summaries, and

@@ -628,4 +628,4 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
     assert "currently unreleased" not in surface_delta_section
     assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
-    assert "yui-stingray/agent-guard@v0.3.0" in surface_delta_section
+    assert "yui-stingray/agent-guard@v0.3.1" in surface_delta_section
