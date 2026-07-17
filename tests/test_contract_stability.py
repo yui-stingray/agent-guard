@@ -93,8 +93,9 @@ def test_compatibility_doc_freezes_emitted_artifacts_and_volatile_fields() -> No
     assert "Volatile fields" in docs
     assert "`generated_at`" in docs
     assert "schema version will not change without a new schema identifier" in docs_single_line
-    assert "unreleased source only" in docs_single_line
-    assert "not present in the published `0.2.4` wheel" in docs_single_line
+    assert "unreleased source only" not in docs_single_line
+    assert "not present in the published" not in docs_single_line
+    assert "| Surface delta evidence | `agent-guard.surface_delta.v1`" in docs
 
 
 def test_release_criteria_use_batched_contract_stability_cadence() -> None:
@@ -121,9 +122,13 @@ def test_contributing_keeps_runtime_expansion_out_of_scope() -> None:
     assert "private command transcripts" in docs
 
 
-def test_changelog_records_024_patch_release_entry() -> None:
+def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
+    assert "## Unreleased\n\n## 0.3.0 - 2026-07-17" in changelog
+    assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
+    assert "surface delta --base-ref <ref>" in changelog
+    assert "Recursively sanitized standalone Surface Inventory output" in changelog
     assert "## 0.2.4 - 2026-07-09" in changelog
     assert "external risk-reference currentness" in changelog
     assert "Japanese-language skip-verification" in changelog

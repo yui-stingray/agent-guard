@@ -5,14 +5,18 @@ Why: keep public docs aligned with the package contract and static-evidence boun
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from pathlib import Path
+
+from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
+CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 EXISTING_REPO_QUICKSTART = REPO_ROOT / "docs" / "quickstart-existing-repo.md"
@@ -34,9 +38,41 @@ def test_readme_status_matches_pyproject_version() -> None:
 
 def test_readme_documents_python_patch_floor() -> None:
     readme = README.read_text(encoding="utf-8")
+    contributing = CONTRIBUTING.read_text(encoding="utf-8")
 
     assert "Python 3.11.4+" in readme
     assert "Requires Python 3.11.4+." in readme
+    assert "Use Python 3.11.4 or newer." in contributing
+
+
+def test_evidence_sample_documented_commands_match_current_docs() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    sample_surfaces = [
+        item
+        for item in payload["surface_inventory"]["surfaces"]
+        if item.get("surface") == "documented_guard_command"
+    ]
+
+    assert sample_surfaces == collect_documented_guard_surfaces(REPO_ROOT)
+
+
+def test_evidence_sample_only_describes_committed_evidence_artifacts() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    evidence_artifacts = [
+        item
+        for item in payload["surface_inventory"]["surfaces"]
+        if item.get("surface") == "evidence_artifact"
+    ]
+
+    assert evidence_artifacts == [
+        {
+            "kind": "committed_evidence_sample",
+            "path": "docs/evidence-samples/agent-guard-report.json",
+            "size_bytes": EVIDENCE_SAMPLE_REPORT.stat().st_size,
+            "status": "present",
+            "surface": "evidence_artifact",
+        }
+    ]
 
 
 def test_onboarding_commands_pin_the_current_package_version() -> None:
@@ -69,8 +105,9 @@ def test_readme_opening_states_the_bounded_value_contract() -> None:
     assert "sanitized report JSON" in opening
     assert "SARIF derived from the report payload" in opening
     assert "sanitized JSON, Markdown, and SARIF outputs" not in opening
-    assert "Raw per-scanner JSON remains a" in opening
+    assert "Other raw per-scanner JSON remains a" in opening
     assert "local/CI-internal surface unless a maintainer reviews it" in opening
+    assert "standalone `agent-guard surface inventory`" in opening
     assert "It is **not** an authorship detector" in opening
     assert re.search(r"It is \*\*not\*\*[^.]{0,180}\bprovenance system\b", opening, re.IGNORECASE)
     assert not re.search(
@@ -201,7 +238,7 @@ def test_readme_documents_report_evidence_contract() -> None:
         "[--schema-version <v1>] [--json]"
         in cli_reference
     )
-    assert "Unreleased source-only CLI additions" in cli_reference
+    assert "Unreleased source-only CLI additions" not in cli_reference
     assert "--surface-delta-base-ref <ref>" in cli_reference
     assert "env values" in readme
     assert "owasp_agentic_risk_themes" in readme
@@ -304,6 +341,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "LLM reviewer" in quickstart
     assert "MoA orchestrator" in quickstart
     assert "Raw scanner JSON" in quickstart
+    assert "standalone surface inventory, conformance, and evidence-pack" in quickstart
+    assert "recursively sanitized" in quickstart
     assert "agent execution UI" in quickstart
     assert "MCP server names" in quickstart
     assert "MCP runtime" in quickstart
@@ -380,6 +419,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "workflow logs" in actions
     assert "Raw" in actions
     assert "scanner JSON may include scanner-specific metadata" in actions
+    assert "recursively sanitized surface inventory" in actions
     assert "do not upload it publicly" in actions
     assert "unless a maintainer has reviewed" in actions_single_line
     raw_json_doc_lines = [
@@ -507,13 +547,14 @@ def test_readme_documents_surface_delta_evidence() -> None:
     readme_single_line = " ".join(readme.split())
 
     assert "### Surface delta evidence" in readme
-    assert "unreleased source behavior" in readme
-    assert "not available in the published `0.2.4` package" in readme
-    assert "not part of the published `0.2.4` package" in readme
-    assert "Unreleased source-only CLI additions" in readme
+    assert "Surface Delta evidence is available in `0.3.0`." in readme
+    assert "unreleased source behavior" not in readme
+    assert "not available in the published `0.3.0` package" not in readme
+    assert "not part of the published `0.3.0` package" not in readme
+    assert "Unreleased source-only CLI additions" not in readme
     assert "agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>" in readme
     assert "agent-guard.surface_delta.v1.schema.json" in readme
-    assert "not present in the published `0.2.4` wheel" in readme
+    assert "Installed wheels also include `agent-guard.surface_delta.v1.schema.json`" in readme
     assert "--surface-delta-base-ref <ref>" in readme
     assert "## Surface Delta Evidence" in readme
     assert '`changed_fields: ["content"]`' in readme
@@ -531,7 +572,7 @@ def test_evidence_contract_docs_cover_surface_delta() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert "agent-guard.surface_delta.v1.schema.json" in docs
-    assert "not present in the published `0.2.4` wheel" in docs_single_line
+    assert "Installed wheels also include `agent-guard.surface_delta.v1.schema.json`" in docs_single_line
     assert "controlled-vocabulary `changed_fields` names" in docs_single_line
     assert "It is review evidence, not a gate" in docs_single_line
     assert "never emitted to SARIF" in docs_single_line
@@ -565,6 +606,6 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "${{ github.event.pull_request.base.sha }}" in actions
     assert "fetch-depth: 0" in actions
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
-    assert "currently unreleased" in surface_delta_section
-    assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" in surface_delta_section
-    assert "yui-stingray/agent-guard@v0.2.4" not in surface_delta_section
+    assert "currently unreleased" not in surface_delta_section
+    assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
+    assert "yui-stingray/agent-guard@v0.3.0" in surface_delta_section

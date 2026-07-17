@@ -257,6 +257,107 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
     ):
         assert forbidden not in result.stdout
 
+
+def test_surface_inventory_cli_json_redacts_secret_shaped_public_surface_payload(
+    tmp_path: Path,
+) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    skill_name = "ghp_" + ("A" * 24)
+    profile_name = "github_pat_" + ("B" * 20)
+    command_name = "sk-" + ("C" * 24)
+    job_id = "AKIA" + ("D" * 16)
+    artifact_name = "xoxb-" + ("E" * 16)
+    output_path = f".agent-guard/evidence/{artifact_name}.json"
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(tmp_path / ".github" / "skills" / skill_name / "SKILL.md", "skill body\n")
+    write(tmp_path / ".claude" / "agents" / profile_name / "agent.md", "profile body\n")
+    write(tmp_path / ".claude" / "commands" / command_name / "command.md", "command body\n")
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "name: ci\n"
+        "jobs:\n"
+        f"  {job_id}:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: "
+        "agent-guard report --root . --context-policy context_policy.yaml "
+        f"--format json --output {output_path}\n"
+        "      - uses: actions/upload-artifact@v7\n"
+        "        with:\n"
+        f"          path: {output_path}\n",
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for forbidden in (skill_name, profile_name, command_name, job_id, artifact_name, str(tmp_path)):
+        assert forbidden not in result.stdout
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="surface",
+        status="ok",
+        exit_code=0,
+        finding_count=0,
+        scanned_unit="surfaces",
+    )
+    assert payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+    assert payload["summary"]["surface_count"] == payload["surface_inventory"]["summary"]["surface_count"]
+    assert payload["surface_inventory"]["summary"]["by_surface"]["agent_context"] == 1
+
+    surfaces = payload["surface_inventory"]["surfaces"]
+    assert {
+        "surface": "agent_skill",
+        "path": ".github/skills/<redacted>",
+        "kind": "github_copilot_skill",
+        "status": "present",
+        "file_count": 1,
+    } in surfaces
+    assert {
+        "surface": "agent_profile",
+        "path": ".claude/agents/<redacted>",
+        "kind": "claude_agent",
+        "status": "present",
+        "file_count": 1,
+    } in surfaces
+    assert {
+        "surface": "agent_command",
+        "path": ".claude/commands/<redacted>",
+        "kind": "claude_command",
+        "status": "present",
+        "file_count": 1,
+    } in surfaces
+    workflow_refs = [item for item in surfaces if item["surface"] == "workflow_reference"]
+    assert workflow_refs == [
+        {
+            "surface": "workflow_reference",
+            "path": ".github/workflows/ci.yml",
+            "kind": "agent_guard_command",
+            "status": "referenced",
+            "job_id": "<redacted>",
+            "step_index": 1,
+            "command": {"scanner": "report", "command": ""},
+        }
+    ]
+    artifact_paths = {
+        item["artifact_path"]
+        for item in surfaces
+        if item["surface"] == "evidence_artifact_reference"
+    }
+    assert artifact_paths == {".agent-guard/evidence/<redacted>.json"}
+
+
 def test_surface_inventory_cli_v2_redacts_sensitive_mcp_server_names(tmp_path: Path) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")

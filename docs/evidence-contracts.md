@@ -1,10 +1,10 @@
 # Evidence Contracts
 
 `agent-guard` is a deterministic static evidence gate for repositories touched
-by coding agents. Its report, render-report, conformance, and evidence-pack
-commands emit small, sanitized evidence payloads that maintainers can read in
-pull requests, store as CI artifacts, or validate in downstream wrappers
-without sending repository contents to a model.
+by coding agents. Its report, render-report, standalone surface inventory,
+conformance, and evidence-pack commands emit small, sanitized evidence payloads
+that maintainers can read in pull requests, store as CI artifacts, or validate
+in downstream wrappers without sending repository contents to a model.
 
 ## Contracts
 
@@ -29,11 +29,10 @@ Installed wheels package these JSON Schema resources under
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
   report artifacts and evidence counts for pull request review.
 
-The unreleased source tree additionally contains
-`agent-guard.surface_delta.v1.schema.json`; it is not present in the published
-`0.2.4` wheel. The schema covers sanitized PR base/head agent surface delta
-evidence emitted by `agent-guard surface delta` and by `agent-guard report
---surface-delta-base-ref`. It is review evidence, not a gate:
+Installed wheels also include `agent-guard.surface_delta.v1.schema.json`. The
+schema covers sanitized PR base/head agent surface delta evidence emitted by
+`agent-guard surface delta` and by `agent-guard report --surface-delta-base-ref`.
+It is review evidence, not a gate:
 added/removed/modified counts and per-surface entries with controlled-vocabulary
 `changed_fields` names (never values) and risk labels.
 
@@ -58,8 +57,11 @@ linting, and strict release gates using the same packaged consumer path.
 ## Public Artifact Boundary
 
 Public-safe claims apply to `agent-guard report`, `agent-guard render-report`,
-GitHub annotations, SARIF rendered from a report, conformance output, and
-evidence-pack manifests. Raw per-scanner JSON from commands such as
+standalone `agent-guard surface inventory`, GitHub annotations, SARIF rendered
+from a report, conformance output, and evidence-pack manifests. Standalone
+surface inventory output is recursively sanitized before Action upload so
+secret-shaped repository-relative metadata is not published raw.
+Raw per-scanner JSON from commands such as
 `agent-guard api check --json`, `content check --json`, `context check --json`,
 `mcp check --json`, or `workflow check --json` is intended for local automation
 and CI internals. Depending on the scanner and policy, raw JSON may include

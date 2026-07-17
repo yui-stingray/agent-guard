@@ -12,8 +12,7 @@ downstream wrappers.
 ## Packaged Evidence Schemas
 
 Installed wheels package these JSON Schema resources under
-`agent_guard.schemas`. Rows marked **unreleased source only** are not present
-in the published `0.2.4` wheel.
+`agent_guard.schemas`.
 
 | Artifact | Schema version | Schema file | Volatile fields | Stable consumer surface |
 | --- | --- | --- | --- | --- |
@@ -23,7 +22,7 @@ in the published `0.2.4` wheel.
 | Sanitized report evidence | `agent-guard.report_evidence.v1` | `agent-guard.report_evidence.v1.schema.json` | none | Public-safe report JSON, including the embedded `report.schema_version` contract marker. |
 | Conformance evidence | `agent-guard.conformance.v1` | `agent-guard.conformance.v1.schema.json` | none | Profile, status, required gates/surfaces, counts, and conformance findings. |
 | Evidence pack manifest | `agent-guard.evidence_pack_manifest.v1` | `agent-guard.evidence_pack_manifest.v1.schema.json` | none | Sanitized artifact manifest, gate summary, and optional conformance summary. |
-| Surface delta evidence (**unreleased source only**) | `agent-guard.surface_delta.v1` | `agent-guard.surface_delta.v1.schema.json` | none | Sanitized PR base/head agent-surface delta: added/removed/modified surface entries with controlled-vocabulary `changed_fields` names and risk labels; no raw diffs, base ref names, or instruction/description bodies. |
+| Surface delta evidence | `agent-guard.surface_delta.v1` | `agent-guard.surface_delta.v1.schema.json` | none | Sanitized PR base/head agent-surface delta: added/removed/modified surface entries with controlled-vocabulary `changed_fields` names and risk labels; no raw diffs, base ref names, or instruction/description bodies. |
 
 These schema file names and `$id` values are frozen by tests. A schema version
 will not change without a new schema identifier and a documented compatibility

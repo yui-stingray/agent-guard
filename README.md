@@ -7,7 +7,7 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.2.4` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
+**Status**: `0.3.0` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
 runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
@@ -32,8 +32,9 @@ agent-facing repository configuration:
   evidence-pack manifests for CI and maintainer review.
 
 The sanitized public-artifact contract applies to `agent-guard report`,
-`agent-guard render-report`, GitHub annotations, SARIF rendered from a report,
-conformance output, and evidence-pack manifests. Raw per-scanner JSON remains a
+`agent-guard render-report`, standalone `agent-guard surface inventory`,
+GitHub annotations, SARIF rendered from a report, conformance output, and
+evidence-pack manifests. Other raw per-scanner JSON remains a
 local/CI-internal surface unless a maintainer reviews it. See
 [`docs/evidence-contracts.md`](docs/evidence-contracts.md).
 
@@ -59,7 +60,7 @@ Install the current alpha, preview the files it proposes, and write them only
 after review:
 
 ```bash
-python -m pip install yui-agent-guard==0.2.4
+python -m pip install yui-agent-guard==0.3.0
 agent-guard init --root . --json
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
@@ -149,7 +150,7 @@ To inspect the starter plan without a persistent install or repository writes,
 use `uvx` with the current release pinned:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.2.4 agent-guard init --root . --json
+uvx --python 3.12 --from yui-agent-guard==0.3.0 agent-guard init --root . --json
 ```
 
 Windows PowerShell users can follow the non-activation virtual-environment
@@ -182,9 +183,9 @@ mkdir -p .agent-guard/evidence
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json
 ```
 
-The command names the reviewed repo-local context policy explicitly for
-compatibility with the published `0.2.4` CLI. The recommended preset supplies
-the reviewed repo-local MCP policy and embeds recommended conformance plus an
+The command names the reviewed repo-local context policy explicitly so the
+policy choice remains visible in review. The recommended preset supplies the
+reviewed repo-local MCP policy and embeds recommended conformance plus an
 evidence-pack manifest. Run the standalone commands only when a separate
 consumer artifact is needed.
 
@@ -202,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: yui-stingray/agent-guard@v0.2.4
+      - uses: yui-stingray/agent-guard@v0.3.0
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -240,7 +241,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.2.4"},
+  "tool": {"name": "agent-guard", "version": "0.3.0"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -262,12 +263,14 @@ absolute local paths. Error JSON uses the same envelope with `status: "error"`
 and `exit_code: 2`.
 
 Raw scanner JSON is for local automation and CI internals, not automatically a
-public artifact. Scanner-specific output may include operational details such
-as scanner metadata, policy paths, or line-level diagnostics depending on the
-scanner and policy. Treat those files as repository-private unless a maintainer
-has reviewed them. Public-safe evidence statements apply to `agent-guard report`,
-`agent-guard render-report`, GitHub annotations, SARIF rendered from a report,
-conformance output, and evidence-pack manifests.
+public artifact, except for the recursively sanitized standalone
+`surface inventory` payload named below. Scanner-specific output may include
+operational details such as scanner metadata, policy paths, or line-level
+diagnostics depending on the scanner and policy. Treat those files as
+repository-private unless a maintainer has reviewed them. Public-safe evidence
+statements apply to `agent-guard report`, `agent-guard render-report`,
+standalone `agent-guard surface inventory`, GitHub annotations, SARIF rendered
+from a report, conformance output, and evidence-pack manifests.
 
 ## CI gate recipe
 
@@ -291,8 +294,7 @@ agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-gu
 agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
 ```
 
-The following optional PR review command is available from source only and is
-not part of the published `0.2.4` package:
+The following optional PR review command is available in `0.3.0`:
 
 ```bash
 agent-guard surface delta --root . --context-policy .agent-guard/context-policy.yaml --base-ref <base-ref> --json
@@ -349,7 +351,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.2.4
+    rev: v0.3.0
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -639,9 +641,8 @@ files from the source tree:
 - `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
   artifact manifest for reviewer handoff.
 
-The unreleased source tree additionally contains
-`agent-guard.surface_delta.v1.schema.json` for sanitized PR base/head agent
-surface delta evidence. It is not present in the published `0.2.4` wheel.
+Installed wheels also include `agent-guard.surface_delta.v1.schema.json` for
+sanitized PR base/head agent surface delta evidence.
 
 For `context check`, it returns:
 - exit `0` on clean
@@ -650,8 +651,7 @@ For `context check`, it returns:
 
 ### Surface delta evidence
 
-> **Release status:** this section documents unreleased source behavior and is
-> not available in the published `0.2.4` package.
+Surface Delta evidence is available in `0.3.0`.
 
 `agent-guard surface delta --root . --context-policy <policy> --base-ref <ref>`
 computes a sanitized diff of surface inventory v2 between the merge base of a
@@ -931,11 +931,6 @@ agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]
 agent-guard workflow check --root <repo> --policy <yaml> [--json]
 agent-guard drift check --root <repo> [--profile <minimal|recommended|strict>] [--schema-version <v1|v2>] [--base-ref <ref>] [--json]
-```
-
-Unreleased source-only CLI additions:
-
-```bash
 agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> [--schema-version <v1>] [--json]
 agent-guard report --root <repo> --context-policy <yaml> --surface-delta-base-ref <ref> [--format <markdown|json|github-annotations>] [--output <path>]
 ```
@@ -975,7 +970,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-version = "0.2.4"
+version = "0.3.0"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -983,14 +978,14 @@ for file_info in release["urls"]:
     if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
         urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.2.4-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.3.0-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.2.4
-gh attestation verify dist-verify/yui_agent_guard-0.2.4.tar.gz \
+  --source-ref refs/tags/v0.3.0
+gh attestation verify dist-verify/yui_agent_guard-0.3.0.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.2.4
+  --source-ref refs/tags/v0.3.0
 ```
 
 ## License
