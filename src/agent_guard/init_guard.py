@@ -293,6 +293,23 @@ WRITE_NEXT_STEPS = [
 ]
 
 
+BLOCKED_WRITE_NEXT_STEPS = [
+    "Review the existing starter files in the repository before deciding how to continue.",
+    (
+        "To preserve reviewed files, run `agent-guard init --write --skip-existing` "
+        "so only missing starter files are created."
+    ),
+    (
+        "Use `agent-guard init --write --force` only after intentionally reviewing "
+        "which existing starter files will be overwritten."
+    ),
+    (
+        "After any preserved or overwritten files are reviewed, run the recommended "
+        "report and conformance checks before treating the bundle as ready."
+    ),
+]
+
+
 @dataclass(frozen=True)
 class InitFile:
     path: str
@@ -352,7 +369,12 @@ def write_init_plan(
     assert isinstance(files, list)
     blocked = [item for item in files if isinstance(item, dict) and item.get("status") == "exists"]
     if blocked and not skip_existing:
-        return {**plan, "mode": "write", "status": "blocked"}, 1
+        return {
+            **plan,
+            "mode": "write",
+            "status": "blocked",
+            "next_steps": BLOCKED_WRITE_NEXT_STEPS,
+        }, 1
 
     results: list[dict[str, object]] = []
     for item in INIT_FILES:

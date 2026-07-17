@@ -5,6 +5,7 @@ Why: fail release tags before upload when a version is immutable or already used
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tomllib
@@ -49,13 +50,32 @@ def check_release_state(project_name: str, version: str, pypi_data: dict[str, An
     return True, f"PyPI project exists; latest={latest}, candidate={version}"
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print("usage: check_pypi_release_state.py", file=sys.stderr)
-        return 2
+def check_published_state(project_name: str, version: str, pypi_data: dict[str, Any] | None) -> tuple[bool, str]:
+    """Return whether PyPI exposes at least one file for the requested version."""
+    if pypi_data is None:
+        return False, f"PyPI project is unavailable: {project_name}"
+    releases = pypi_data.get("releases", {})
+    if not isinstance(releases, dict):
+        return False, "PyPI release metadata is malformed"
+    files = releases.get(version)
+    if not isinstance(files, list) or not files:
+        return False, f"PyPI version is not published: {project_name}=={version}"
+    return True, f"PyPI version is published: {project_name}=={version}"
 
-    project_name, version = load_project_metadata(Path("pyproject.toml"))
-    ok, message = check_release_state(project_name, version, fetch_pypi_project(project_name))
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="check whether the project version is absent from or present on PyPI")
+    parser.add_argument("--expect-present", action="store_true")
+    parser.add_argument("--version")
+    args = parser.parse_args(argv[1:])
+
+    project_name, declared_version = load_project_metadata(Path("pyproject.toml"))
+    version = args.version or declared_version
+    pypi_data = fetch_pypi_project(project_name)
+    if args.expect_present:
+        ok, message = check_published_state(project_name, version, pypi_data)
+    else:
+        ok, message = check_release_state(project_name, version, pypi_data)
     stream = sys.stdout if ok else sys.stderr
     print(message, file=stream)
     return 0 if ok else 1

@@ -16,6 +16,7 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 check_release_state = MODULE.check_release_state
+check_published_state = MODULE.check_published_state
 
 
 def test_missing_project_is_allowed_with_pending_publisher_note() -> None:
@@ -46,3 +47,32 @@ def test_new_version_for_existing_project_is_allowed() -> None:
 
     assert ok is True
     assert "candidate=0.1.1" in message
+
+
+def test_published_state_requires_nonempty_release_files() -> None:
+    missing_ok, missing_message = check_published_state(
+        "yui-agent-guard",
+        "0.1.1",
+        {"releases": {"0.1.0": [{}]}},
+    )
+    empty_ok, empty_message = check_published_state(
+        "yui-agent-guard",
+        "0.1.1",
+        {"releases": {"0.1.1": []}},
+    )
+
+    assert missing_ok is False
+    assert empty_ok is False
+    assert "not published" in missing_message
+    assert "not published" in empty_message
+
+
+def test_published_state_accepts_release_with_files() -> None:
+    ok, message = check_published_state(
+        "yui-agent-guard",
+        "0.1.1",
+        {"releases": {"0.1.1": [{"filename": "distribution.whl"}]}},
+    )
+
+    assert ok is True
+    assert "is published" in message

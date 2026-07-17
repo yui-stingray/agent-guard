@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,26 @@ GUARD_LABELS = {
 }
 
 
+class DiagnosticResultError(ValueError):
+    """Raised when an AGB result contains non-measurement diagnostics."""
+
+
+def reject_diagnostic_result(payload: dict[str, Any]) -> None:
+    if "benchmark_error" in payload:
+        raise DiagnosticResultError("AGB result contains benchmark diagnostics; refusing to render metrics")
+
+    cases = payload.get("cases")
+    if cases is None:
+        return
+    if not isinstance(cases, list):
+        raise ValueError("AGB result JSON field must be an array: cases")
+    for case in cases:
+        if not isinstance(case, dict):
+            raise ValueError("AGB result JSON cases must contain objects")
+        if "errors" in case and case["errors"] != {}:
+            raise DiagnosticResultError("AGB result contains case diagnostics; refusing to render metrics")
+
+
 def format_metric(value: object) -> str:
     if not isinstance(value, int | float):
         raise ValueError(f"metric must be numeric: {value!r}")
@@ -30,6 +51,7 @@ def format_metric(value: object) -> str:
 
 
 def guard_results_table(payload: dict[str, Any]) -> str:
+    reject_diagnostic_result(payload)
     by_guard = payload.get("by_guard")
     if not isinstance(by_guard, dict):
         raise ValueError("AGB result JSON must include object field: by_guard")
@@ -67,7 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="render AGB result JSON as Markdown tables")
     parser.add_argument("result_json", help="path to an agent-guard.agb_results.v1 JSON file")
     args = parser.parse_args(argv)
-    print(guard_results_table(load_payload(Path(args.result_json))))
+    try:
+        table = guard_results_table(load_payload(Path(args.result_json)))
+    except DiagnosticResultError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(table)
     return 0
 
 

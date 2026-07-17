@@ -131,13 +131,17 @@ def test_changelog_records_latest_release_entry() -> None:
     latest_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
         "## 0.3.0 - 2026-07-17", maxsplit=1
     )[0]
+    normalized_unreleased = " ".join(unreleased.split())
 
     assert headings[:3] == [
         "## Unreleased",
         "## 0.3.1 - 2026-07-17",
         "## 0.3.0 - 2026-07-17",
     ]
-    assert not unreleased.strip()
+    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_unreleased
+    assert "top-level `--version` command" in normalized_unreleased
+    assert "write-capable GitHub Release job" in normalized_unreleased
+    assert "credentials in its working copy" in normalized_unreleased
     assert "Released ahead of the default batch" in latest_release
     assert "Hardened the packaged evidence consumer" in latest_release
     assert "AWS access-key-ID-shaped" in latest_release

@@ -56,8 +56,8 @@ shows the two layers together.
 
 ## Start with a reviewed bootstrap
 
-Install the current alpha, preview the files it proposes, and write them only
-after review:
+Using Python 3.11.4+, install the current alpha, preview the files it proposes,
+and write them only after review. The scanned repository can use any runtime:
 
 ```bash
 python -m pip install yui-agent-guard==0.3.1
@@ -140,7 +140,7 @@ artifacts and annotations. Release timing is described in
 public-facing scope are summarized in [`docs/positioning.md`](docs/positioning.md),
 with a focused [`agent-audit` comparison](docs/comparison.md).
 
-## Install
+## Install (Python 3.11.4+)
 
 ```bash
 pip install yui-agent-guard
@@ -967,6 +967,11 @@ token is required once the PyPI project environment is configured. Manual
 `workflow_dispatch` with `publish=false` is a build-only dry run; it skips the
 publish job. Manual `publish=true` must be run against a `v*` tag ref; running
 it from a branch fails before build.
+
+The follow-up GitHub Release workflow publishes automatically only after the
+upstream PyPI job succeeds, the tag resolves to that run's commit on protected
+`master` history, and PyPI exposes files for the exact version. A manual GitHub
+Release retry still requires an existing version tag and published PyPI files.
 
 The release build also creates GitHub artifact attestations for the generated
 `dist/*` wheel and sdist before upload to the publish job. PyPI Trusted
