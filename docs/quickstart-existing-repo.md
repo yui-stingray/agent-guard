@@ -10,7 +10,7 @@ If `uv` is available, preview the starter plan without installing a persistent
 tool or changing the repository:
 
 ```console
-uvx --python 3.12 --from yui-agent-guard==0.3.1 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.2 agent-guard init --root . --print
 ```
 
 This pinned `uvx` path is for evaluation and human review without a persistent
@@ -27,7 +27,7 @@ recommended conformance and its evidence-pack manifest:
 ```bash
 python3 -m venv .venv && \
   . .venv/bin/activate && \
-  python -m pip install yui-agent-guard==0.3.1
+  python -m pip install yui-agent-guard==0.3.2
 agent-guard init --root . --print
 agent-guard init --root . --write
 agent-guard report \
@@ -52,7 +52,7 @@ reviewed write, and sanitized report sequence is:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.1
+.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.2
 .\.venv\Scripts\agent-guard.exe init --root . --print
 .\.venv\Scripts\agent-guard.exe init --root . --write
 .\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.1
+        uses: yui-stingray/agent-guard@v0.3.2
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -125,7 +125,7 @@ that selected root:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.1
+        uses: yui-stingray/agent-guard@v0.3.2
         with:
           root: services/api
           conformance-profile: recommended

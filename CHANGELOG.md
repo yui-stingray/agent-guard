@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.2 - 2026-07-19
+
+- Released ahead of the default batch so repository-root containment fixes for
+  content scans reach installed users before the next scheduled batch; this
+  release also carries the reviewed release supply-chain hardening below.
 - Made repository-scoped content scans reject scan directories that resolve
   outside the repository root with a sanitized configuration error. Registered
   scans also reject nested file or directory symlinks that resolve outside that

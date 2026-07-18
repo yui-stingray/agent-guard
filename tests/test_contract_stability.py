@@ -126,27 +126,34 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.2 - 2026-07-19", maxsplit=1
+    )[0]
+    latest_release = changelog.split("## 0.3.2 - 2026-07-19", maxsplit=1)[1].split(
         "## 0.3.1 - 2026-07-17", maxsplit=1
     )[0]
-    latest_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
+    previous_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
         "## 0.3.0 - 2026-07-17", maxsplit=1
     )[0]
-    normalized_unreleased = " ".join(unreleased.split())
+    normalized_latest = " ".join(latest_release.split())
 
-    assert headings[:3] == [
+    assert headings[:4] == [
         "## Unreleased",
+        "## 0.3.2 - 2026-07-19",
         "## 0.3.1 - 2026-07-17",
         "## 0.3.0 - 2026-07-17",
     ]
-    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_unreleased
-    assert "top-level `--version` command" in normalized_unreleased
-    assert "write-capable GitHub Release job" in normalized_unreleased
-    assert "credentials in its working copy" in normalized_unreleased
-    assert "Released ahead of the default batch" in latest_release
-    assert "Hardened the packaged evidence consumer" in latest_release
-    assert "AWS access-key-ID-shaped" in latest_release
-    assert "lower-bound token" in latest_release
-    assert "WSL-mounted Windows user paths" in latest_release
+    assert not unreleased.strip()
+    assert "Released ahead of the default batch" in normalized_latest
+    assert "repository-root containment fixes" in normalized_latest
+    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_latest
+    assert "top-level `--version` command" in normalized_latest
+    assert "write-capable GitHub Release job" in normalized_latest
+    assert "credentials in its working copy" in normalized_latest
+    assert "dedicated least-privilege job" in normalized_latest
+    assert "Hardened the packaged evidence consumer" in previous_release
+    assert "AWS access-key-ID-shaped" in previous_release
+    assert "lower-bound token" in previous_release
+    assert "WSL-mounted Windows user paths" in previous_release
     assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
     assert "surface delta --base-ref <ref>" in changelog
     assert "Recursively sanitized standalone Surface Inventory output" in changelog

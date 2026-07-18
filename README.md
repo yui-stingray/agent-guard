@@ -7,7 +7,7 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.1` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
+**Status**: `0.3.2` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
 runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
@@ -60,7 +60,7 @@ Using Python 3.11.4+, install the current alpha, preview the files it proposes,
 and write them only after review. The scanned repository can use any runtime:
 
 ```bash
-python -m pip install yui-agent-guard==0.3.1
+python -m pip install yui-agent-guard==0.3.2
 agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
@@ -147,11 +147,11 @@ pip install yui-agent-guard
 ```
 
 To inspect the starter plan without a persistent install or repository writes,
-use `uvx` with the current release pinned. This is the quickest evaluation path
+use `uvx` with the documented version pinned. This is the quickest evaluation path
 when you do not want a tool installed into the target repository environment:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.1 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.2 agent-guard init --root . --print
 ```
 
 Windows PowerShell users can follow the non-activation virtual-environment
@@ -219,7 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: yui-stingray/agent-guard@v0.3.1
+      - uses: yui-stingray/agent-guard@v0.3.2
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -257,7 +257,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.3.1"},
+  "tool": {"name": "agent-guard", "version": "0.3.2"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -367,7 +367,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.3.1
+    rev: v0.3.2
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -998,7 +998,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-version = "0.3.1"
+version = "0.3.2"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -1036,14 +1036,14 @@ if set(by_name) != set(expected):
 for filename in sorted(expected):
     urllib.request.urlretrieve(by_name[filename], target / filename)
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.3.1-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.3.2-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.1
-gh attestation verify dist-verify/yui_agent_guard-0.3.1.tar.gz \
+  --source-ref refs/tags/v0.3.2
+gh attestation verify dist-verify/yui_agent_guard-0.3.2.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.1
+  --source-ref refs/tags/v0.3.2
 ```
 
 ## License
