@@ -43,6 +43,8 @@ Before tagging, verify:
   `workflow`, `surface inventory`, `drift`, and `report` gates pass;
 - packaged schemas are present in the wheel;
 - wheel contract check passes from a clean install;
+- the clean build contains exactly the current wheel and sdist, and
+  exact-version PyPI metadata exposes exactly those two files as non-yanked;
 - GitHub Actions CI is green on the release commit;
 - no generated private evidence, local paths, credentials, or private fixtures
   are tracked.
@@ -77,8 +79,9 @@ Before submitting the Marketplace release form:
 ## Release Provenance
 
 Release distributions are built in the tag-triggered release workflow, checked
-with `twine` and the wheel contract script, then attested as `dist/*` artifacts
-before the publish job downloads them. PyPI upload uses Trusted Publishing, and
+with `twine` and the wheel contract script, then passed to a separate
+least-privilege attestation job as `dist/*` artifacts before publication. PyPI
+upload uses Trusted Publishing, and
 the PyPA publish action uploads PyPI-compatible distribution attestations for
 the same files.
 

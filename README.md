@@ -974,11 +974,13 @@ it from a branch fails before build.
 
 The follow-up GitHub Release workflow publishes automatically only after the
 upstream PyPI job succeeds, the tag resolves to that run's commit on protected
-`master` history, and PyPI exposes files for the exact version. A manual GitHub
-Release retry still requires an existing version tag and published PyPI files.
+`master` history, and PyPI exposes exactly the expected non-yanked wheel and
+sdist for the version. A manual GitHub Release retry must run from the current
+default branch and requires a matching successful tag-push PyPI publication.
 
-The release build also creates GitHub artifact attestations for the generated
-`dist/*` wheel and sdist before upload to the publish job. PyPI Trusted
+After the release build passes its contract checks, a separate least-privilege
+job creates GitHub artifact attestations for the generated `dist/*` wheel and
+sdist before the publish job runs. PyPI Trusted
 Publishing and the PyPA publish action provide PyPI-side distribution
 attestations for the uploaded files. These attestations are provenance metadata
 and integrity evidence for a specific artifact and workflow identity; they are
@@ -994,14 +996,45 @@ python - <<'PY'
 import json
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 version = "0.3.1"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
-for file_info in release["urls"]:
-    if file_info["packagetype"] in {"bdist_wheel", "sdist"}:
-        urllib.request.urlretrieve(file_info["url"], target / file_info["filename"])
+if not isinstance(release, dict):
+    raise SystemExit("PyPI release metadata is malformed")
+expected = {
+    f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel",
+    f"yui_agent_guard-{version}.tar.gz": "sdist",
+}
+files = release.get("urls")
+if not isinstance(files, list) or len(files) != len(expected):
+    raise SystemExit("PyPI release does not contain the exact expected artifact set")
+by_name = {}
+for file_info in files:
+    if not isinstance(file_info, dict):
+        raise SystemExit("PyPI release metadata is malformed")
+    filename = file_info.get("filename")
+    url = file_info.get("url")
+    if (
+        not isinstance(filename, str)
+        or filename not in expected
+        or file_info.get("packagetype") != expected[filename]
+        or file_info.get("yanked") is not False
+        or not isinstance(url, str)
+    ):
+        raise SystemExit("PyPI release metadata does not match the expected artifact contract")
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "files.pythonhosted.org":
+        raise SystemExit("PyPI release artifact URL is not an expected HTTPS host")
+    if filename in by_name:
+        raise SystemExit("PyPI release metadata contains duplicate artifacts")
+    by_name[filename] = url
+if set(by_name) != set(expected):
+    raise SystemExit("PyPI release does not contain the exact expected artifact set")
+for filename in sorted(expected):
+    urllib.request.urlretrieve(by_name[filename], target / filename)
 PY
 gh attestation verify dist-verify/yui_agent_guard-0.3.1-py3-none-any.whl \
   --repo yui-stingray/agent-guard \

@@ -257,31 +257,90 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
 def test_release_workflow_attests_built_distributions() -> None:
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     build_job = workflow["jobs"]["build"]
+    attest_job = workflow["jobs"]["attest"]
+    publish_job = workflow["jobs"]["publish"]
 
     assert build_job["permissions"] == {
+        "actions": "read",
+        "contents": "read",
+    }
+    assert attest_job["permissions"] == {
         "actions": "read",
         "contents": "read",
         "id-token": "write",
         "attestations": "write",
         "artifact-metadata": "write",
     }
+    assert publish_job["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+    }
 
-    steps = build_job["steps"]
-    named_steps = {step.get("name", step.get("uses")): index for index, step in enumerate(steps)}
-    attest_step = steps[named_steps["Generate provenance attestations for release distributions"]]
+    build_steps = build_job["steps"]
+    build_named_steps = {
+        step.get("name", step.get("uses")): index
+        for index, step in enumerate(build_steps)
+    }
+    build_checkout = next(
+        step for step in build_steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert build_checkout["with"]["persist-credentials"] is False
+    assert not any(
+        str(step.get("uses", "")).startswith("actions/attest@")
+        for step in build_steps
+    )
+    upload_step = next(
+        name for name in build_named_steps if name.startswith("actions/upload-artifact@")
+    )
+    assert build_named_steps["Verify wheel public contract"] < build_named_steps[upload_step]
+
+    assert attest_job["needs"] == "build"
+    assert "github.event_name == 'push'" in attest_job["if"]
+    assert "inputs.publish" in attest_job["if"]
+    attest_steps = attest_job["steps"]
+    attest_named_steps = {
+        step.get("name", step.get("uses")): index
+        for index, step in enumerate(attest_steps)
+    }
+    download_step = next(
+        name for name in attest_named_steps if name.startswith("actions/download-artifact@")
+    )
+    attest_step = attest_steps[
+        attest_named_steps["Generate provenance attestations for release distributions"]
+    ]
     assert attest_step["uses"].startswith("actions/attest@")
     assert attest_step["with"]["subject-path"] == "dist/*"
-    assert "github.event_name == 'push'" in attest_step["if"]
-    assert "inputs.publish" in attest_step["if"]
-    upload_step = next(name for name in named_steps if name.startswith("actions/upload-artifact@"))
-    assert named_steps["Verify wheel public contract"] < named_steps["Generate provenance attestations for release distributions"]
-    assert named_steps["Generate provenance attestations for release distributions"] < named_steps[upload_step]
+    assert attest_named_steps[download_step] < attest_named_steps[
+        "Generate provenance attestations for release distributions"
+    ]
+
+    assert publish_job["needs"] == ["build", "attest"]
+    publish_checkout = next(
+        step
+        for step in publish_job["steps"]
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert publish_checkout["with"]["persist-credentials"] is False
+    post_publish_step = next(
+        step
+        for step in publish_job["steps"]
+        if step.get("name") == "Verify published package from PyPI"
+    )
+    assert "scripts/check_pypi_release_state.py" in post_publish_step["run"]
+    assert "--expect-present" in post_publish_step["run"]
+    assert "python -m pip install" in post_publish_step["run"]
 
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
     assert "gh attestation verify" in readme
     assert "https://pypi.org/pypi/yui-agent-guard/" in readme
-    assert '"bdist_wheel", "sdist"' in readme
+    assert 'f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel"' in readme
+    assert 'f"yui_agent_guard-{version}.tar.gz": "sdist"' in readme
+    assert "if not isinstance(release, dict):" in readme
+    assert 'file_info.get("yanked") is not False' in readme
+    assert 'parsed.hostname != "files.pythonhosted.org"' in readme
+    assert "target / file_info" not in readme
+    assert "target / filename" in readme
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
     assert f"--source-ref refs/tags/v{pyproject_version()}" in readme

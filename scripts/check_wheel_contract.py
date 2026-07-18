@@ -48,14 +48,17 @@ def project_requires_python() -> str:
         return str(tomllib.load(handle)["project"]["requires-python"])
 
 
-def find_wheel(version: str) -> Path:
-    """Return the built wheel for the current project version."""
-    wheels = sorted(DIST.glob(f"yui_agent_guard-{version}-*.whl"))
-    if len(wheels) != 1:
-        raise RuntimeError(
-            f"expected exactly one yui_agent_guard {version} wheel in {DIST}, got {len(wheels)}"
-        )
-    return wheels[0]
+def find_release_distributions(version: str) -> tuple[Path, Path]:
+    """Return the exact wheel and sdist set from a clean release build."""
+    if not DIST.is_dir():
+        raise RuntimeError("release distribution directory is missing")
+    wheel = DIST / f"yui_agent_guard-{version}-py3-none-any.whl"
+    sdist = DIST / f"yui_agent_guard-{version}.tar.gz"
+    expected = {wheel.name, sdist.name}
+    observed = {path.name for path in DIST.iterdir() if path.is_file()}
+    if observed != expected:
+        raise RuntimeError("expected exactly the current yui_agent_guard wheel and sdist")
+    return wheel, sdist
 
 
 def venv_python_path(venv_dir: Path, *, platform_name: str = os.name) -> Path:
@@ -80,7 +83,7 @@ def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
 def main() -> int:
     version = project_version()
     requires_python = project_requires_python()
-    wheel = find_wheel(version)
+    wheel, _sdist = find_release_distributions(version)
     with tempfile.TemporaryDirectory(prefix="agent-guard-wheel-") as temp_dir:
         temp = Path(temp_dir)
         venv_dir = temp / "venv"

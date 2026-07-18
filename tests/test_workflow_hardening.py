@@ -117,6 +117,17 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
         "tag": "${{ steps.tag.outputs.tag }}",
     }
 
+    default_branch_step = next(
+        step
+        for step in prepare_job["steps"]
+        if step.get("name") == "Require default branch for manual retry"
+    )
+    assert default_branch_step["if"] == "github.event_name == 'workflow_dispatch'"
+    assert default_branch_step["env"] == {
+        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}"
+    }
+    assert '"$GITHUB_REF" != "refs/heads/${DEFAULT_BRANCH}"' in default_branch_step["run"]
+
     upstream_step = next(
         step for step in prepare_job["steps"] if step.get("id") == "upstream"
     )
@@ -167,6 +178,7 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
     assert len(checkout_steps) == 1
     assert checkout_steps[0]["with"]["persist-credentials"] is False
     assert checkout_steps[0]["with"]["fetch-depth"] == 0
+    assert checkout_steps[0]["with"]["ref"] == "${{ github.sha }}"
 
     assert not any(
         str(step.get("uses", "")).startswith("actions/checkout@")
@@ -316,14 +328,99 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
         f"publish=true\ntag=v1.2.3\nprepared-sha={tag_sha}\nversion=1.2.3\n"
     )
 
+    manual_source_step = next(
+        step
+        for step in prepare_job["steps"]
+        if step.get("name") == "Verify manual retry source"
+    )
+    assert manual_source_step["if"] == (
+        "github.event_name == 'workflow_dispatch' && steps.tag.outputs.publish == 'true'"
+    )
+    assert manual_source_step["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "RELEASE_SHA": "${{ steps.tag.outputs.prepared-sha }}",
+        "RELEASE_TAG": "${{ steps.tag.outputs.tag }}",
+    }
+    manual_source_script = manual_source_step["run"]
+    assert 'current_sha="$(git rev-parse "HEAD^{commit}")"' in manual_source_script
+    assert 'git merge-base --is-ancestor "$RELEASE_SHA" "$master_sha"' in manual_source_script
+    assert "gh run list" in manual_source_script
+    assert "--workflow release.yml" in manual_source_script
+    assert '--branch "$RELEASE_TAG"' in manual_source_script
+    assert '--commit "$RELEASE_SHA"' in manual_source_script
+    assert '--event push' in manual_source_script
+    assert 'publish to PyPI (OIDC)' in manual_source_script
+
+    manual_shim_dir = tmp_path / "manual-bin"
+    manual_shim_dir.mkdir()
+    manual_gh_shim = manual_shim_dir / "gh"
+    manual_gh_shim.write_text(
+        """#!/usr/bin/env bash
+if [ "$1" = "run" ] && [ "$2" = "list" ]; then
+  printf '%s\n' "2468"
+elif [ "$1" = "api" ]; then
+  printf '%s\n' "${FAKE_PUBLISH_COUNT:-0}"
+else
+  exit 2
+fi
+""",
+        encoding="utf-8",
+    )
+    manual_gh_shim.chmod(0o755)
+
+    def run_manual_source(publish_count: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", "-c", manual_source_script],
+            cwd=release_repo,
+            env={
+                **os.environ,
+                "FAKE_PUBLISH_COUNT": publish_count,
+                "GH_TOKEN": "unused",
+                "GITHUB_REPOSITORY": "example/agent-guard",
+                "PATH": f"{manual_shim_dir}:{os.environ['PATH']}",
+                "RELEASE_SHA": tag_sha,
+                "RELEASE_TAG": "v1.2.3",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert run_manual_source("1").returncode == 0
+    rejected_manual_source = run_manual_source("0")
+    assert rejected_manual_source.returncode == 1
+    assert "matching successful tag-push PyPI publication" in rejected_manual_source.stdout
+
     pypi_step = next(
         step
         for step in prepare_job["steps"]
         if step.get("name") == "Verify published PyPI version"
     )
     assert pypi_step["if"] == "steps.tag.outputs.publish == 'true'"
+    assert pypi_step["env"] == {
+        "RELEASE_VERSION": "${{ steps.tag.outputs.version }}"
+    }
     assert "--expect-present" in pypi_step["run"]
-    assert '--version "${{ steps.tag.outputs.version }}"' in pypi_step["run"]
+    assert '--version "$RELEASE_VERSION"' in pypi_step["run"]
+    assert "for attempt in {1..5}" in pypi_step["run"]
+    assert "sleep 10" in pypi_step["run"]
+
+    detach_step = next(
+        step
+        for step in prepare_job["steps"]
+        if step.get("name") == "Detach checkout to release commit"
+    )
+    extract_step = next(
+        step
+        for step in prepare_job["steps"]
+        if step.get("name") == "Extract release notes"
+    )
+    assert detach_step["env"] == {
+        "RELEASE_SHA": "${{ steps.tag.outputs.prepared-sha }}"
+    }
+    assert detach_step["run"] == 'git checkout --detach "$RELEASE_SHA"'
+    assert prepare_job["steps"].index(pypi_step) < prepare_job["steps"].index(detach_step)
+    assert prepare_job["steps"].index(detach_step) < prepare_job["steps"].index(extract_step)
 
     upload_steps = [
         step
