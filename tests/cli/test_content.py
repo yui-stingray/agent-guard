@@ -144,13 +144,54 @@ def test_content_cli_json_error(tmp_path: Path) -> None:
     assert str(tmp_path) not in payload["error"]
     assert payload["policy"] == {"path": "missing.yaml"}
 
-def test_content_cli_json_error_scrubs_absolute_scan_dir(tmp_path: Path) -> None:
+def test_content_cli_rejects_external_scan_dir_without_leaking_paths(tmp_path: Path) -> None:
     policy = tmp_path / "content_policy.yaml"
     policy.write_text(
         "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
         encoding="utf-8",
     )
-    missing_scan_dir = tmp_path.parent / f"{tmp_path.name} external missing"
+    external_scan_dir = tmp_path.parent / f"{tmp_path.name} external"
+    write(external_scan_dir / "sensitive-marker.md", "safe\n")
+
+    for mode in ("registered", "new"):
+        common_args = (
+            "content",
+            "check",
+            "--repo-root",
+            str(tmp_path),
+            "--policy",
+            str(policy),
+            "--mode",
+            mode,
+            "--scan-dir",
+            str(external_scan_dir),
+        )
+        json_result = run_cli(*common_args, "--json")
+        text_result = run_cli(*common_args)
+
+        assert json_result.returncode == 2
+        assert text_result.returncode == 2
+        payload = json.loads(json_result.stdout)
+        assert_shared_envelope(payload, scanner="content", status="error", exit_code=2, finding_count=0)
+        assert payload["mode"] == mode
+        assert payload["error"] == "content scan dir must stay under repo root"
+        assert text_result.stdout.strip() == "ERROR: content scan dir must stay under repo root"
+        for output in (json_result.stdout, text_result.stdout):
+            assert str(tmp_path) not in output
+            assert str(external_scan_dir) not in output
+            assert "sensitive-marker" not in output
+
+
+def test_content_cli_rejects_external_symlink_target_without_leaking_paths(tmp_path: Path) -> None:
+    policy = tmp_path / "content_policy.yaml"
+    policy.write_text(
+        "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+        encoding="utf-8",
+    )
+    external_dir = tmp_path.parent / f"{tmp_path.name} external target"
+    write(external_dir / "private-marker.md", "synthetic external content\n")
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "linked.md").symlink_to(external_dir / "private-marker.md")
 
     result = run_cli(
         "content",
@@ -162,15 +203,54 @@ def test_content_cli_json_error_scrubs_absolute_scan_dir(tmp_path: Path) -> None
         "--mode",
         "registered",
         "--scan-dir",
-        str(missing_scan_dir),
+        "skills",
         "--json",
     )
 
     assert result.returncode == 2
     payload = json.loads(result.stdout)
     assert_shared_envelope(payload, scanner="content", status="error", exit_code=2, finding_count=0)
-    assert str(tmp_path) not in payload["error"]
-    assert payload["error"] == "scan dir not found: <absolute-path>"
+    assert payload["error"] == "content scan target must stay under repo root"
+    assert str(tmp_path) not in result.stdout
+    assert str(external_dir) not in result.stdout
+    assert "private-marker" not in result.stdout
+    assert "synthetic external content" not in result.stdout
+
+
+def test_content_cli_rejects_external_directory_symlink_without_leaking_paths(tmp_path: Path) -> None:
+    policy = tmp_path / "content_policy.yaml"
+    policy.write_text(
+        "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+        encoding="utf-8",
+    )
+    external_dir = tmp_path.parent / f"{tmp_path.name} external directory"
+    write(external_dir / "private-marker.md", "synthetic external content\n")
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "linked-dir").symlink_to(external_dir, target_is_directory=True)
+
+    result = run_cli(
+        "content",
+        "check",
+        "--repo-root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--mode",
+        "registered",
+        "--scan-dir",
+        "skills",
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(payload, scanner="content", status="error", exit_code=2, finding_count=0)
+    assert payload["error"] == "content scan target must stay under repo root"
+    assert str(tmp_path) not in result.stdout
+    assert str(external_dir) not in result.stdout
+    assert "private-marker" not in result.stdout
+    assert "synthetic external content" not in result.stdout
+
 
 def test_content_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

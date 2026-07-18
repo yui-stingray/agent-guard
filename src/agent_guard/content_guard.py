@@ -5,9 +5,11 @@ Why: keep skill docs and similar Markdown content from drifting into unsafe inst
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -207,17 +209,173 @@ def collect_preregister_targets(
     return sorted(set(collected))
 
 
+def _resolve_repo_scan_root(repo_root: Path, scan_dir: Path) -> tuple[Path, Path]:
+    resolved_repo_root = repo_root.resolve()
+    target_root = scan_dir if scan_dir.is_absolute() else (resolved_repo_root / scan_dir)
+    target_root = target_root.resolve()
+    try:
+        target_root.relative_to(resolved_repo_root)
+    except ValueError:
+        raise ValueError("content scan dir must stay under repo root") from None
+    return resolved_repo_root, target_root
+
+
+def _directory_matches_exclude(path: Path, pattern: str) -> bool:
+    if glob_matches(path, pattern):
+        return True
+    if pattern.replace("\\", "/").endswith("/**"):
+        return glob_matches(path / "__agent_guard_descendant__", pattern)
+    return False
+
+
+def _glob_pattern_parts(pattern: str) -> tuple[str, ...]:
+    normalized = pattern.replace("\\", "/")
+    if normalized.startswith("/"):
+        return ()
+    pattern_parts = tuple(part for part in normalized.split("/") if part not in ("", "."))
+    if not pattern_parts:
+        return ()
+    return pattern_parts
+
+
+def _root_glob_matches(path: Path, pattern: str) -> bool:
+    pattern_parts = _glob_pattern_parts(pattern)
+    if not pattern_parts:
+        return False
+
+    path_parts = path.parts
+    memo: dict[tuple[int, int], bool] = {}
+
+    def matches(path_index: int, pattern_index: int) -> bool:
+        key = (path_index, pattern_index)
+        if key in memo:
+            return memo[key]
+        if pattern_index == len(pattern_parts):
+            result = path_index == len(path_parts)
+        elif pattern_parts[pattern_index] == "**":
+            result = matches(path_index, pattern_index + 1) or (
+                path_index < len(path_parts) and matches(path_index + 1, pattern_index)
+            )
+        else:
+            result = path_index < len(path_parts) and fnmatch(
+                path_parts[path_index],
+                pattern_parts[pattern_index],
+            ) and matches(path_index + 1, pattern_index + 1)
+        memo[key] = result
+        return result
+
+    return matches(0, 0)
+
+
+def _file_glob_reaches_directory(path: Path, pattern: str) -> bool:
+    pattern_parts = _glob_pattern_parts(pattern)
+    if not pattern_parts:
+        return False
+
+    def closure(states: set[int]) -> set[int]:
+        expanded = set(states)
+        pending_states = list(states)
+        while pending_states:
+            state = pending_states.pop()
+            if state < len(pattern_parts) and pattern_parts[state] == "**" and state + 1 not in expanded:
+                expanded.add(state + 1)
+                pending_states.append(state + 1)
+        return expanded
+
+    states = closure({0})
+    for part in path.parts:
+        next_states: set[int] = set()
+        for state in states:
+            if state == len(pattern_parts):
+                continue
+            pattern_part = pattern_parts[state]
+            if pattern_part == "**":
+                next_states.add(state)
+            elif fnmatch(part, pattern_part):
+                next_states.add(state + 1)
+        states = closure(next_states)
+        if not states:
+            return False
+    return any(state < len(pattern_parts) for state in states)
+
+
+def _collect_registered_files(
+    repo_root: Path,
+    target_root: Path,
+    file_globs: Iterable[str],
+    exclude_globs: Iterable[str],
+) -> list[Path]:
+    patterns = [pattern for pattern in file_globs if pattern]
+    excluded = [pattern for pattern in exclude_globs if pattern]
+    files: list[Path] = []
+    pending = [target_root]
+
+    while pending:
+        current = pending.pop()
+        with os.scandir(current) as entries:
+            for entry in entries:
+                path = current / entry.name
+                rel = path.relative_to(target_root)
+                directory_excluded = any(
+                    _directory_matches_exclude(rel, pattern) for pattern in excluded
+                )
+                directory_reachable = any(
+                    _file_glob_reaches_directory(rel, pattern) for pattern in patterns
+                )
+                if entry.is_symlink():
+                    if directory_excluded:
+                        continue
+                    file_selected = bool(patterns) and any(
+                        _root_glob_matches(rel, pattern) for pattern in patterns
+                    )
+                    if not directory_reachable and not file_selected:
+                        continue
+                    is_directory = entry.is_dir(follow_symlinks=True)
+                    if is_directory and not directory_reachable:
+                        continue
+                    if not is_directory and not file_selected:
+                        continue
+                    try:
+                        resolved = path.resolve()
+                        resolved.relative_to(repo_root)
+                    except (OSError, RuntimeError, ValueError):
+                        raise ValueError("content scan target must stay under repo root") from None
+                    if is_directory:
+                        continue
+                    if entry.is_file(follow_symlinks=True):
+                        files.append(path)
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    if not directory_excluded and directory_reachable:
+                        pending.append(path)
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                if excluded and any(glob_matches(rel, pattern) for pattern in excluded):
+                    continue
+                if patterns and any(_root_glob_matches(rel, pattern) for pattern in patterns):
+                    files.append(path)
+
+    return sorted(set(files))
+
+
 def collect_registered_targets(
     repo_root: Path,
     scan_dir: Path,
     file_globs: Iterable[str],
     exclude_globs: Iterable[str],
 ) -> list[Path]:
-    target_root = scan_dir if scan_dir.is_absolute() else (repo_root / scan_dir)
-    target_root = target_root.resolve()
+    repo_root, target_root = _resolve_repo_scan_root(repo_root, scan_dir)
     if not target_root.exists():
         raise RuntimeError(f"scan dir not found: {target_root}")
-    return iter_files_under(target_root, file_globs, exclude_globs)
+    excludes = list(exclude_globs)
+    paths = _collect_registered_files(repo_root, target_root, file_globs, excludes)
+    for path in paths:
+        try:
+            path.resolve().relative_to(repo_root)
+        except ValueError:
+            raise ValueError("content scan target must stay under repo root") from None
+    return paths
 
 
 def collect_new_targets(
@@ -228,13 +386,8 @@ def collect_new_targets(
     since_ref: str,
     include_untracked: bool,
 ) -> list[Path]:
-    target_root = scan_dir if scan_dir.is_absolute() else (repo_root / scan_dir)
-    target_root = target_root.resolve()
-
-    try:
-        rel_scan = str(target_root.relative_to(repo_root))
-    except ValueError:
-        rel_scan = str(scan_dir)
+    repo_root, target_root = _resolve_repo_scan_root(repo_root, scan_dir)
+    rel_scan = str(target_root.relative_to(repo_root))
 
     changed: set[Path] = set()
 

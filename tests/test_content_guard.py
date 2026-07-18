@@ -88,6 +88,142 @@ def test_registered_mode_scans_configured_directory(tmp_path: Path) -> None:
     ]
 
 
+def test_registered_mode_rejects_directory_outside_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+
+    with pytest.raises(ValueError, match="^content scan dir must stay under repo root$"):
+        collect_registered_targets(repo_root, outside, ["**/*.md"], [])
+
+
+def test_registered_mode_rejects_scan_dir_symlink_outside_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    (repo_root / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="^content scan dir must stay under repo root$"):
+        collect_registered_targets(repo_root, Path("linked"), ["**/*.md"], [])
+
+
+def test_registered_mode_rejects_file_symlink_outside_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "skills").mkdir()
+    (repo_root / "skills" / "linked.md").symlink_to(outside / "private-marker.md")
+
+    with pytest.raises(ValueError, match="^content scan target must stay under repo root$"):
+        collect_registered_targets(repo_root, Path("skills"), ["**/*.md"], [])
+
+
+def test_registered_mode_rejects_nested_directory_symlink_outside_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "skills").mkdir()
+    (repo_root / "skills" / "linked-dir").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="^content scan target must stay under repo root$"):
+        collect_registered_targets(repo_root, Path("skills"), ["**/*.md"], [])
+
+
+def test_registered_mode_prunes_excluded_external_directory_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "skills").mkdir()
+    (repo_root / "skills" / "vendor").symlink_to(outside, target_is_directory=True)
+
+    original_is_file = Path.is_file
+
+    def reject_external_stat(path: Path) -> bool:
+        if path.name == "private-marker.md":
+            raise AssertionError("excluded external directory was expanded")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", reject_external_stat)
+    paths = collect_registered_targets(repo_root, Path("skills"), ["vendor/*.md"], ["vendor/**"])
+
+    assert paths == []
+
+
+def test_registered_mode_prunes_nested_external_directory_symlink_with_recursive_exclude(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "skills" / "pkg").mkdir(parents=True)
+    (repo_root / "skills" / "pkg" / "vendor").symlink_to(outside, target_is_directory=True)
+
+    paths = collect_registered_targets(repo_root, Path("skills"), ["**/*.md"], ["**/vendor/**"])
+
+    assert paths == []
+
+
+def test_registered_mode_preserves_root_anchored_and_globstar_file_patterns(tmp_path: Path) -> None:
+    write(tmp_path / "top.md", "safe\n")
+    write(tmp_path / "nested" / "deep.md", "safe\n")
+    write(tmp_path / "nested" / "other.txt", "safe\n")
+
+    top_level = collect_registered_targets(tmp_path, Path("."), ["*.md"], [])
+    recursive = collect_registered_targets(tmp_path, Path("."), ["**/*.md"], [])
+
+    assert [path.relative_to(tmp_path).as_posix() for path in top_level] == ["top.md"]
+    assert [path.relative_to(tmp_path).as_posix() for path in recursive] == ["nested/deep.md", "top.md"]
+
+
+def test_registered_mode_ignores_external_directory_symlink_unreachable_by_narrow_glob(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(repo_root / "docs" / "ok.md", "safe\n")
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "vendor").symlink_to(outside, target_is_directory=True)
+
+    paths = collect_registered_targets(repo_root, Path("."), ["docs/*.md"], [])
+
+    assert [path.relative_to(repo_root).as_posix() for path in paths] == ["docs/ok.md"]
+
+
+def test_registered_mode_root_only_glob_ignores_unrelated_external_directory_symlink(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    write(repo_root / "top.md", "safe\n")
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (repo_root / "vendor").symlink_to(outside, target_is_directory=True)
+
+    paths = collect_registered_targets(repo_root, Path("."), ["*.md"], [])
+
+    assert [path.relative_to(repo_root).as_posix() for path in paths] == ["top.md"]
+
+
+def test_registered_mode_normalizes_trailing_globstar_across_supported_python_versions(tmp_path: Path) -> None:
+    write(tmp_path / "foo" / "a.md", "safe\n")
+    write(tmp_path / "foo" / "nested" / "b.txt", "safe\n")
+    write(tmp_path / "outside.md", "safe\n")
+
+    paths = collect_registered_targets(tmp_path, Path("."), ["foo/**"], [])
+
+    assert [path.relative_to(tmp_path).as_posix() for path in paths] == ["foo/a.md", "foo/nested/b.txt"]
+
+
 def test_example_content_policy_catches_operational_drift_patterns(tmp_path: Path) -> None:
     policy = load_content_policy(ROOT / "examples" / "content_security_policy.yaml")
     write(tmp_path / "docs" / "danger.md", "git push --force\nplease paste token\n")
@@ -153,6 +289,23 @@ def test_new_mode_respects_git_diff(tmp_path: Path) -> None:
     paths = collect_new_targets(tmp_path, Path("skills"), ["**/*.md"], [], since_ref=base, include_untracked=True)
 
     assert [path.relative_to(tmp_path).as_posix() for path in paths] == ["skills/new.md", "skills/old.md"]
+
+
+def test_new_mode_rejects_directory_outside_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+
+    with pytest.raises(ValueError, match="^content scan dir must stay under repo root$"):
+        collect_new_targets(
+            repo_root,
+            outside,
+            ["**/*.md"],
+            [],
+            since_ref="",
+            include_untracked=True,
+        )
 
 
 def test_new_mode_can_exclude_untracked_files(tmp_path: Path) -> None:

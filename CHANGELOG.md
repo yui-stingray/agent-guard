@@ -6,6 +6,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Made repository-scoped content scans reject scan directories that resolve
+  outside the repository root with a sanitized configuration error. Registered
+  scans also reject nested file or directory symlinks that resolve outside that
+  root.
+  Explicit preregistration targets remain available for local review without
+  broadening the scanner's public evidence contract.
 - Made Agent-Guard Bench fail closed on guard runner errors, preserve raw
   comparisons for scoring, and redact finding metadata only at JSON output
   boundaries while using controlled diagnostic labels. Malformed fixture

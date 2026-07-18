@@ -251,6 +251,42 @@ def test_report_cli_markdown_content_scan_dir_must_stay_under_root(tmp_path: Pat
     assert str(tmp_path) not in result.stdout
     assert str(outside) not in result.stdout
 
+
+def test_report_cli_rejects_external_content_symlink_target(tmp_path: Path) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
+    content_policy = tmp_path / "content_policy.yaml"
+    content_policy.write_text(
+        "file_globs:\n  - '**/*.md'\nexclude_globs: []\nforbidden_patterns: []\n",
+        encoding="utf-8",
+    )
+    outside = tmp_path.parent / f"{tmp_path.name}-external-target"
+    write(outside / "private-marker.md", "synthetic external content\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "linked.md").symlink_to(outside / "private-marker.md")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(context_policy),
+        "--content-policy",
+        str(content_policy),
+        "--content-scan-dir",
+        "docs",
+    )
+
+    assert result.returncode == 2
+    assert "| Status | error |" in result.stdout
+    assert "content scan target must stay under repo root" in result.stdout
+    assert str(tmp_path) not in result.stdout
+    assert str(outside) not in result.stdout
+    assert "private-marker" not in result.stdout
+    assert "synthetic external content" not in result.stdout
+
+
 def test_report_cli_markdown_static_policy_error_omits_raw_regex(tmp_path: Path) -> None:
     context_policy = tmp_path / "context_policy.yaml"
     context_policy.write_text("{}\n", encoding="utf-8")
