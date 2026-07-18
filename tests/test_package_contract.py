@@ -73,6 +73,56 @@ def test_wheel_contract_requires_exact_current_distribution_set(
         wheel_contract.find_release_distributions(version)
 
 
+def test_wheel_contract_rejects_directories_and_symlinks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    wheel = dist / f"yui_agent_guard-{version}-py3-none-any.whl"
+    sdist = dist / f"yui_agent_guard-{version}.tar.gz"
+    wheel.write_bytes(b"wheel")
+    sdist.write_bytes(b"sdist")
+    monkeypatch.setattr(wheel_contract, "DIST", dist)
+
+    extra_dir = dist / "extra"
+    extra_dir.mkdir()
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    extra_dir.rmdir()
+
+    sdist.unlink()
+    sdist.mkdir()
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    sdist.rmdir()
+    sdist.write_bytes(b"sdist")
+
+    wheel.unlink()
+    real_wheel = tmp_path / wheel.name
+    real_wheel.write_bytes(b"wheel")
+    wheel.symlink_to(real_wheel)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    wheel.unlink()
+    wheel.write_bytes(b"wheel")
+
+    sdist.unlink()
+    real_sdist = tmp_path / sdist.name
+    real_sdist.write_bytes(b"sdist")
+    sdist.symlink_to(real_sdist)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    sdist.unlink()
+    sdist.write_bytes(b"sdist")
+
+    extra_symlink = dist / "extra-link"
+    extra_symlink.symlink_to(real_wheel)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+
+
 def test_dev_extra_includes_benchmark_schema_tools() -> None:
     with PYPROJECT.open("rb") as fh:
         pyproject = tomllib.load(fh)

@@ -55,8 +55,11 @@ def find_release_distributions(version: str) -> tuple[Path, Path]:
     wheel = DIST / f"yui_agent_guard-{version}-py3-none-any.whl"
     sdist = DIST / f"yui_agent_guard-{version}.tar.gz"
     expected = {wheel.name, sdist.name}
-    observed = {path.name for path in DIST.iterdir() if path.is_file()}
-    if observed != expected:
+    entries = list(DIST.iterdir())
+    observed = {path.name for path in entries}
+    if observed != expected or any(
+        not path.is_file() or path.is_symlink() for path in entries
+    ):
         raise RuntimeError("expected exactly the current yui_agent_guard wheel and sdist")
     return wheel, sdist
 
