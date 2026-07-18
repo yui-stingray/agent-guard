@@ -10,7 +10,8 @@ import tomllib
 from pathlib import Path
 
 import agent_guard
-from scripts.check_wheel_contract import venv_python_path
+import pytest
+import scripts.check_wheel_contract as wheel_contract
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,8 +40,87 @@ def test_package_requires_safe_tar_filter_runtime() -> None:
 def test_wheel_contract_uses_platform_specific_venv_interpreter() -> None:
     venv_dir = Path("contract-venv")
 
-    assert venv_python_path(venv_dir, platform_name="posix") == venv_dir / "bin" / "python"
-    assert venv_python_path(venv_dir, platform_name="nt") == venv_dir / "Scripts" / "python.exe"
+    assert wheel_contract.venv_python_path(venv_dir, platform_name="posix") == venv_dir / "bin" / "python"
+    assert wheel_contract.venv_python_path(venv_dir, platform_name="nt") == venv_dir / "Scripts" / "python.exe"
+
+
+def test_wheel_contract_requires_exact_current_distribution_set(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    dist = tmp_path / "dist"
+    monkeypatch.setattr(wheel_contract, "DIST", dist)
+
+    with pytest.raises(RuntimeError, match="directory is missing") as missing:
+        wheel_contract.find_release_distributions(version)
+    assert str(tmp_path) not in str(missing.value)
+
+    dist.mkdir()
+    wheel = dist / f"yui_agent_guard-{version}-py3-none-any.whl"
+    sdist = dist / f"yui_agent_guard-{version}.tar.gz"
+    wheel.write_bytes(b"wheel")
+
+    with pytest.raises(RuntimeError, match="exactly the current") as incomplete:
+        wheel_contract.find_release_distributions(version)
+    assert str(tmp_path) not in str(incomplete.value)
+
+    sdist.write_bytes(b"sdist")
+    assert wheel_contract.find_release_distributions(version) == (wheel, sdist)
+
+    (dist / "unexpected.txt").write_text("unexpected\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+
+
+def test_wheel_contract_rejects_directories_and_symlinks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    wheel = dist / f"yui_agent_guard-{version}-py3-none-any.whl"
+    sdist = dist / f"yui_agent_guard-{version}.tar.gz"
+    wheel.write_bytes(b"wheel")
+    sdist.write_bytes(b"sdist")
+    monkeypatch.setattr(wheel_contract, "DIST", dist)
+
+    extra_dir = dist / "extra"
+    extra_dir.mkdir()
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    extra_dir.rmdir()
+
+    sdist.unlink()
+    sdist.mkdir()
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    sdist.rmdir()
+    sdist.write_bytes(b"sdist")
+
+    wheel.unlink()
+    real_wheel = tmp_path / wheel.name
+    real_wheel.write_bytes(b"wheel")
+    wheel.symlink_to(real_wheel)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    wheel.unlink()
+    wheel.write_bytes(b"wheel")
+
+    sdist.unlink()
+    real_sdist = tmp_path / sdist.name
+    real_sdist.write_bytes(b"sdist")
+    sdist.symlink_to(real_sdist)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
+    sdist.unlink()
+    sdist.write_bytes(b"sdist")
+
+    extra_symlink = dist / "extra-link"
+    extra_symlink.symlink_to(real_wheel)
+    with pytest.raises(RuntimeError, match="exactly the current"):
+        wheel_contract.find_release_distributions(version)
 
 
 def test_dev_extra_includes_benchmark_schema_tools() -> None:

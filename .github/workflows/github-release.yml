@@ -36,6 +36,17 @@ jobs:
       actions: read
       contents: read
     steps:
+      - name: Require default branch for manual retry
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            echo "::error::manual GitHub Release retry must run from the default branch"
+            exit 1
+          fi
+
       - name: Verify upstream PyPI publication
         id: upstream
         if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'
@@ -62,6 +73,7 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -115,10 +127,83 @@ jobs:
             echo "version=${tag#v}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Verify manual retry source
+        if: github.event_name == 'workflow_dispatch' && steps.tag.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.tag.outputs.prepared-sha }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          current_sha="$(git rev-parse "HEAD^{commit}")"
+          master_sha="$(git rev-parse "refs/remotes/origin/master^{commit}")"
+          if [ "$current_sha" != "$master_sha" ] \
+             || ! git merge-base --is-ancestor "$RELEASE_SHA" "$master_sha"; then
+            echo "::error::manual retry requires the current protected master verifier and a release tag on master history"
+            exit 1
+          fi
+
+          mapfile -t run_ids < <(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release.yml \
+              --branch "$RELEASE_TAG" \
+              --commit "$RELEASE_SHA" \
+              --event push \
+              --status completed \
+              --limit 10 \
+              --json databaseId,conclusion \
+              --jq '.[] | select(.conclusion == "success") | .databaseId'
+          )
+          published=false
+          for run_id in "${run_ids[@]}"; do
+            if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+              continue
+            fi
+            published_count="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=latest&per_page=100" \
+                --jq '[.jobs[] | select(.name == "publish to PyPI (OIDC)" and .conclusion == "success")] | length'
+            )"
+            if [[ "$published_count" =~ ^[1-9][0-9]*$ ]]; then
+              published=true
+              break
+            fi
+          done
+          if [ "$published" != "true" ]; then
+            echo "::error::manual retry requires a matching successful tag-push PyPI publication"
+            exit 1
+          fi
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: steps.tag.outputs.publish == 'true'
         with:
           python-version: '3.12'
+
+      - name: Verify published PyPI version
+        if: steps.tag.outputs.publish == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..5}; do
+            if python scripts/check_pypi_release_state.py \
+                 --expect-present --version "$RELEASE_VERSION"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "PyPI release-state check attempt ${attempt} failed; waiting for API propagation"
+              sleep 10
+            fi
+          done
+          echo "::error::PyPI release did not reach the expected exact file set"
+          exit 1
+
+      - name: Detach checkout to release commit
+        if: steps.tag.outputs.publish == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.tag.outputs.prepared-sha }}
+        run: git checkout --detach "$RELEASE_SHA"
 
       - name: Extract release notes
         if: steps.tag.outputs.publish == 'true'
@@ -126,13 +211,6 @@ jobs:
           python scripts/check_changelog.py
           --version "${{ steps.tag.outputs.version }}"
           --write-notes release-notes.md
-
-      - name: Verify published PyPI version
-        if: steps.tag.outputs.publish == 'true'
-        run: >-
-          python scripts/check_pypi_release_state.py
-          --expect-present
-          --version "${{ steps.tag.outputs.version }}"
 
       - name: Upload release notes artifact
         if: steps.tag.outputs.publish == 'true'

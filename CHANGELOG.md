@@ -20,10 +20,16 @@ Why: keep static guard releases auditable while the package is still alpha.
   recovery-specific guidance for blocked starter writes, and earlier Python
   runtime requirement guidance.
 - Required a successful upstream PyPI publish job, trusted tag ancestry, and
-  exact-version presence on PyPI before automatic GitHub Release publishing.
+  the exact non-yanked wheel and sdist on PyPI before automatic GitHub Release
+  publishing. Manual retries now run the current default-branch verifier and
+  require a matching successful tag-push PyPI publication.
   The write-capable GitHub Release job re-resolves the tag and requires it to
   match the prepared commit before mutation, and it no longer persists checkout
   credentials in its working copy.
+- Split release provenance attestation into a dedicated least-privilege job,
+  made publish-time PyPI verification fail closed on missing, extra, duplicate,
+  malformed, or yanked distributions, and required clean builds to contain
+  exactly the current wheel and sdist before publication.
 
 ## 0.3.1 - 2026-07-17
 
