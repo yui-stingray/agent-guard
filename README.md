@@ -954,7 +954,11 @@ agent-guard report --root <repo> --context-policy <yaml> --surface-delta-base-re
 Policy path arguments are resolved relative to the relevant repository root
 (`--root` or `--repo-root`) unless an absolute path is provided. Public report
 payloads keep in-repository policy paths repo-relative and display external
-policy files as `<external-policy>`.
+policy files as `<external-policy>`. In the repo-scoped `content check` modes
+(`registered` and `new`), `--scan-dir` must resolve under `--repo-root`;
+registered file targets and discovered directory symlinks must also resolve
+under that root. Use `preregister` with explicit `--targets` for local review
+of candidates outside the repository.
 
 ## Releases
 

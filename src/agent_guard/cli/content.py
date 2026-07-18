@@ -28,7 +28,11 @@ def add_content_parser(top) -> None:
     content_check.add_argument("--repo-root", default=".", help="repository root path")
     content_check.add_argument("--policy", required=True, help="YAML policy path")
     content_check.add_argument("--mode", choices=("registered", "preregister", "new"), default="registered")
-    content_check.add_argument("--scan-dir", default="skills", help="target directory for registered/new modes")
+    content_check.add_argument(
+        "--scan-dir",
+        default="skills",
+        help="target directory for registered/new modes; must resolve under --repo-root",
+    )
     content_check.add_argument("--targets", nargs="*", default=[], help="target files/dirs for preregister mode")
     content_check.add_argument("--since-ref", default="", help="base ref for new mode diff (e.g. origin/main)")
     content_check.add_argument("--no-untracked", action="store_true", help="exclude untracked files in new mode")
@@ -118,5 +122,3 @@ def run_content_check(args: argparse.Namespace) -> int:
         print_content_text(findings=findings, scanned_files=len(paths), mode=args.mode)
 
     return 0 if not findings else 1
-
-
