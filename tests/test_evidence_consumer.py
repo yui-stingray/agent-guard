@@ -152,7 +152,10 @@ def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path)
         ("short_slack_token_shape", "xoxb-" + ("a" * 10), "secret-shaped value"),
         ("sha256_value", "a" * 64, "raw sha256-shaped value"),
         ("raw_url", "http" + "s://example.com/private", "raw URL"),
+        ("mixed_case_raw_url", "HtTpS://example.com/private", "raw URL"),
         ("wsl_windows_user_path", "/mnt/c/Users/example/private.txt", "raw local path"),
+        ("windows_drive_path", r"D:\synthetic\private\report.json", "raw local path"),
+        ("windows_unc_path", r"\\synthetic-host\private\report.json", "raw local path"),
         ("private_key", "-----BEGIN " + "PRIVATE KEY-----", "secret-shaped value"),
     ]
 

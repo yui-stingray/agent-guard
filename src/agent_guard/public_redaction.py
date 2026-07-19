@@ -15,10 +15,11 @@ SECRET_SHAPED_PUBLIC_TEXT_RE = re.compile(
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)"
 )
 SHA256_PUBLIC_TEXT_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
-RAW_URL_PUBLIC_TEXT_RE = re.compile(r"https?://[^\s\"'`<>()]+")
+RAW_URL_PUBLIC_TEXT_RE = re.compile(r"https?://[^\s\"'`<>()]+", re.IGNORECASE)
 LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(
     r"(?:(?:/home|/mnt/c/Users)/(?:[^/\s:'\"]+/)*[^/\s:'\"]+|"
-    r"[A-Za-z]:[\\/]+Users[\\/]+(?:[^\\/\s:'\"]+[\\/]+)*[^\\/\s:'\"]+)"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:[\\/]+(?:[^\\/\s:'\"]+[\\/]+)*[^\\/\s:'\"]+|"
+    r"(?:\\\\|(?<!:)//)[^\\/\s:'\"]+(?:[\\/]+[^\\/\s:'\"]+)+)"
 )
 
 

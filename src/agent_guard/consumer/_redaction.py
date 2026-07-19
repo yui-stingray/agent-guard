@@ -18,7 +18,7 @@ LOCAL_PATH_RE = re.compile(
     rf"(?:{LOCAL_PATH_PUBLIC_TEXT_RE.pattern}|"
     r"(?:^|[\s\"'=:])(?:/(?:home|Users)/|[A-Za-z]:[\\/]+Users[\\/]+))"
 )
-RAW_URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+RAW_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 SHA256_VALUE_RE = re.compile(r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{64}(?![A-Fa-f0-9])")
 SECRET_VALUE_RE = re.compile(
     rf"(?:{SECRET_SHAPED_PUBLIC_TEXT_RE.pattern}|"

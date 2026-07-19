@@ -254,7 +254,10 @@ jobs:
 
 PREVIEW_NEXT_STEPS = [
     "Review every planned file before writing it to the repository.",
-    "Run `agent-guard init --write` only after the printed plan is acceptable.",
+    (
+        "From the repository root, run `agent-guard init --root . --write` only "
+        "after the printed plan is acceptable."
+    ),
     "Document the guard commands in README.md before expecting `agent-guard drift check` to pass cleanly.",
     "After context files are reviewed, run `agent-guard context lock --root . --policy .agent-guard/context-policy.yaml > .agent-guard/context-digest-policy.yaml` if digest pinning is required.",
     "Treat raw per-scanner JSON as local or CI-internal; publish only the sanitized report, render-report, or evidence-pack outputs after review.",
@@ -296,12 +299,12 @@ WRITE_NEXT_STEPS = [
 BLOCKED_WRITE_NEXT_STEPS = [
     "Review the existing starter files in the repository before deciding how to continue.",
     (
-        "To preserve reviewed files, run `agent-guard init --write --skip-existing` "
-        "so only missing starter files are created."
+        "From the repository root, run `agent-guard init --root . --write "
+        "--skip-existing` so only missing starter files are created."
     ),
     (
-        "Use `agent-guard init --write --force` only after intentionally reviewing "
-        "which existing starter files will be overwritten."
+        "Use `agent-guard init --root . --write --force` only after intentionally "
+        "reviewing which existing starter files will be overwritten."
     ),
     (
         "After any preserved or overwritten files are reviewed, run the recommended "

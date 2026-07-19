@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path, PureWindowsPath
 
+from .public_redaction import RAW_URL_PUBLIC_TEXT_RE, sanitize_public_mapping
+
 
 EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION = "agent-guard.evidence_pack_manifest.v1"
 
@@ -15,6 +17,8 @@ def safe_artifact_path(path: str, *, root: Path | None = None) -> str:
     text = str(path).strip()
     if not text:
         return ""
+    if RAW_URL_PUBLIC_TEXT_RE.search(text):
+        return "<redacted-url>"
     windows_path = PureWindowsPath(text)
     if windows_path.is_absolute() or windows_path.drive or text.startswith("\\\\"):
         return windows_path.name or "<external-artifact>"
@@ -66,7 +70,7 @@ def build_evidence_pack_manifest(
         if safe_path:
             artifacts.append({"path": safe_path, "role": "agent-policy-audit-event"})
 
-    return {
+    manifest: dict[str, object] = {
         "schema_version": EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION,
         "tool": report_payload.get("tool", {}),
         "sanitized": True,
@@ -105,3 +109,4 @@ def build_evidence_pack_manifest(
         ),
         "artifacts": artifacts,
     }
+    return sanitize_public_mapping(manifest)
