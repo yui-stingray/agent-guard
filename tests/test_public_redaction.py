@@ -33,6 +33,23 @@ def test_aws_access_key_id_shapes_are_redacted_without_leak() -> None:
 @pytest.mark.parametrize(
     "value",
     (
+        "HTTP://example.invalid/private",
+        "HtTpS://example.invalid/private",
+    ),
+)
+def test_url_redaction_and_consumer_validation_are_case_insensitive(value: str) -> None:
+    redacted = redact_public_text(f"before {value} after")
+
+    assert redacted == "before <redacted-url> after"
+    assert value not in redacted
+    with pytest.raises(ValueError, match="raw URL") as exc_info:
+        validate_public_text_shape(value, path="$.value")
+    assert value not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
         "sk-" + ("a" * 16),
         "xoxb-" + ("a" * 10),
         "AKIA" + ("A" * 16),
@@ -52,6 +69,23 @@ def test_consumer_rejects_wsl_user_path_redacted_by_producer() -> None:
     value = "/mnt/c/Users/example/private.txt"
     redacted = redact_public_text(f"before {value} after")
 
+    assert value not in redacted
+    with pytest.raises(ValueError, match="raw local path") as exc_info:
+        validate_public_text_shape(value, path="$.value")
+    assert value not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        r"D:\synthetic\private\policy.yaml",
+        r"\\synthetic-host\private\policy.yaml",
+    ),
+)
+def test_consumer_rejects_absolute_windows_paths_redacted_by_producer(value: str) -> None:
+    redacted = redact_public_text(f"before {value} after")
+
+    assert redacted == "before <absolute-path> after"
     assert value not in redacted
     with pytest.raises(ValueError, match="raw local path") as exc_info:
         validate_public_text_shape(value, path="$.value")

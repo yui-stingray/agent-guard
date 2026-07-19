@@ -152,7 +152,11 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         in workflow_policy
     )
     next_steps = "\n".join(payload["next_steps"])
-    assert "Run `agent-guard init --write` only after the printed plan is acceptable." in next_steps
+    assert (
+        "From the repository root, run `agent-guard init --root . --write` only after "
+        "the printed plan is acceptable."
+        in next_steps
+    )
     assert "--stderr-summary" not in next_steps
     assert "raw per-scanner JSON as local or CI-internal" in next_steps
     assert "publish only the sanitized report, render-report, or evidence-pack outputs" in next_steps
@@ -195,7 +199,7 @@ def test_init_cli_write_next_steps_include_report_and_conformance_review(tmp_pat
     payload = json.loads(result.stdout)
     next_steps = "\n".join(payload["next_steps"])
     assert payload["mode"] == "write"
-    assert "Run `agent-guard init --write` only after the printed plan is acceptable." not in next_steps
+    assert "agent-guard init --root . --write` only after" not in next_steps
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
         "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --stderr-summary "
@@ -378,10 +382,10 @@ def test_init_cli_write_refuses_existing_files(tmp_path: Path) -> None:
     statuses = {item["path"]: item["status"] for item in payload["files"]}
     assert statuses[".agent-guard/context-policy.yaml"] == "exists"
     next_steps = "\n".join(payload["next_steps"])
-    assert "agent-guard init --write` only after" not in next_steps
+    assert "agent-guard init --root . --write` only after" not in next_steps
     assert "Review the existing starter files in the repository" in next_steps
-    assert "agent-guard init --write --skip-existing" in next_steps
-    assert "agent-guard init --write --force" in next_steps
+    assert "agent-guard init --root . --write --skip-existing" in next_steps
+    assert "agent-guard init --root . --write --force" in next_steps
     assert "intentionally reviewing" in next_steps
     serialized = json.dumps(payload, sort_keys=True)
     assert str(tmp_path) not in serialized
