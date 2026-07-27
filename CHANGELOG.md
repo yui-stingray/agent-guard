@@ -6,6 +6,22 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.3 - 2026-07-27
+
+- Released a bounded P0 public-artifact hygiene patch so the standalone
+  evidence-pack command recursively sanitizes copied report metadata and
+  recognized HTTP(S)- or file-scheme artifact inputs before emission. The
+  reproduced cases used synthetic inputs; review identified no real credential
+  exposure.
+- Kept producer and evidence-consumer checks aligned for mixed-case URLs,
+  Windows drive paths, and UNC paths while preserving the existing controlled
+  secret-shape contract.
+- Replaced ambiguous URL-like or absolute-path-containing metadata values as a
+  whole and made sanitized mapping-key collisions fail closed instead of
+  silently overwriting evidence.
+- Clarified generated init guidance to use explicit repository-root commands
+  for reviewed write operations.
+
 ## 0.3.2 - 2026-07-19
 
 - Released ahead of the default batch so repository-root containment fixes for

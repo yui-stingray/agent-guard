@@ -65,6 +65,37 @@ def test_render_report_cli_redacts_secret_shaped_existing_payload_paths(tmp_path
     rendered = json.loads(result.stdout)
     assert rendered["surface_inventory"]["surfaces"][0]["path"] == "docs/<redacted>/policy.md"
 
+
+def test_render_report_cli_redacts_absolute_paths_after_tag_like_components(tmp_path: Path) -> None:
+    values = (
+        "<img>/home/synthetic/private",
+        "bang!/<img src=x>/home/synthetic/private",
+        r"<img>D:\synthetic\private",
+        "source=${prefix}/home/synthetic/private",
+    )
+    report_json = tmp_path / "agent-guard-report.json"
+    report_json.write_text(
+        json.dumps({"exit_code": 0, "metadata": {"values": values}}),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0
+    rendered = json.loads(result.stdout)
+    assert rendered["metadata"]["values"] == ["<absolute-path>"] * len(values)
+    for value in values:
+        assert value not in result.stdout
+        assert value not in result.stderr
+
 def test_render_report_cli_writes_sarif_from_sanitized_json(tmp_path: Path) -> None:
     policy = create_report_violation_fixture_repo(tmp_path)
     report_json = tmp_path / "evidence" / "agent-guard-report.json"
@@ -173,3 +204,29 @@ def test_render_report_cli_rejects_non_object_json(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["error"] == "report JSON root must be an object"
     assert str(tmp_path) not in result.stdout
+
+
+def test_render_report_cli_fails_closed_on_sanitized_key_collision(tmp_path: Path) -> None:
+    first = "field=https://one.invalid/a alpha"
+    second = "field=https://two.invalid/b beta"
+    report_json = tmp_path / "report.json"
+    report_json.write_text(json.dumps({first: 1, second: 2}), encoding="utf-8")
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["error"] == "public sanitization produced duplicate mapping keys"
+    assert result.stderr == ""
+    for value in (first, second, str(tmp_path)):
+        assert value not in result.stdout
+        assert value not in result.stderr

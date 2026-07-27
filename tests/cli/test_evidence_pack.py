@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent_guard.consumer import validate_public_evidence_shape
 from tests.cli.helpers import run_cli
 
 
@@ -51,6 +52,8 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         r"C:\Users\alice\secret\agent-guard-report.json",
         "--artifact",
         r"\\server\share\agent-guard-report.json",
+        "--artifact",
+        "file://localhost/home/synthetic/private/report.json",
         "--agent-policy-audit-event",
         str(tmp_path / ".agent-guard" / "evidence" / "policy-admission-event.json"),
         "--json",
@@ -66,6 +69,7 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         {"path": "outside-report.json", "role": "report"},
         {"path": "agent-guard-report.json", "role": "report"},
         {"path": "agent-guard-report.json", "role": "report"},
+        {"path": "<redacted-url>", "role": "report"},
         {"path": ".agent-guard/evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
     ]
     assert str(tmp_path) not in result.stdout
@@ -75,10 +79,10 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
 
 def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: Path) -> None:
     secret_shaped = "AKIA" + ("A" * 16)
-    raw_url = "HtTpS://example.invalid/private"
+    raw_url = "HtTpS:/example.invalid/private's/synthetic-tail"
     local_path = "/home/synthetic/private/repository"
-    windows_path = r"D:\synthetic\private\repository"
-    unc_path = r"\\synthetic-host\private\repository"
+    windows_path = r"D:\synthetic's folder\private\repository name"
+    unc_path = r"\\?\UNC\synthetic-host\private`folder\repository name"
     hash_shaped = "a" * 64
     report = tmp_path / "report.json"
     report.write_text(
@@ -149,3 +153,45 @@ def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: P
     ]
     for value in (secret_shaped, raw_url, local_path, windows_path, unc_path, hash_shaped):
         assert value not in result.stdout
+    validate_public_evidence_shape(payload)
+
+
+def test_evidence_pack_manifest_cli_fails_closed_on_sanitized_key_collision(tmp_path: Path) -> None:
+    first = "field=https://one.invalid/a alpha"
+    second = "field=https://two.invalid/b beta"
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "tool": {first: "one", second: "two"},
+                "status": "ok",
+                "finding_count": 0,
+                "summary": {},
+                "report": {
+                    "schema_version": "agent-guard.report_evidence.v1",
+                    "format": "json",
+                    "scope": "context",
+                },
+                "evidence_coverage": {"gates": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["error"] == "public sanitization produced duplicate mapping keys"
+    for value in (first, second):
+        assert value not in result.stdout
+        assert value not in result.stderr
