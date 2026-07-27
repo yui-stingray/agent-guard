@@ -116,6 +116,10 @@ def test_consumer_rejects_wsl_user_path_redacted_by_producer() -> None:
         "artifact=/ synthetic",
         "artifact='/ synthetic'",
         "path: / synthetic",
+        "source=${prefix}/ synthetic",
+        "source=${prefix}/home/synthetic/private/output.json",
+        "source=(prefix)/home/synthetic/private/output.json",
+        "source=[prefix]/home/synthetic/private/output.json",
         "command<input >/home/synthetic/private/output.json",
         "command<input>/home/synthetic/private/output.json",
         "command '<' >/home/synthetic/private/output.json",
@@ -134,6 +138,8 @@ def test_consumer_rejects_wsl_user_path_redacted_by_producer() -> None:
         r"command<input>D:\synthetic\private\output.json",
         r"<img>D:\synthetic\private",
         r"command>\\synthetic-host\private\output.json",
+        r"source=${prefix}D:\synthetic\private\output.json",
+        r":note D:\synthetic\private\output.json",
     ),
 )
 def test_consumer_rejects_common_absolute_posix_paths(value: str) -> None:
@@ -268,6 +274,7 @@ def test_malformed_http_url_like_values_are_fully_redacted(value: str) -> None:
         "command&&https:synthetic-host/private",
         "command>https://synthetic.invalid/private",
         "command>https:synthetic.invalid/private",
+        "source=${prefix}https:synthetic.invalid/private",
     ),
 )
 def test_compact_shell_boundaries_do_not_hide_url_schemes(value: str) -> None:

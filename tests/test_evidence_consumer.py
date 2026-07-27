@@ -188,6 +188,10 @@ def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path)
         ("compact_and_posix_path", "command&&/home/synthetic/private.txt", "raw local path"),
         ("embedded_space_component_posix_path", "artifact=/ synthetic", "raw local path"),
         ("labelled_space_component_posix_path", "path: / synthetic", "raw local path"),
+        ("closing_delimiter_space_component_posix_path", "source=${prefix}/ synthetic", "raw local path"),
+        ("closing_brace_posix_path", "source=${prefix}/home/synthetic/private.txt", "raw local path"),
+        ("closing_parenthesis_posix_path", "source=(prefix)/home/synthetic/private.txt", "raw local path"),
+        ("closing_bracket_posix_path", "source=[prefix]/home/synthetic/private.txt", "raw local path"),
         ("input_then_output_redirect_posix_path", "command<input >/home/synthetic/private.txt", "raw local path"),
         ("adjacent_input_output_redirect_posix_path", "command<input>/home/synthetic/private.txt", "raw local path"),
         ("tag_prefixed_posix_path", "<img>/home/synthetic/private.txt", "raw local path"),
@@ -208,6 +212,8 @@ def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path)
         ("windows_drive_space_path", r"D:\ synthetic\private\report.json", "raw local path"),
         ("windows_unc_path", r"\\synthetic-host\private\report.json", "raw local path"),
         ("redirected_windows_unc_path", r"command>\\synthetic-host\private\report.json", "raw local path"),
+        ("closing_brace_windows_path", r"source=${prefix}D:\synthetic\private\report.json", "raw local path"),
+        ("colon_prefixed_windows_path", r":note D:\synthetic\private\report.json", "raw local path"),
         ("private_key", "-----BEGIN " + "PRIVATE KEY-----", "secret-shaped value"),
     ]
 

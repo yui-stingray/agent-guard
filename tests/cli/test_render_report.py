@@ -71,6 +71,7 @@ def test_render_report_cli_redacts_absolute_paths_after_tag_like_components(tmp_
         "<img>/home/synthetic/private",
         "bang!/<img src=x>/home/synthetic/private",
         r"<img>D:\synthetic\private",
+        "source=${prefix}/home/synthetic/private",
     )
     report_json = tmp_path / "agent-guard-report.json"
     report_json.write_text(

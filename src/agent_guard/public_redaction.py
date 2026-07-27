@@ -23,9 +23,9 @@ LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(
 # URL and absolute-path matches redact the entire containing value. Preserving
 # surrounding text makes malformed or quoted values ambiguous and can expose a
 # suffix after the recognized prefix.
-_PUBLIC_URL_BOUNDARY = r"(?:^|(?<=[\s\"'`=:(\[,;<@|&>]))"
-_PUBLIC_PATH_BOUNDARY_CHARS = frozenset("\"'`=:(,[;<@|&")
-_SPACE_COMPONENT_BOUNDARY_CHARS = frozenset("=:\"'`")
+_PUBLIC_URL_BOUNDARY = r"(?:^|(?<=[\s\"'`=:()\[\]{},;<@|&>]))"
+_PUBLIC_PATH_BOUNDARY_CHARS = frozenset("\"'`=:()[],;{}<@|&")
+_SPACE_COMPONENT_BOUNDARY_CHARS = frozenset("=:\"'`)]}")
 _ABSOLUTE_ROOT_COMPONENTS = frozenset(
     {
         "etc",
@@ -136,17 +136,18 @@ def _line_contains_local_path(line: str) -> bool:
         index = line.find("\\", index + 1)
 
     index = line.find(":")
-    while index >= 1:
-        drive_start = index - 1
-        if (
-            line[drive_start].isalpha()
-            and line[index + 1 : index + 2] in {"/", "\\"}
-            and (
-                _has_public_value_boundary(line, drive_start)
-                or _has_shell_redirect_prefix(line, drive_start)
-            )
-        ):
-            return True
+    while index >= 0:
+        if index >= 1:
+            drive_start = index - 1
+            if (
+                line[drive_start].isalpha()
+                and line[index + 1 : index + 2] in {"/", "\\"}
+                and (
+                    _has_public_value_boundary(line, drive_start)
+                    or _has_shell_redirect_prefix(line, drive_start)
+                )
+            ):
+                return True
         index = line.find(":", index + 1)
 
     for option in ("-I", "-L"):

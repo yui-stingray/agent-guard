@@ -33,6 +33,36 @@ def add_render_report_parser(top) -> None:
     render_report.add_argument("--output", default="", help="optional output path; stdout when omitted")
 
 
+def _emit_report_error(
+    args: argparse.Namespace,
+    *,
+    root: Path,
+    input_arg: str,
+    error: str,
+) -> int:
+    payload = result_payload(
+        scanner="report",
+        status="error",
+        exit_code=2,
+        policy_arg=input_arg,
+        root=root,
+        error=error,
+        error_paths=[input_arg],
+        extra={
+            "command": "render-report",
+            "report": {
+                "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                "format": args.format,
+                "sanitized": True,
+                "source": "json",
+            },
+        },
+    )
+    payload = sanitize_public_mapping(payload)
+    emit_report_output(render_report_output(payload, args.format), args.output)
+    return 2
+
+
 def run_report_render(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     input_arg = str(args.input).strip()
@@ -41,52 +71,22 @@ def run_report_render(args: argparse.Namespace) -> int:
         if not isinstance(payload, dict):
             raise ValueError("report JSON root must be an object")
     except Exception as exc:
-        payload = result_payload(
-            scanner="report",
-            status="error",
-            exit_code=2,
-            policy_arg=input_arg,
+        return _emit_report_error(
+            args,
             root=root,
+            input_arg=input_arg,
             error=scrub_report_error_message(str(exc)),
-            error_paths=[input_arg],
-            extra={
-                "command": "render-report",
-                "report": {
-                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
-                    "format": args.format,
-                    "sanitized": True,
-                    "source": "json",
-                },
-            },
         )
-        payload = sanitize_public_mapping(payload)
-        emit_report_output(render_report_output(payload, args.format), args.output)
-        return 2
 
     try:
         payload = sanitize_public_mapping(payload)
     except ValueError:
-        payload = result_payload(
-            scanner="report",
-            status="error",
-            exit_code=2,
-            policy_arg=input_arg,
+        return _emit_report_error(
+            args,
             root=root,
+            input_arg=input_arg,
             error="public sanitization produced duplicate mapping keys",
-            error_paths=[input_arg],
-            extra={
-                "command": "render-report",
-                "report": {
-                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
-                    "format": args.format,
-                    "sanitized": True,
-                    "source": "json",
-                },
-            },
         )
-        payload = sanitize_public_mapping(payload)
-        emit_report_output(render_report_output(payload, args.format), args.output)
-        return 2
     emit_report_output(render_report_output(payload, args.format), args.output)
     exit_code = payload.get("exit_code", 0)
     return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0
