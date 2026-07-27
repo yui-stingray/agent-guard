@@ -309,6 +309,9 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "do not dump raw YAML content" in docs
     assert "raw repository/content/digest hash values" in docs_single_line
     assert "`partialFingerprints` are deterministic hashes of sanitized" in docs_single_line
+    assert "replaced as a whole" in docs_single_line
+    assert "mapping keys become identical after sanitization" in docs_single_line
+    assert "fails closed with a generic error" in docs_single_line
 
 
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
@@ -628,4 +631,4 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
     assert "currently unreleased" not in surface_delta_section
     assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
-    assert "yui-stingray/agent-guard@v0.3.2" in surface_delta_section
+    assert "yui-stingray/agent-guard@v0.3.3" in surface_delta_section

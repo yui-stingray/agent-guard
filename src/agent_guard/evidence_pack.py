@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path, PureWindowsPath
 
-from .public_redaction import RAW_URL_PUBLIC_TEXT_RE, sanitize_public_mapping
+from .public_redaction import contains_raw_url, sanitize_public_mapping
 
 
 EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION = "agent-guard.evidence_pack_manifest.v1"
@@ -17,7 +17,7 @@ def safe_artifact_path(path: str, *, root: Path | None = None) -> str:
     text = str(path).strip()
     if not text:
         return ""
-    if RAW_URL_PUBLIC_TEXT_RE.search(text):
+    if contains_raw_url(text):
         return "<redacted-url>"
     windows_path = PureWindowsPath(text)
     if windows_path.is_absolute() or windows_path.drive or text.startswith("\\\\"):

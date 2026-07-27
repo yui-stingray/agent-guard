@@ -250,11 +250,17 @@ reasons; they do not dump raw YAML content, token-shaped filenames, URLs, scope
 strings, or absolute local paths.
 
 Report output omits raw context text, snippets, matched text, raw regex
-patterns, raw URLs, raw workflow commands, workflow run bodies, hash values,
-sensitive material, base ref names, and absolute local paths. Baseline findings
-are not approval decisions or tamper-proof authorization. This guarantee
-applies to the sanitized report/render-report/evidence artifact surfaces, not
-to raw scanner JSON.
+patterns, repository-controlled raw URLs, raw workflow commands, workflow run
+bodies, hash values, sensitive material, base ref names, and absolute local
+paths. Baseline findings are not approval decisions or tamper-proof
+authorization. This guarantee applies to the sanitized
+report/render-report/evidence artifact surfaces, not to raw scanner JSON.
+
+For copied metadata, a string containing a recognized HTTP(S)- or file-scheme
+value or absolute local path is replaced as a whole rather than preserving an
+ambiguous suffix. If two mapping keys become identical after sanitization,
+emission fails closed with a generic error instead of silently overwriting
+evidence.
 
 ## SARIF Thin Adapter
 
@@ -265,9 +271,11 @@ locations, messages, and fingerprints come from the existing deterministic
 payload.
 
 SARIF output intentionally omits snippets, raw context text, matched text, raw
-regex patterns, raw URLs, raw workflow commands, workflow run bodies, raw
-repository/content/digest hash values, sensitive material, and absolute local
-paths. Its `partialFingerprints` are deterministic hashes of sanitized
+regex patterns, repository-controlled raw URLs, raw workflow commands, workflow
+run bodies, raw repository/content/digest hash values, sensitive material, and
+absolute local paths. The fixed SARIF 2.1.0 `$schema` URI and agent-guard tool
+`informationUri` are format/tool metadata, not copied repository evidence. Its
+`partialFingerprints` are deterministic hashes of sanitized
 rule/location/message fields for code-scanning deduplication. Uploading the
 SARIF file to GitHub code scanning is a consumer workflow choice because it
 requires additional repository permissions.

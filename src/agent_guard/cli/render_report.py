@@ -63,8 +63,30 @@ def run_report_render(args: argparse.Namespace) -> int:
         emit_report_output(render_report_output(payload, args.format), args.output)
         return 2
 
-    payload = sanitize_public_mapping(payload)
+    try:
+        payload = sanitize_public_mapping(payload)
+    except ValueError:
+        payload = result_payload(
+            scanner="report",
+            status="error",
+            exit_code=2,
+            policy_arg=input_arg,
+            root=root,
+            error="public sanitization produced duplicate mapping keys",
+            error_paths=[input_arg],
+            extra={
+                "command": "render-report",
+                "report": {
+                    "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                    "format": args.format,
+                    "sanitized": True,
+                    "source": "json",
+                },
+            },
+        )
+        payload = sanitize_public_mapping(payload)
+        emit_report_output(render_report_output(payload, args.format), args.output)
+        return 2
     emit_report_output(render_report_output(payload, args.format), args.output)
     exit_code = payload.get("exit_code", 0)
     return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0
-

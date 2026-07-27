@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from bench.alignment.run import official_sarif_schema_errors
+from agent_guard.public_redaction import contains_raw_url
 from tests.cli.helpers import create_report_violation_fixture_repo, run_cli
 
 
@@ -28,6 +29,7 @@ def test_report_sarif_validates_against_official_2_1_0_schema(tmp_path: Path) ->
     assert result.returncode == 1
     payload = json.loads(result.stdout)
     assert official_sarif_schema_errors(payload) == []
+    assert payload["$schema"] == "https://json.schemastore.org/sarif-2.1.0.json"
     assert payload["version"] == "2.1.0"
     assert isinstance(payload["runs"], list)
     assert payload["runs"]
@@ -35,6 +37,7 @@ def test_report_sarif_validates_against_official_2_1_0_schema(tmp_path: Path) ->
     run = payload["runs"][0]
     driver = run["tool"]["driver"]
     assert driver["name"] == "agent-guard"
+    assert driver["informationUri"] == "https://github.com/yui-stingray/agent-guard"
     assert isinstance(driver["rules"], list)
     assert driver["rules"]
 
@@ -46,6 +49,10 @@ def test_report_sarif_validates_against_official_2_1_0_schema(tmp_path: Path) ->
     for item in run["results"]:
         result_item = item if isinstance(item, dict) else {}
         _assert_result_references_declared_rule(result_item, declared_rule_ids)
+
+    payload["$schema"] = "<sarif-schema>"
+    driver["informationUri"] = "<tool-information>"
+    assert not contains_raw_url(json.dumps(payload))
 
 
 def _assert_result_references_declared_rule(result_item: dict[str, Any], declared_rule_ids: set[str]) -> None:

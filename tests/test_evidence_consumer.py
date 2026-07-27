@@ -12,7 +12,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_guard.consumer import load_payload, load_report_schema, main as packaged_consumer_main, validate_report
+from agent_guard.consumer import (
+    LOCAL_PATH_RE,
+    RAW_URL_RE,
+    load_payload,
+    load_report_schema,
+    main as packaged_consumer_main,
+    validate_report,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +39,15 @@ def run_consumer(path: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def test_exported_redaction_regexes_keep_legacy_matching_semantics() -> None:
+    assert LOCAL_PATH_RE.search("command>/home/synthetic/private.txt")
+    assert LOCAL_PATH_RE.search("-L/home/synthetic/lib")
+    assert not LOCAL_PATH_RE.search("ratio / denominator and unit / second")
+    assert RAW_URL_RE.search("https://example.invalid/private")
+    assert not RAW_URL_RE.search("https:example.invalid/private")
+    assert not RAW_URL_RE.search("file://localhost/home/synthetic/private")
 
 
 def test_evidence_consumer_accepts_public_sample() -> None:
@@ -153,9 +169,45 @@ def test_evidence_consumer_rejects_secret_and_hash_shaped_values(tmp_path: Path)
         ("sha256_value", "a" * 64, "raw sha256-shaped value"),
         ("raw_url", "http" + "s://example.com/private", "raw URL"),
         ("mixed_case_raw_url", "HtTpS://example.com/private", "raw URL"),
+        ("raw_url_with_spaces", "https://example.com/private folder/report", "raw URL"),
+        ("malformed_raw_url", "HTTPS:/example.com/private", "raw URL"),
+        ("opaque_raw_url", "https:example.com/private", "raw URL"),
+        ("local_file_uri", "file://localhost/home/example/private", "raw URL"),
         ("wsl_windows_user_path", "/mnt/c/Users/example/private.txt", "raw local path"),
+        ("unix_root_path", "/root/synthetic/private.txt", "raw local path"),
+        ("generic_posix_path", "/workspace/synthetic/private.txt", "raw local path"),
+        ("space_component_posix_path", "/ synthetic/private.txt", "raw local path"),
+        ("single_space_component_posix_path", "/ synthetic", "raw local path"),
+        ("redirected_posix_path", "2>/home/synthetic/private.txt", "raw local path"),
+        ("attached_redirected_posix_path", "command>/home/synthetic/private.txt", "raw local path"),
+        ("attached_fd_redirected_posix_path", "command2>/home/synthetic/private.txt", "raw local path"),
+        ("attached_combined_redirected_posix_path", "command&>/home/synthetic/private.txt", "raw local path"),
+        ("attached_semicolon_redirected_posix_path", "command;2>/home/synthetic/private.txt", "raw local path"),
+        ("compact_pipeline_posix_path", "command|/home/synthetic/private.txt", "raw local path"),
+        ("compact_or_posix_path", "command||/home/synthetic/private.txt", "raw local path"),
+        ("compact_and_posix_path", "command&&/home/synthetic/private.txt", "raw local path"),
+        ("embedded_space_component_posix_path", "artifact=/ synthetic", "raw local path"),
+        ("labelled_space_component_posix_path", "path: / synthetic", "raw local path"),
+        ("input_then_output_redirect_posix_path", "command<input >/home/synthetic/private.txt", "raw local path"),
+        ("adjacent_input_output_redirect_posix_path", "command<input>/home/synthetic/private.txt", "raw local path"),
+        ("tag_prefixed_posix_path", "<img>/home/synthetic/private.txt", "raw local path"),
+        ("nested_tag_prefixed_posix_path", "bang!/<img src=x>/home/synthetic/private.txt", "raw local path"),
+        ("response_posix_path", "@/workspace/synthetic/private.txt", "raw local path"),
+        ("compiler_posix_path", "-I/home/synthetic/include", "raw local path"),
+        ("linker_posix_path", "-L/home/synthetic/lib", "raw local path"),
+        ("redirected_compiler_posix_path", "command>-I/home/synthetic/include", "raw local path"),
+        ("redirected_linker_posix_path", "command>-L/home/synthetic/lib", "raw local path"),
         ("windows_drive_path", r"D:\synthetic\private\report.json", "raw local path"),
+        ("compiler_windows_path", r"-ID:\synthetic\include", "raw local path"),
+        ("linker_windows_path", r"-LD:\synthetic\lib", "raw local path"),
+        ("attached_redirected_windows_path", r"command>D:\synthetic\private\report.json", "raw local path"),
+        ("compact_pipeline_windows_path", r"command|D:\synthetic\private\report.json", "raw local path"),
+        ("input_then_output_redirect_windows_path", r"command<input >D:\synthetic\private\report.json", "raw local path"),
+        ("adjacent_input_output_redirect_windows_path", r"command<input>D:\synthetic\private\report.json", "raw local path"),
+        ("tag_prefixed_windows_path", r"<img>D:\synthetic\private\report.json", "raw local path"),
+        ("windows_drive_space_path", r"D:\ synthetic\private\report.json", "raw local path"),
         ("windows_unc_path", r"\\synthetic-host\private\report.json", "raw local path"),
+        ("redirected_windows_unc_path", r"command>\\synthetic-host\private\report.json", "raw local path"),
         ("private_key", "-----BEGIN " + "PRIVATE KEY-----", "secret-shaped value"),
     ]
 

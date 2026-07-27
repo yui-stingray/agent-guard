@@ -9,11 +9,18 @@ from collections.abc import Mapping, Sequence
 import re
 from typing import Any
 
-from ..public_redaction import LOCAL_PATH_PUBLIC_TEXT_RE, SECRET_SHAPED_PUBLIC_TEXT_RE
+from ..public_redaction import (
+    LOCAL_PATH_PUBLIC_TEXT_RE,
+    SECRET_SHAPED_PUBLIC_TEXT_RE,
+    contains_local_path,
+    contains_raw_url,
+)
 from ._schema import require
 
 
 FORBIDDEN_PUBLIC_KEYS = frozenset({"matched_text", "raw_regex", "snippet"})
+# Retained with their 0.3.2 import and matching semantics. Consumer validation
+# uses the shared predicates above; these regex helpers are not authoritative.
 LOCAL_PATH_RE = re.compile(
     rf"(?:{LOCAL_PATH_PUBLIC_TEXT_RE.pattern}|"
     r"(?:^|[\s\"'=:])(?:/(?:home|Users)/|[A-Za-z]:[\\/]+Users[\\/]+))"
@@ -27,8 +34,8 @@ SECRET_VALUE_RE = re.compile(
 
 
 def validate_public_text_shape(text: str, *, path: str) -> None:
-    require(not LOCAL_PATH_RE.search(text), f"{path} contains a raw local path")
-    require(not RAW_URL_RE.search(text), f"{path} contains a raw URL")
+    require(not contains_raw_url(text), f"{path} contains a raw URL")
+    require(not contains_local_path(text), f"{path} contains a raw local path")
     require(not SHA256_VALUE_RE.search(text), f"{path} contains a raw sha256-shaped value")
     require(not SECRET_VALUE_RE.search(text), f"{path} contains a secret-shaped value")
 
