@@ -14,6 +14,9 @@ from pathlib import Path
 import agent_guard
 
 
+STANDALONE_CONSUMER_TIMEOUT_SECONDS = 120.0
+
+
 def test_public_api_exports_all_scanners() -> None:
     assert callable(agent_guard.scan_urls)
     assert callable(agent_guard.scan_context_files)
@@ -138,6 +141,7 @@ def test_public_scanners_support_unguarded_consumer_with_guarded_parity(
             capture_output=True,
             check=False,
             text=True,
+            timeout=STANDALONE_CONSUMER_TIMEOUT_SECONDS,
         )
 
         assert result.returncode == 0

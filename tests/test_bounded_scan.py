@@ -24,6 +24,7 @@ from agent_guard import bounded_scan
 from agent_guard.bounded_scan import run_isolated_scan
 
 
+STANDALONE_CONSUMER_TIMEOUT_SECONDS = 30.0
 _PARENT_THREAD_LOCK = threading.Lock()
 
 
@@ -87,6 +88,7 @@ def test_default_isolated_scan_supports_standalone_programmatic_call(
         capture_output=True,
         check=False,
         text=True,
+        timeout=STANDALONE_CONSUMER_TIMEOUT_SECONDS,
     )
 
     assert result.returncode == 0
