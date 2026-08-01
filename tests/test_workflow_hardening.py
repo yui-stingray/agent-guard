@@ -64,6 +64,7 @@ def test_ci_runs_packaged_action_consumer_smoke() -> None:
     parsed = yaml.safe_load(workflow)
     action_smoke = parsed["jobs"]["action-smoke"]
     assert action_smoke["name"] == "packaged action smoke (py${{ matrix.python-version }})"
+    assert action_smoke["strategy"]["fail-fast"] is False
     assert action_smoke["strategy"]["matrix"]["python-version"] == advertised_python_versions()
     action_step = next(step for step in action_smoke["steps"] if step.get("uses") == "./")
     assert action_step["with"]["python-version"] == "${{ matrix.python-version }}"
