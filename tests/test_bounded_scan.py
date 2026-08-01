@@ -5,6 +5,7 @@ Why: keep Windows-style spawn behavior compatible with the CLI entry point.
 
 from __future__ import annotations
 
+import _thread
 import multiprocessing
 import os
 import subprocess
@@ -49,14 +50,15 @@ def test_isolated_scan_supports_spawn_context() -> None:
 
 
 @pytest.mark.skipif(
-    os.name != "posix" or "fork" not in multiprocessing.get_all_start_methods(),
-    reason="requires the single-threaded POSIX compatibility path",
+    os.name != "posix" or "forkserver" not in multiprocessing.get_all_start_methods(),
+    reason="requires the POSIX forkserver path",
 )
-def test_default_isolated_scan_supports_top_level_programmatic_call() -> None:
+def test_default_isolated_scan_supports_guarded_programmatic_call() -> None:
     script = (
         "from agent_guard.bounded_scan import run_isolated_scan\n"
         "from operator import add\n"
-        "print(run_isolated_scan(add, 1, 2, timeout_error='timeout', runtime_error='failed'))\n"
+        "if __name__ == '__main__':\n"
+        "    print(run_isolated_scan(add, 1, 2, timeout_error='timeout', runtime_error='failed'))\n"
     )
 
     result = subprocess.run(
@@ -96,6 +98,30 @@ def test_default_isolated_scan_does_not_inherit_parent_thread_locks() -> None:
 
     assert result is True
     assert not holder.is_alive()
+
+
+@pytest.mark.skipif(
+    os.name != "posix"
+    or "forkserver" not in multiprocessing.get_all_start_methods(),
+    reason="requires POSIX forkserver",
+)
+def test_default_context_avoids_fork_with_unregistered_low_level_thread() -> None:
+    held = threading.Event()
+    release = threading.Event()
+    stopped = threading.Event()
+
+    def hold_lock() -> None:
+        held.set()
+        release.wait(timeout=5)
+        stopped.set()
+
+    _thread.start_new_thread(hold_lock, ())
+    assert held.wait(timeout=1)
+    try:
+        assert bounded_scan._default_context().get_start_method() == "forkserver"
+    finally:
+        release.set()
+        assert stopped.wait(timeout=1)
 
 
 def test_isolated_scan_rejects_oversized_result_with_sanitized_error() -> None:

@@ -19,13 +19,12 @@ POSIX host. These wrapper limits do not restrict the language or operating
 system represented by the repository files being scanned, and they do not
 reduce the Python CLI's Windows support.
 
-Isolated scanner workers preserve top-level programmatic calls for
-single-threaded POSIX processes. If the caller already has multiple threads,
-the scanner selects `forkserver` (or `spawn` when unavailable) so workers do not
-inherit parent locks; programmatic entry points in that case must use the normal
-`if __name__ == "__main__":` guard. Windows programmatic entry points have the
-same guard requirement because they use `spawn`. The packaged CLI and Action
-entry points already provide that guard.
+Isolated scanner workers use `forkserver` on POSIX hosts where it is available
+and otherwise use `spawn`; they do not automatically select `fork` because the
+parent process may contain Python or native threads whose locks must not be
+inherited. Programmatic entry points must therefore use the normal
+`if __name__ == "__main__":` guard. The packaged CLI and Action entry points
+already provide that guard.
 
 ## Packaged Evidence Schemas
 
