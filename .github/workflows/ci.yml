@@ -87,13 +87,10 @@ jobs:
             --output "$report"
           report_status=$?
           set -e
+          # Exit 1 is a generated diagnostic report with findings, not a fatal error.
           test "$report_status" -le 1
           test -f "$report"
-          set +e
           python -m agent_guard.consumer "$report"
-          consumer_status=$?
-          set -e
-          test "$consumer_status" = "$report_status"
 
   test:
     name: pytest (py${{ matrix.python-version }})

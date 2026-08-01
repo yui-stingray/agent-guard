@@ -534,7 +534,7 @@ def test_ci_has_focused_windows_cli_contract() -> None:
     assert 'python -m agent_guard.consumer "$report"' in commands
     assert 'test "$report_status" -le 1' in commands
     assert 'test -f "$report"' in commands
-    assert 'test "$consumer_status" = "$report_status"' in commands
+    assert "consumer_status" not in commands
 
 
 def test_release_workflow_attests_built_distributions() -> None:
