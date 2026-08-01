@@ -16,10 +16,12 @@ import tarfile
 import time
 import tomllib
 import zipfile
+import zlib
 from pathlib import Path
 from typing import BinaryIO
 
 import agent_guard
+from packaging.requirements import Requirement
 import pytest
 import scripts.check_wheel_contract as wheel_contract
 
@@ -29,6 +31,38 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
+
+
+def _write_raw_wheel_metadata(
+    wheel: Path,
+    version: str,
+    payload: bytes,
+    *,
+    compression: int = zipfile.ZIP_STORED,
+) -> None:
+    metadata_name = f"yui_agent_guard-{version}.dist-info/METADATA"
+    with zipfile.ZipFile(wheel, "w", compression=compression) as archive:
+        archive.writestr(metadata_name, payload)
+
+
+def _write_wheel_metadata(
+    wheel: Path,
+    version: str,
+    requirements: list[str],
+) -> None:
+    metadata_lines = [
+        "Metadata-Version: 2.4",
+        "Name: yui-agent-guard",
+        f"Version: {version}",
+        *(f"Requires-Dist: {requirement}" for requirement in requirements),
+        "",
+        "",
+    ]
+    _write_raw_wheel_metadata(
+        wheel,
+        version,
+        "\n".join(metadata_lines).encode("utf-8"),
+    )
 
 
 def pyproject_version() -> str:
@@ -548,6 +582,167 @@ def test_wheel_contract_requires_exact_safe_wheel_members(tmp_path: Path) -> Non
         archive.writestr(symlink, b"target")
     with pytest.raises(RuntimeError, match="members do not match contract"):
         wheel_contract.validate_wheel_members(symlink_wheel, expected)
+
+
+def test_wheel_contract_accepts_equivalent_runtime_dependency_metadata(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    _write_wheel_metadata(wheel, version, ["pyyaml<7,>=6"])
+
+    wheel_contract.validate_wheel_runtime_requirement(
+        wheel,
+        version,
+        Requirement("PyYAML>=6,<7"),
+    )
+
+
+@pytest.mark.parametrize(
+    "requirements",
+    [
+        [],
+        ["PyYAML>=6,<8"],
+        ["PyYAML>=6,<7", "PyYAML>=6,<7"],
+        ["PyYAML>=6,<7", 'PyYAML<6.5; sys_platform == "win32"'],
+    ],
+)
+def test_wheel_contract_rejects_missing_or_mismatched_runtime_dependency_metadata(
+    requirements: list[str],
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    _write_wheel_metadata(wheel, version, requirements)
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel runtime dependency metadata does not match contract$",
+    ):
+        wheel_contract.validate_wheel_runtime_requirement(
+            wheel,
+            version,
+            Requirement("PyYAML>=6,<7"),
+        )
+
+
+def test_wheel_contract_rejects_malformed_runtime_dependency_metadata(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    private_detail = "synthetic malformed metadata detail"
+    _write_raw_wheel_metadata(
+        wheel,
+        version,
+        (
+            "Metadata-Version: 2.4\n"
+            "Name: yui-agent-guard\n"
+            f"Version: {version}\n"
+            "Requires-Dist: PyYAML>=6,<7\n"
+            f"{private_detail}\n\n"
+        ).encode("utf-8"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel runtime dependency metadata does not match contract$",
+    ) as exc_info:
+        wheel_contract.validate_wheel_runtime_requirement(
+            wheel,
+            version,
+            Requirement("PyYAML>=6,<7"),
+        )
+
+    assert private_detail not in str(exc_info.value)
+
+
+def test_wheel_contract_rejects_encrypted_runtime_dependency_metadata(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    _write_wheel_metadata(wheel, version, ["PyYAML>=6,<7"])
+    content = bytearray(wheel.read_bytes())
+    local_header = content.index(b"PK\x03\x04")
+    central_header = content.index(b"PK\x01\x02")
+    for flags_offset in (local_header + 6, central_header + 8):
+        flags = struct.unpack_from("<H", content, flags_offset)[0]
+        struct.pack_into("<H", content, flags_offset, flags | 0x1)
+    wheel.write_bytes(content)
+
+    metadata_name = f"yui_agent_guard-{version}.dist-info/METADATA"
+    wheel_contract.validate_wheel_members(wheel, {metadata_name})
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel runtime dependency metadata does not match contract$",
+    ):
+        wheel_contract.validate_wheel_runtime_requirement(
+            wheel,
+            version,
+            Requirement("PyYAML>=6,<7"),
+        )
+
+
+def test_wheel_contract_sanitizes_runtime_dependency_decompression_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    private_detail = "synthetic private decompression detail"
+    _write_wheel_metadata(wheel, version, ["PyYAML>=6,<7"])
+
+    def failed_read(
+        _archive: zipfile.ZipFile,
+        _member: zipfile.ZipInfo,
+    ) -> bytes:
+        raise zlib.error(private_detail)
+
+    monkeypatch.setattr(wheel_contract.zipfile.ZipFile, "read", failed_read)
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel runtime dependency metadata does not match contract$",
+    ) as exc_info:
+        wheel_contract.validate_wheel_runtime_requirement(
+            wheel,
+            version,
+            Requirement("PyYAML>=6,<7"),
+        )
+
+    assert private_detail not in str(exc_info.value)
+
+
+def test_wheel_contract_rejects_unsupported_runtime_metadata_compression(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    metadata_lines = [
+        "Metadata-Version: 2.4",
+        "Name: yui-agent-guard",
+        f"Version: {version}",
+        "Requires-Dist: PyYAML>=6,<7",
+        "",
+        "",
+    ]
+    _write_raw_wheel_metadata(
+        wheel,
+        version,
+        "\n".join(metadata_lines).encode("utf-8"),
+        compression=zipfile.ZIP_LZMA,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel runtime dependency metadata does not match contract$",
+    ):
+        wheel_contract.validate_wheel_runtime_requirement(
+            wheel,
+            version,
+            Requirement("PyYAML>=6,<7"),
+        )
 
 
 def test_wheel_contract_rejects_member_limit_before_zipfile_construction(

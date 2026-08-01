@@ -5,6 +5,8 @@ Why: editable installs can hide packaging mistakes; releases must prove the whee
 
 from __future__ import annotations
 
+from email.parser import BytesParser
+from email.policy import compat32
 import hashlib
 from importlib import metadata
 import json
@@ -1073,6 +1075,76 @@ def validate_wheel_members(wheel: Path, expected: set[str]) -> None:
         raise RuntimeError("release archive members do not match contract")
 
 
+def validate_wheel_runtime_requirement(
+    wheel: Path,
+    version: str,
+    expected: Requirement,
+) -> None:
+    """Require the built wheel to preserve one source runtime dependency."""
+
+    metadata_name = f"yui_agent_guard-{version}.dist-info/METADATA"
+    try:
+        with wheel.open("rb") as archive_file:
+            _preflight_wheel_archive(archive_file)
+            archive_file.seek(0)
+            with zipfile.ZipFile(archive_file) as archive:
+                members = [
+                    member
+                    for member in archive.infolist()
+                    if member.filename == metadata_name
+                ]
+                if len(members) != 1:
+                    raise ValueError
+                member = members[0]
+                mode = member.external_attr >> 16
+                if (
+                    member.is_dir()
+                    or stat.S_IFMT(mode) not in {0, stat.S_IFREG}
+                    or member.flag_bits & 0x1
+                    or member.compress_type
+                    not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                    or member.file_size > MAX_ARCHIVE_MEMBER_BYTES
+                ):
+                    raise ValueError
+                payload = archive.read(member)
+        message = BytesParser(policy=compat32).parsebytes(
+            payload,
+            headersonly=True,
+        )
+        if message.defects:
+            raise ValueError
+        requirements = [
+            Requirement(str(raw_requirement))
+            for raw_requirement in message.get_all("Requires-Dist", [])
+        ]
+    except (
+        EOFError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        zlib.error,
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+    ):
+        raise RuntimeError(
+            "wheel runtime dependency metadata does not match contract"
+        ) from None
+
+    expected_name = canonicalize_name(expected.name)
+    matches = [
+        requirement
+        for requirement in requirements
+        if canonicalize_name(requirement.name) == expected_name
+    ]
+    if matches != [expected]:
+        raise RuntimeError(
+            "wheel runtime dependency metadata does not match contract"
+        )
+
+
 def validate_sdist_members(sdist: Path, expected: set[str]) -> None:
     observed: set[str] = set()
     total_size = 0
@@ -1210,6 +1282,11 @@ def main() -> int:
     wheel, sdist = find_release_distributions(version)
     tracked = tracked_release_files()
     validate_wheel_members(wheel, expected_wheel_members(version, tracked))
+    validate_wheel_runtime_requirement(
+        wheel,
+        version,
+        project_runtime_requirement("PyYAML"),
+    )
     validate_sdist_members(sdist, expected_sdist_members(version, tracked))
     with tempfile.TemporaryDirectory(prefix="agent-guard-wheel-") as temp_dir:
         temp = Path(temp_dir)
