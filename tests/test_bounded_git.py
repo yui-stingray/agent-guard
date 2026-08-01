@@ -214,8 +214,11 @@ def test_bounded_process_kills_descendant_holding_stdout_and_joins_reader(
         "import time\n"
         "if os.name == 'posix':\n"
         "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
-        "Path(sys.argv[1]).write_text(str(os.getpid()), encoding='ascii')\n"
+        "pid_path = Path(sys.argv[1])\n"
+        "staged_pid_path = pid_path.with_suffix('.tmp')\n"
+        "staged_pid_path.write_text(str(os.getpid()), encoding='ascii')\n"
         "print(os.getpid(), flush=True)\n"
+        "os.replace(staged_pid_path, pid_path)\n"
         "time.sleep(30)\n",
         encoding="utf-8",
     )

@@ -64,7 +64,8 @@ def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> N
         with pytest.raises(ValueError, match="^workflow scan target must stay under repo root$"):
             workflow_guard._read_repo_bound_bytes(linked, repo, max_bytes=1024)
 
-        # Simulate an ancestor swap after resolution but before the open.
+        # The final-handle check also rejects an already-external path passed
+        # directly to the opener, independently of caller-side resolution.
         with pytest.raises(ValueError, match="^api scan target must stay under repo root$"):
             api_guard._open_repo_file_windows(resolved_root, linked)
         with pytest.raises(ValueError, match="^content scan target must stay under repo root$"):
