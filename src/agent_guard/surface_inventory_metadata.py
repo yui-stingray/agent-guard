@@ -5,10 +5,20 @@ Why: keep repository metadata discovery separate from workflow and MCP scanners.
 
 from __future__ import annotations
 
+import os
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from .bounded_git import (
+    UNTRUSTED_GIT_ENVIRONMENT_VARIABLES,
+    BoundedGitOutputLimitError,
+    BoundedGitProcessError,
+    run_bounded_git,
+    sanitized_git_environment,
+)
 from .surface_inventory_core import (
+    is_in_opaque_directory,
     is_repo_bound_path,
     parse_agent_guard_command,
     rel_path,
@@ -17,6 +27,99 @@ from .surface_inventory_core import (
 
 
 DOC_GLOBS = ("README.md", "docs/*.md")
+EVIDENCE_INDEX_PATHS = (".agent-guard/evidence", "docs/evidence-samples")
+ERROR_EVIDENCE_INDEX = "committed evidence metadata could not be verified"
+GIT_METADATA_TIMEOUT_SECONDS = 5.0
+MAX_EVIDENCE_INDEX_OUTPUT_BYTES = 4 * 1024 * 1024
+MAX_EVIDENCE_ARTIFACT_FILES = 10_000
+MAX_EVIDENCE_INDEX_ENTRIES = MAX_EVIDENCE_ARTIFACT_FILES
+_REGULAR_FILE_MODES = frozenset({"100644", "100755"})
+_GIT_METADATA_ROUTING_ENVIRONMENT_VARIABLES = (
+    UNTRUSTED_GIT_ENVIRONMENT_VARIABLES
+)
+_GENERATED_EVIDENCE_NAMES = frozenset(
+    {
+        "agent-guard-report.json",
+        "agent-guard-report.md",
+        "agent-guard-results.sarif",
+        "agent-guard-annotations.txt",
+        "agent-guard-conformance.json",
+        "agent-guard-evidence-pack.json",
+        "agent-surface-inventory.json",
+    }
+)
+
+
+def _git_metadata_environment() -> dict[str, str]:
+    """Return the shared configuration-isolated Git environment."""
+
+    return sanitized_git_environment()
+
+
+def _run_git_metadata(
+    root: Path,
+    args: list[str],
+    *,
+    input_data: bytes | None = None,
+) -> subprocess.CompletedProcess[bytes]:
+    try:
+        return run_bounded_git(
+            root,
+            args,
+            timeout_seconds=GIT_METADATA_TIMEOUT_SECONDS,
+            max_output_bytes=MAX_EVIDENCE_INDEX_OUTPUT_BYTES,
+            input_data=input_data,
+        )
+    except (BoundedGitOutputLimitError, BoundedGitProcessError):
+        raise ValueError(ERROR_EVIDENCE_INDEX) from None
+
+
+def _has_valid_git_marker(root: Path) -> bool:
+    for candidate in (root, *root.parents):
+        marker = candidate / ".git"
+        if not marker.exists():
+            continue
+        try:
+            resolved = _run_git_metadata(
+                root,
+                ["rev-parse", "--resolve-git-dir", str(marker)],
+            )
+        except ValueError:
+            if candidate == root or _looks_like_git_marker(marker):
+                return True
+            continue
+        if resolved.returncode == 0:
+            return True
+        if candidate == root or _looks_like_git_marker(marker):
+            return True
+    return False
+
+
+def _looks_like_git_marker(marker: Path) -> bool:
+    if marker.is_dir():
+        return (marker / "HEAD").is_file()
+    if not marker.is_file():
+        return False
+    try:
+        with marker.open("rb") as handle:
+            prefix = handle.read(4_097)
+    except OSError:
+        return False
+    return len(prefix) <= 4_096 and prefix.lstrip().startswith(b"gitdir:")
+
+
+def _is_git_worktree(root: Path) -> bool:
+    try:
+        probe = _run_git_metadata(root, ["rev-parse", "--is-inside-work-tree"])
+    except ValueError:
+        if _has_valid_git_marker(root):
+            raise
+        return False
+    if probe.returncode == 0 and probe.stdout.strip() == b"true":
+        return True
+    if _has_valid_git_marker(root):
+        raise ValueError(ERROR_EVIDENCE_INDEX)
+    return False
 
 
 def policy_kind(path: str) -> str:
@@ -79,33 +182,178 @@ def collect_committed_evidence_surfaces(
     *,
     opaque_directories: Sequence[str] = (),
 ) -> list[dict[str, object]]:
+    """Return regular evidence files proven by the repository's Git index.
+
+    Reading paths and blob sizes from the index keeps generated Action outputs
+    and modified working-tree copies from feeding back into their own report.
+    A non-Git materialization cannot prove index membership, so the fallback
+    keeps review samples and nonstandard evidence files while excluding every
+    official generated output name.
+    """
+
+    if not _is_git_worktree(root):
+        return _collect_materialized_evidence_surfaces(
+            root,
+            opaque_directories=opaque_directories,
+        )
+    indexed = _run_git_metadata(
+        root,
+        [
+            "ls-files",
+            "--cached",
+            "--stage",
+            "-z",
+            "--",
+            *EVIDENCE_INDEX_PATHS,
+        ],
+    )
+    if indexed.returncode != 0:
+        raise ValueError(ERROR_EVIDENCE_INDEX)
+
+    entries: list[tuple[str, str]] = []
+    for raw_entry in indexed.stdout.split(b"\0"):
+        if not raw_entry:
+            continue
+        metadata, separator, raw_path = raw_entry.partition(b"\t")
+        fields = metadata.split()
+        if not separator or len(fields) != 3:
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        try:
+            mode = fields[0].decode("ascii")
+            object_id = fields[1].decode("ascii")
+            stage = fields[2].decode("ascii")
+            display = raw_path.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError(ERROR_EVIDENCE_INDEX) from None
+        path = Path(display)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        if not any(
+            display.startswith(f"{base}/")
+            for base in EVIDENCE_INDEX_PATHS
+        ):
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        if stage != "0":
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        if mode not in _REGULAR_FILE_MODES:
+            continue
+        if is_in_opaque_directory(
+            root / path,
+            root=root,
+            opaque_directories=opaque_directories,
+        ):
+            continue
+        entries.append((display, object_id))
+        if len(entries) > MAX_EVIDENCE_INDEX_ENTRIES:
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+
+    if not entries:
+        return []
+
+    object_ids = sorted({object_id for _display, object_id in entries})
+    object_metadata = _run_git_metadata(
+        root,
+        ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+        input_data="".join(f"{object_id}\n" for object_id in object_ids).encode("ascii"),
+    )
+    if object_metadata.returncode != 0:
+        raise ValueError(ERROR_EVIDENCE_INDEX)
+
+    blob_sizes: dict[str, int] = {}
+    for raw_line in object_metadata.stdout.splitlines():
+        try:
+            line = raw_line.decode("ascii")
+        except UnicodeDecodeError:
+            raise ValueError(ERROR_EVIDENCE_INDEX) from None
+        fields = line.split()
+        if len(fields) != 3 or fields[1] != "blob":
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        try:
+            blob_sizes[fields[0]] = int(fields[2])
+        except ValueError:
+            raise ValueError(ERROR_EVIDENCE_INDEX) from None
+
     surfaces: list[dict[str, object]] = []
-    for rel_base in (".agent-guard/evidence", "docs/evidence-samples"):
+    for display, object_id in sorted(entries):
+        size_bytes = blob_sizes.get(object_id)
+        if size_bytes is None:
+            raise ValueError(ERROR_EVIDENCE_INDEX)
+        surfaces.append(
+            {
+                "surface": "evidence_artifact",
+                "path": display,
+                "kind": (
+                    "committed_evidence_sample"
+                    if display.startswith("docs/evidence-samples/")
+                    else "repo_evidence_file"
+                ),
+                "status": "present",
+                "size_bytes": size_bytes,
+            }
+        )
+    return surfaces
+
+
+def _collect_materialized_evidence_surfaces(
+    root: Path,
+    *,
+    opaque_directories: Sequence[str] = (),
+) -> list[dict[str, object]]:
+    """Collect bounded non-Git evidence without admitting official outputs.
+
+    Candidate enumeration is capped before validation and sorting so a hostile
+    directory cannot force an unbounded intermediate collection.
+    """
+
+    candidates: list[tuple[str, Path]] = []
+    for rel_base in EVIDENCE_INDEX_PATHS:
         base = root / rel_base
-        if not is_repo_bound_path(base, root):
+        if is_in_opaque_directory(
+            base,
+            root=root,
+            opaque_directories=opaque_directories,
+        ) or not is_repo_bound_path(base, root):
             continue
         if not base.is_dir():
             continue
-        for path in sorted(
-            repo_bound_glob(
-                root,
-                f"{rel_base}/*",
-                opaque_directories=opaque_directories,
-            )
-        ):
-            if not is_repo_bound_path(path, root):
-                continue
-            if not path.is_file():
-                continue
-            surfaces.append(
-                {
-                    "surface": "evidence_artifact",
-                    "path": rel_path(path, root),
-                    "kind": "committed_evidence_sample" if "docs" in path.parts else "repo_evidence_file",
-                    "status": "present",
-                    "size_bytes": path.stat().st_size,
-                }
-            )
+        try:
+            with os.scandir(base) as entries:
+                for entry in entries:
+                    if len(candidates) >= MAX_EVIDENCE_ARTIFACT_FILES:
+                        raise ValueError(ERROR_EVIDENCE_INDEX)
+                    candidates.append((rel_base, base / entry.name))
+        except OSError:
+            raise ValueError(ERROR_EVIDENCE_INDEX) from None
+
+    surfaces: list[dict[str, object]] = []
+    for rel_base, path in sorted(candidates):
+        if is_in_opaque_directory(
+            path,
+            root=root,
+            opaque_directories=opaque_directories,
+        ) or not is_repo_bound_path(path, root):
+            continue
+        if not path.is_file():
+            continue
+        if rel_base == ".agent-guard/evidence" and path.name in _GENERATED_EVIDENCE_NAMES:
+            continue
+        try:
+            size_bytes = path.stat().st_size
+        except OSError:
+            raise ValueError(ERROR_EVIDENCE_INDEX) from None
+        surfaces.append(
+            {
+                "surface": "evidence_artifact",
+                "path": rel_path(path, root),
+                "kind": (
+                    "committed_evidence_sample"
+                    if rel_base == "docs/evidence-samples"
+                    else "repo_evidence_file"
+                ),
+                "status": "present",
+                "size_bytes": size_bytes,
+            }
+        )
     return surfaces
 
 

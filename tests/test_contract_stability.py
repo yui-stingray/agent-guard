@@ -126,45 +126,55 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.4 - 2026-07-31", maxsplit=1
+    )[0]
+    latest_release = changelog.split("## 0.3.4 - 2026-07-31", maxsplit=1)[1].split(
         "## 0.3.3 - 2026-07-27", maxsplit=1
     )[0]
-    latest_release = changelog.split("## 0.3.3 - 2026-07-27", maxsplit=1)[1].split(
+    previous_release = changelog.split("## 0.3.3 - 2026-07-27", maxsplit=1)[1].split(
         "## 0.3.2 - 2026-07-19", maxsplit=1
     )[0]
-    previous_release = changelog.split("## 0.3.2 - 2026-07-19", maxsplit=1)[1].split(
+    earlier_release = changelog.split("## 0.3.2 - 2026-07-19", maxsplit=1)[1].split(
         "## 0.3.1 - 2026-07-17", maxsplit=1
     )[0]
-    earlier_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
+    older_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
         "## 0.3.0 - 2026-07-17", maxsplit=1
     )[0]
     normalized_latest = " ".join(latest_release.split())
     normalized_previous = " ".join(previous_release.split())
+    normalized_earlier = " ".join(earlier_release.split())
+    normalized_older = " ".join(older_release.split())
+    normalized_unreleased = " ".join(unreleased.split())
 
-    assert headings[:5] == [
+    assert headings[:6] == [
         "## Unreleased",
+        "## 0.3.4 - 2026-07-31",
         "## 0.3.3 - 2026-07-27",
         "## 0.3.2 - 2026-07-19",
         "## 0.3.1 - 2026-07-17",
         "## 0.3.0 - 2026-07-17",
     ]
-    assert not unreleased.strip()
-    assert "bounded P0 public-artifact hygiene patch" in normalized_latest
-    assert "standalone evidence-pack command recursively sanitizes" in normalized_latest
-    assert "recognized HTTP(S)- or file-scheme artifact inputs" in normalized_latest
-    assert "mixed-case URLs" in normalized_latest
-    assert "mapping-key collisions fail closed" in normalized_latest
-    assert "explicit repository-root commands" in normalized_latest
-    assert "Released ahead of the default batch" in normalized_previous
-    assert "repository-root containment fixes" in normalized_previous
-    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_previous
-    assert "top-level `--version` command" in normalized_previous
-    assert "write-capable GitHub Release job" in normalized_previous
-    assert "credentials in its working copy" in normalized_previous
-    assert "dedicated least-privilege job" in normalized_previous
-    assert "Hardened the packaged evidence consumer" in earlier_release
-    assert "AWS access-key-ID-shaped" in earlier_release
-    assert "lower-bound token" in earlier_release
-    assert "WSL-mounted Windows user paths" in earlier_release
+    assert normalized_unreleased == ""
+    assert "Bound API, content, and path policy inputs and scan work" in normalized_latest
+    assert "bounded packaged public-bundle consumer mode" in normalized_latest
+    assert "fresh runner-temporary staging" in normalized_latest
+    assert "bounded P0 public-artifact hygiene patch" in normalized_previous
+    assert "standalone evidence-pack command recursively sanitizes" in normalized_previous
+    assert "recognized HTTP(S)- or file-scheme artifact inputs" in normalized_previous
+    assert "mixed-case URLs" in normalized_previous
+    assert "mapping-key collisions fail closed" in normalized_previous
+    assert "explicit repository-root commands" in normalized_previous
+    assert "Released ahead of the default batch" in normalized_earlier
+    assert "repository-root containment fixes" in normalized_earlier
+    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_earlier
+    assert "top-level `--version` command" in normalized_earlier
+    assert "write-capable GitHub Release job" in normalized_earlier
+    assert "credentials in its working copy" in normalized_earlier
+    assert "dedicated least-privilege job" in normalized_earlier
+    assert "Hardened the packaged evidence consumer" in normalized_older
+    assert "AWS access-key-ID-shaped" in normalized_older
+    assert "lower-bound token" in normalized_older
+    assert "WSL-mounted Windows user paths" in normalized_older
     assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
     assert "surface delta --base-ref <ref>" in changelog
     assert "Recursively sanitized standalone Surface Inventory output" in changelog

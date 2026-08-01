@@ -4,8 +4,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+
+import agent_guard.cli.api as api_cli
+from agent_guard.api_guard import ApiGuardFinding
 
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
 
@@ -59,6 +63,64 @@ def test_api_cli_json_violation(tmp_path: Path) -> None:
     assert payload["finding_count"] == 1
     assert payload["findings"][0]["path"] == "src/bad.py"
 
+def test_api_cli_uses_count_from_the_single_scan_operation(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "scan:\n  include:\n    - src\n  exclude: []\npolicy:\n  allowed_api_patterns: []\n  forbidden_api_patterns: []\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    operation_calls = 0
+
+    def fake_scan_urls_with_count(*, root: Path, policy: dict[str, object]):
+        nonlocal operation_calls
+        operation_calls += 1
+        assert root == tmp_path.resolve()
+        assert policy["scan"] == {"include": ["src"], "exclude": []}
+        return (
+            [
+                ApiGuardFinding(
+                    path="src/bad.py",
+                    line=1,
+                    url="https://api.openai.com/v1/responses",
+                    matched_forbidden_pattern=r"^https://api\.openai\.com/",
+                )
+            ],
+            7,
+        )
+
+    def fail_outside_operation_walk(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("API CLI must not walk outside the isolated scan operation")
+
+    monkeypatch.setattr(api_cli, "scan_urls_with_count", fake_scan_urls_with_count)
+    monkeypatch.setattr(Path, "rglob", fail_outside_operation_walk)
+
+    exit_code = api_cli.run_api_check(
+        argparse.Namespace(
+            root=str(tmp_path),
+            policy=str(policy),
+            json=True,
+        )
+    )
+
+    assert exit_code == 1
+    assert operation_calls == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert_shared_envelope(
+        payload,
+        scanner="api",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_count=7,
+        scanned_unit="files",
+    )
+    assert payload["findings"][0]["path"] == "src/bad.py"
+
 def test_api_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
     secret_like = "sk-" + ("a" * 24)
     policy = tmp_path / "policy.yaml"
@@ -105,6 +167,42 @@ def test_api_cli_json_error(tmp_path: Path) -> None:
     assert str(tmp_path) not in payload["error"]
     assert payload["policy"] == {"path": "missing.yaml"}
 
+
+def test_api_cli_rejects_yaml_merge_with_sanitized_policy_limit(
+    tmp_path: Path,
+) -> None:
+    sentinel = "synthetic-api-cli-yaml-sentinel"
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        f"base: &base {{marker: {sentinel}}}\n"
+        "scan:\n"
+        "  <<: *base\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "api",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="api",
+        status="error",
+        exit_code=2,
+        finding_count=0,
+    )
+    assert payload["error"] == "api policy exceeds configured limits"
+    assert sentinel not in result.stdout
+    assert str(tmp_path) not in payload["error"]
+
 def test_api_cli_json_error_scrubs_windows_policy_path(tmp_path: Path) -> None:
     windows_policy = r"C:\Users\maintainer\secret\policy.yaml"
 
@@ -118,7 +216,8 @@ def test_api_cli_json_error_scrubs_windows_policy_path(tmp_path: Path) -> None:
     assert "maintainer" not in payload["error"]
 
 def test_api_cli_json_error_scrubs_external_include_path_with_spaces(tmp_path: Path) -> None:
-    outside = tmp_path.parent / f"{tmp_path.name} external include"
+    sentinel = "sk-" + ("a" * 24)
+    outside = tmp_path.parent / f"{tmp_path.name}-{sentinel}-external-include"
     write(outside / "bad.py", 'URL = "https://api.openai.com/v1/responses"\n')
     policy = tmp_path / "policy.yaml"
     policy.write_text(
@@ -133,13 +232,19 @@ def test_api_cli_json_error_scrubs_external_include_path_with_spaces(tmp_path: P
         encoding="utf-8",
     )
 
-    result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+    json_result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+    text_result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy))
 
-    assert result.returncode == 2
-    payload = json.loads(result.stdout)
+    assert json_result.returncode == 2
+    assert text_result.returncode == 2
+    payload = json.loads(json_result.stdout)
     assert_shared_envelope(payload, scanner="api", status="error", exit_code=2, finding_count=0)
-    assert str(outside) not in payload["error"]
-    assert payload["error"].count("<absolute-path>") >= 1
+    assert payload["error"] == "api scan target must stay under repo root"
+    assert text_result.stdout.strip() == "ERROR: api scan target must stay under repo root"
+    for result in (json_result, text_result):
+        for output in (result.stdout, result.stderr):
+            assert sentinel not in output
+            assert str(outside) not in output
 
 def test_api_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

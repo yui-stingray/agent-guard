@@ -9,6 +9,16 @@ This page documents the current emitted artifacts, the schema version each one
 uses, volatile fields consumers must ignore, and the compatibility promise for
 downstream wrappers.
 
+## Execution Platforms
+
+The Python CLI supports the Windows and POSIX process-containment behavior
+described below. The packaged composite GitHub Action currently requires a
+Linux runner; it fails before evidence mutation on other runner operating
+systems. The copyable `examples/evidence_contracts_ci.sh` consumer requires a
+POSIX host. These wrapper limits do not restrict the language or operating
+system represented by the repository files being scanned, and they do not
+reduce the Python CLI's Windows support.
+
 ## Packaged Evidence Schemas
 
 Installed wheels package these JSON Schema resources under
@@ -27,6 +37,82 @@ Installed wheels package these JSON Schema resources under
 These schema file names and `$id` values are frozen by tests. A schema version
 will not change without a new schema identifier and a documented compatibility
 decision.
+
+Public-safe is a bounded sanitization contract over declared controlled fields
+and controlled patterns. It is not a generic guarantee that an artifact contains
+no secrets or PII, and it does not replace dedicated secret scanners.
+
+API, content, and path policies also have fail-closed resource ceilings. The
+current implementation accepts policy files up to 256 KiB and at most 64
+policy-controlled regular expressions per scanner, bounds include lists and
+filesystem walks, rejects repository-scoped include targets that resolve
+outside the repository root, and limits each isolated matching run to five
+seconds after worker startup. Registered and preregistration content target
+walks also share a monotonic five-second enumeration deadline and charge
+directory entries plus pattern/path glob-state work against the fixed traversal
+budget. Isolated result messages are capped at 16 MiB;
+scanner-specific budgets stop oversized finding sets before materialization,
+and supported POSIX workers lower their address-space ceiling to 512 MiB. API
+directory walks charge `scandir` entries incrementally and prune lexical
+exclusions before resolving selected paths. API and content reads are
+additionally bounded to 1 MiB per file. Exceeding a
+ceiling is a sanitized configuration/runtime error
+with exit `2`; raw patterns, paths, or file contents are not included in the
+error. These ceilings are implementation safety limits, not evidence-schema
+fields or a promise of generic content/credential scanning.
+
+Workflow inputs use the same fail-closed approach. Workflow policies are capped
+at 256 KiB, individual policy strings at 4 KiB, and workflow files at 1 MiB.
+Distinct workflow input is capped in aggregate, while duplicate normalized paths
+share one descriptor-bound read and parse without merging their independent
+check identities. YAML aliases, nodes, depth, and the constructed object graph
+are bounded; YAML merge-key expansion is rejected. Jobs, steps, active shell
+commands, traversal, comparison work, findings, and serialized finding size also
+have fixed ceilings checked before result construction. The command recognizer
+tracks supported quoting,
+substitutions, arrays, continuations, comments, and here-documents across lines;
+unsupported or unterminated shell structure is a sanitized exit `2`. This is a
+bounded lexical contract, not a complete Bash interpreter or proof of workflow
+exit behavior.
+
+Git metadata and content-diff commands use bounded output and deadlines in an
+environment that ignores inherited Git routing and global/system configuration,
+disables lazy fetch, replace refs, and fsmonitor helpers, and rejects Git
+subcommands or diff modes outside the helper-disabled query shapes used by the
+static scanners. Windows execution is assigned to a Job Object. POSIX execution
+starts a separate session and terminates that process group on completion or
+failure; a descendant that deliberately starts another session with `setsid()`
+is outside portable process-group containment. Content worktree diffs enumerate
+only bounded, validated filter-driver key names, override each discovered
+clean/process driver with a non-required empty transform, and disable external
+diffs and text conversion. Rename detection is also disabled so configured
+rename policy cannot remove added paths from content selection. A supplied
+content `--since-ref` is validated and resolved to a commit object id before it
+is used in a diff. These controls do not make an attacker-selected executable
+earlier on the caller's `PATH` trusted; the Python and Git executables and
+installed package environment remain part of the runner trust boundary.
+
+Repository walks are bounded static observations, not filesystem snapshots.
+Descriptor-bound API and content reads keep the bytes actually read beneath the
+validated repository root, but a concurrent checkout writer can still add or
+replace a path after enumeration. Run evidence generation against a quiescent
+checkout. Content `new` mode consumes NUL-delimited Git path lists and reads
+current working-tree bytes. Every returned Git entry is count-bounded; lexical
+policy exclusion and matching happen before selected paths are resolved for
+containment. Without `--since-ref`, a selected staged path marked
+skip-worktree, assume-unchanged, or fsmonitor-valid is a sanitized exit `2`
+error, as is a selected staged path that differs between the index and working
+tree after repository-configured external filters and text conversion have been
+disabled. Built-in Git text normalization remains part of that comparison.
+
+Packaged bundle validation accepts at most the seven allowlisted public artifact
+names and enumerates only through the first excess entry. Report, standalone
+envelope, Markdown, and annotation inputs are capped at 1 MiB each; SARIF is
+capped at 4 MiB. Bundle-mode CLI failures use one fixed
+sanitized message without echoing an artifact name, file body, or local path.
+The public shell examples run that bounded bundle check before report-only
+validation or digest inspection. Report-only consumer behavior remains
+compatible with earlier releases.
 
 ## Other Emitted Evidence Versions
 

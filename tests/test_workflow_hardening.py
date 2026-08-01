@@ -49,7 +49,14 @@ def test_ci_runs_packaged_action_consumer_smoke() -> None:
     assert "name: packaged action smoke" in workflow
     assert "uses: ./" in workflow
     assert 'test "$ACTION_STATUS" = "0"' in workflow
-    assert 'python -m agent_guard.consumer "$REPORT_JSON"' in workflow
+    assert 'sh examples/evidence_contracts_ci.sh consume' in workflow
+    consumer_example = (ROOT / "examples" / "evidence_contracts_ci.sh").read_text(
+        encoding="utf-8"
+    )
+    assert consumer_example.count('"$python_bin" -I -m agent_guard.consumer') >= 2
+    assert re.search(r'"\$python_bin"\s+-I\s+-\s+[^\n]*<<', consumer_example)
+    assert '"$python_bin" - <<' not in consumer_example
+    assert '"$python_bin" - >/dev/null' not in consumer_example
 
 
 def test_evidence_workflows_preserve_runtime_error_precedence() -> None:
@@ -57,9 +64,13 @@ def test_evidence_workflows_preserve_runtime_error_precedence() -> None:
     manual_workflow = (ROOT / "docs" / "github-actions-evidence.md").read_text(
         encoding="utf-8"
     )
-    for text in (action, GITHUB_WORKFLOW, manual_workflow):
+    for text in (action, GITHUB_WORKFLOW):
         assert HARD_ERROR_PRECEDENCE in text
         assert 'if [ "$code" -eq 2 ]' not in text
+    manual_single_line = " ".join(manual_workflow.split())
+    assert "preserves status `1` for reviewed policy violations" in manual_single_line
+    assert "status `>=2`" in manual_single_line
+    assert "omit `ready`" in manual_single_line
 
     result = subprocess.run(
         [

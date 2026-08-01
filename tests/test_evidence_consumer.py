@@ -12,6 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+import agent_guard.consumer._bundle as consumer_bundle
 from agent_guard.consumer import (
     LOCAL_PATH_RE,
     RAW_URL_RE,
@@ -20,6 +23,8 @@ from agent_guard.consumer import (
     main as packaged_consumer_main,
     validate_report,
 )
+from agent_guard.consumer._bundle import MAX_MARKDOWN_BYTES
+from agent_guard.report_render import emit_report_output, render_report_output
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +44,228 @@ def run_consumer(path: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def run_packaged_consumer_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{SRC}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else str(SRC)
+    return subprocess.run(
+        [sys.executable, "-m", "agent_guard.consumer", *args],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _prepend_duplicate_json_member(text: str, *, key: str, value: object) -> str:
+    assert text.startswith("{")
+    member = f"{json.dumps(key, ensure_ascii=False)}:{json.dumps(value, ensure_ascii=False)}"
+    return f"{{{member},{text[1:]}"
+
+
+def _synthetic_violation_report() -> tuple[dict[str, object], str]:
+    marker = "synthetic-conformance-marker"
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    conformance = payload["conformance"]
+    manifest = payload["evidence_pack_manifest"]
+    assert isinstance(conformance, dict)
+    assert isinstance(manifest, dict)
+    assert isinstance(manifest["report"], dict)
+    assert isinstance(manifest["conformance"], dict)
+
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    conformance["status"] = "violation"
+    conformance["checked_count"] = 17
+    conformance["finding_count"] = 1
+    conformance["findings"] = [
+        {
+            "rule_id": "synthetic_conformance_rule",
+            "severity": "high",
+            "requirement_id": "synthetic_requirement",
+            "message": marker,
+            "reason": "synthetic_reason",
+        }
+    ]
+    manifest["report"]["status"] = "violation"
+    manifest["conformance"]["status"] = "violation"
+    manifest["conformance"]["finding_count"] = 1
+    return payload, marker
+
+
+def _synthetic_result_envelope(
+    *,
+    tool: dict[str, object],
+    scanner: str,
+    command: str,
+    status: str,
+    exit_code: int,
+    policy: dict[str, object],
+    findings: list[object],
+    summary: dict[str, object],
+    section_name: str,
+    section: object,
+) -> dict[str, object]:
+    return {
+        "schema_version": "agent-guard.result.v1",
+        "tool": tool,
+        "scanner": scanner,
+        "command": command,
+        "status": status,
+        "exit_code": exit_code,
+        "policy": policy,
+        "summary": {"finding_count": len(findings), **summary},
+        "finding_count": len(findings),
+        "findings": findings,
+        section_name: section,
+    }
+
+
+def _canonical_standalone_envelopes(report_payload: dict[str, object]) -> dict[str, dict[str, object]]:
+    tool = report_payload["tool"]
+    policy = report_payload["policy"]
+    conformance = report_payload["conformance"]
+    surface_inventory = report_payload["surface_inventory"]
+    manifest = report_payload["evidence_pack_manifest"]
+    assert isinstance(tool, dict)
+    assert isinstance(policy, dict)
+    assert isinstance(conformance, dict)
+    assert isinstance(surface_inventory, dict)
+    assert isinstance(surface_inventory["summary"], dict)
+    assert isinstance(manifest, dict)
+    assert isinstance(conformance["findings"], list)
+    assert isinstance(manifest["gates"], list)
+    assert isinstance(manifest["artifacts"], list)
+
+    report_artifacts = [
+        artifact
+        for artifact in manifest["artifacts"]
+        if isinstance(artifact, dict) and artifact.get("role") == "report"
+    ]
+    assert len(report_artifacts) == 1
+    report_artifact_path = report_artifacts[0]["path"]
+    assert isinstance(report_artifact_path, str)
+    report_artifact_policy = {"path": report_artifact_path}
+
+    conformance_status = str(conformance["status"])
+    conformance_findings = conformance["findings"]
+    conformance_count = conformance["finding_count"]
+    checked_count = conformance["checked_count"]
+    profile = conformance["profile"]
+    surface_count = surface_inventory["summary"]["surface_count"]
+    gates = manifest["gates"]
+    assert isinstance(conformance_count, int)
+    assert isinstance(checked_count, int)
+    assert isinstance(profile, str)
+    assert isinstance(surface_count, int)
+
+    return {
+        "agent-guard-conformance.json": _synthetic_result_envelope(
+            tool=tool,
+            scanner="conformance",
+            command="check",
+            status=conformance_status,
+            exit_code=0 if conformance_status == "ok" else 1,
+            policy=report_artifact_policy,
+            findings=conformance_findings,
+            summary={
+                "scanned_count": checked_count,
+                "scanned_unit": "requirements",
+                "profile": profile,
+                "conformance_finding_count": conformance_count,
+            },
+            section_name="conformance",
+            section=conformance,
+        ),
+        "agent-surface-inventory.json": _synthetic_result_envelope(
+            tool=tool,
+            scanner="surface",
+            command="inventory",
+            status="ok",
+            exit_code=0,
+            policy=policy,
+            findings=[],
+            summary={
+                "scanned_count": surface_count,
+                "scanned_unit": "surfaces",
+                "surface_count": surface_count,
+            },
+            section_name="surface_inventory",
+            section=surface_inventory,
+        ),
+        "agent-guard-evidence-pack.json": _synthetic_result_envelope(
+            tool=tool,
+            scanner="evidence-pack",
+            command="manifest",
+            status="ok",
+            exit_code=0,
+            policy=report_artifact_policy,
+            findings=[],
+            summary={"scanned_count": len(gates), "scanned_unit": "gates"},
+            section_name="evidence_pack_manifest",
+            section=manifest,
+        ),
+    }
+
+
+def _mutate_standalone_envelope(
+    envelope: dict[str, object],
+    *,
+    artifact_name: str,
+    mutation: str,
+    marker: str,
+) -> None:
+    summary = envelope["summary"]
+    assert isinstance(summary, dict)
+
+    if mutation == "status":
+        if artifact_name == "agent-guard-conformance.json":
+            envelope["status"] = "ok"
+            envelope["exit_code"] = 0
+        else:
+            envelope["status"] = "violation"
+            envelope["exit_code"] = 1
+    elif mutation == "exit_code":
+        envelope["exit_code"] = 2
+    elif mutation == "findings":
+        findings = [] if artifact_name == "agent-guard-conformance.json" else [{"rule_id": marker}]
+        envelope["findings"] = findings
+        envelope["finding_count"] = len(findings)
+        summary["finding_count"] = len(findings)
+    elif mutation == "scanned_count":
+        summary["scanned_count"] = int(summary["scanned_count"]) + 1
+    elif mutation == "scanned_unit":
+        summary["scanned_unit"] = "synthetic-unit"
+    elif mutation == "profile":
+        summary["profile"] = "minimal"
+    elif mutation == "conformance_finding_count":
+        summary["conformance_finding_count"] = 0
+    elif mutation == "surface_count":
+        summary["surface_count"] = int(summary["surface_count"]) + 1
+    elif mutation == "manifest_surface_count":
+        manifest = envelope["evidence_pack_manifest"]
+        assert isinstance(manifest, dict)
+        manifest_summary = manifest["summary"]
+        assert isinstance(manifest_summary, dict)
+        manifest_summary["surface_count"] = int(manifest_summary["surface_count"]) + 1
+    elif mutation == "manifest_tool":
+        manifest = envelope["evidence_pack_manifest"]
+        assert isinstance(manifest, dict)
+        manifest["tool"] = {"name": "agent-guard", "version": marker}
+    elif mutation == "tool":
+        envelope["tool"] = {"name": "agent-guard", "version": marker}
+    elif mutation == "policy":
+        envelope["policy"] = {"path": marker}
+    elif mutation == "external_policy":
+        envelope["policy"] = {"path": "<external-policy>"}
+    elif mutation == "manifest_artifacts":
+        manifest = envelope["evidence_pack_manifest"]
+        assert isinstance(manifest, dict)
+        manifest["artifacts"] = [{"path": marker, "role": "report"}]
+    else:
+        raise AssertionError(f"unknown synthetic mutation: {mutation}")
 
 
 def test_exported_redaction_regexes_keep_legacy_matching_semantics() -> None:
@@ -69,6 +296,622 @@ def test_packaged_consumer_accepts_public_sample_directly() -> None:
 
     assert summary["status"] == "ok"
     assert summary["report_schema_version"] == "agent-guard.report_evidence.v1"
+
+
+@pytest.mark.parametrize(
+    ("container_key", "duplicate_key"),
+    (
+        (None, "schema_version"),
+        ("tool", "version"),
+    ),
+)
+def test_packaged_consumer_report_only_rejects_duplicate_json_keys_without_leak(
+    tmp_path: Path,
+    container_key: str | None,
+    duplicate_key: str,
+) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    secret_like_value = "sk-" + ("d" * 24)
+    if container_key is None:
+        raw = _prepend_duplicate_json_member(raw, key=duplicate_key, value=secret_like_value)
+    else:
+        object_prefix = f"{json.dumps(container_key)}:{{"
+        duplicate_member = (
+            f"{json.dumps(duplicate_key)}:{json.dumps(secret_like_value)}"
+        )
+        assert object_prefix in raw
+        raw = raw.replace(object_prefix, f"{object_prefix}{duplicate_member},", 1)
+    report = tmp_path / "report.json"
+    report.write_bytes((raw + "\n").encode("utf-8"))
+
+    result = run_packaged_consumer_cli(str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == (
+        "agent-guard evidence invalid: public evidence JSON contains duplicate object keys\n"
+    )
+    assert duplicate_key not in result.stderr
+    assert secret_like_value not in result.stderr
+    if container_key is not None:
+        assert f"$.{container_key}" not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_accepts_fixture_bundle(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["status"] == "ok"
+
+
+def test_bundle_directory_enumeration_stops_at_configured_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    entry_cap = consumer_bundle.MAX_EVIDENCE_DIRECTORY_ENTRIES + 1
+
+    class FakeDirEntry:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class ScandirProbe:
+        def __init__(self) -> None:
+            self._entries = [FakeDirEntry(f"artifact-{index}") for index in range(entry_cap + 1)]
+            self.next_calls = 0
+            self.closed = False
+
+        def __enter__(self) -> ScandirProbe:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            self.closed = True
+
+        def __iter__(self) -> ScandirProbe:
+            return self
+
+        def __next__(self) -> FakeDirEntry:
+            if self.next_calls >= entry_cap:
+                raise AssertionError("bundle scan consumed an entry beyond its cap")
+            entry = self._entries[self.next_calls]
+            self.next_calls += 1
+            return entry
+
+    probe = ScandirProbe()
+
+    def fake_scandir(path: object) -> ScandirProbe:
+        assert os.fspath(path) == os.fspath(evidence_dir)
+        return probe
+
+    monkeypatch.setattr(consumer_bundle.os, "scandir", fake_scandir)
+
+    with pytest.raises(ValueError) as exc_info:
+        consumer_bundle._read_bundle_entries(evidence_dir)
+
+    assert str(exc_info.value) == consumer_bundle.ERROR_PUBLIC_BUNDLE_LIMIT
+    assert probe.next_calls == entry_cap
+    assert probe.closed
+
+
+@pytest.mark.parametrize(
+    ("target", "duplicate_key"),
+    (
+        ("selected-report", "schema_version"),
+        ("agent-guard-report.json", "schema_version"),
+        ("agent-guard-results.sarif", "version"),
+        ("agent-guard-conformance.json", "schema_version"),
+        ("agent-guard-evidence-pack.json", "schema_version"),
+        ("agent-surface-inventory.json", "schema_version"),
+    ),
+)
+def test_packaged_consumer_rejects_duplicate_keys_before_bundle_semantic_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    duplicate_key: str,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    selected_report = tmp_path / "selected-report.json"
+    canonical_report = render_report_output(payload, "json")
+    selected_report.write_bytes(canonical_report.encode("utf-8"))
+    secret_like_value = "sk-" + ("b" * 24)
+
+    if target == "selected-report":
+        selected_report.write_bytes(
+            _prepend_duplicate_json_member(
+                canonical_report,
+                key=duplicate_key,
+                value=secret_like_value,
+            ).encode("utf-8")
+        )
+    elif target == "agent-guard-report.json":
+        (evidence_dir / target).write_bytes(
+            _prepend_duplicate_json_member(
+                canonical_report,
+                key=duplicate_key,
+                value=secret_like_value,
+            ).encode("utf-8")
+        )
+    elif target == "agent-guard-results.sarif":
+        (evidence_dir / target).write_bytes(
+            _prepend_duplicate_json_member(
+                render_report_output(payload, "sarif"),
+                key=duplicate_key,
+                value=secret_like_value,
+            ).encode("utf-8")
+        )
+    else:
+        envelope = _canonical_standalone_envelopes(payload)[target]
+        envelope_json = json.dumps(envelope, ensure_ascii=False, sort_keys=True) + "\n"
+        (evidence_dir / target).write_bytes(
+            _prepend_duplicate_json_member(
+                envelope_json,
+                key=duplicate_key,
+                value=secret_like_value,
+            ).encode("utf-8")
+        )
+
+    validation_calls = {"report": 0, "sarif": 0, "envelope": 0}
+    original_validate_report = consumer_bundle.validate_report
+    original_validate_sarif = consumer_bundle._validate_sarif
+    original_validate_envelope = consumer_bundle._validate_result_envelope
+
+    def tracked_validate_report(*args, **kwargs):
+        validation_calls["report"] += 1
+        return original_validate_report(*args, **kwargs)
+
+    def tracked_validate_sarif(*args, **kwargs):
+        validation_calls["sarif"] += 1
+        return original_validate_sarif(*args, **kwargs)
+
+    def tracked_validate_envelope(*args, **kwargs):
+        validation_calls["envelope"] += 1
+        return original_validate_envelope(*args, **kwargs)
+
+    monkeypatch.setattr(consumer_bundle, "validate_report", tracked_validate_report)
+    monkeypatch.setattr(consumer_bundle, "_validate_sarif", tracked_validate_sarif)
+    monkeypatch.setattr(
+        consumer_bundle,
+        "_validate_result_envelope",
+        tracked_validate_envelope,
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        consumer_bundle.validate_evidence_bundle(evidence_dir, selected_report)
+
+    assert str(exc_info.value) == consumer_bundle.ERROR_PUBLIC_BUNDLE_INVALID
+    assert validation_calls["report"] == (0 if target == "selected-report" else 1)
+    assert validation_calls["sarif"] == 0
+    assert validation_calls["envelope"] == 0
+    assert duplicate_key not in str(exc_info.value)
+    assert secret_like_value not in str(exc_info.value)
+    assert str(tmp_path) not in str(exc_info.value)
+
+
+def test_report_output_files_round_trip_as_utf8_lf_under_windows_text_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    evidence_dir = tmp_path / "evidence"
+    rendered_artifacts = {
+        "agent-guard-report.json": render_report_output(payload, "json"),
+        "agent-guard-report.md": render_report_output(payload, "markdown"),
+        "agent-guard-results.sarif": render_report_output(payload, "sarif"),
+        "agent-guard-annotations.txt": render_report_output(payload, "github-annotations"),
+    }
+
+    def windows_default_write_text(
+        path: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        if newline is None:
+            persisted = data.replace("\n", "\r\n")
+        elif newline == "":
+            persisted = data
+        else:
+            persisted = data.replace("\n", newline)
+        path.write_bytes(persisted.encode(encoding or "utf-8", errors or "strict"))
+        return len(data)
+
+    monkeypatch.setattr(Path, "write_text", windows_default_write_text)
+
+    for artifact_name, rendered in rendered_artifacts.items():
+        assert "\r" not in rendered
+        artifact = evidence_dir / artifact_name
+        emit_report_output(rendered, str(artifact))
+        assert artifact.read_bytes() == rendered.encode("utf-8")
+        assert b"\r\n" not in artifact.read_bytes()
+
+    result = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        str(evidence_dir / "agent-guard-report.json"),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    markdown = evidence_dir / "agent-guard-report.md"
+    markdown.write_bytes(rendered_artifacts[markdown.name].replace("\n", "\r\n").encode("utf-8"))
+    drifted = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        str(evidence_dir / "agent-guard-report.json"),
+    )
+    assert drifted.returncode == 1
+    assert drifted.stdout == ""
+    assert drifted.stderr == "agent-guard evidence bundle invalid\n"
+    assert str(tmp_path) not in drifted.stderr
+
+
+def test_packaged_consumer_cli_accepts_canonical_standalone_envelopes(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    payload, marker = _synthetic_violation_report()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    for artifact_name, envelope in _canonical_standalone_envelopes(payload).items():
+        (evidence_dir / artifact_name).write_text(json.dumps(envelope), encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["status"] == "violation"
+    assert marker not in result.stdout
+    assert marker not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    ("agent-guard-conformance.json", "agent-guard-evidence-pack.json"),
+)
+def test_packaged_consumer_cli_accepts_controlled_external_policy_for_relocated_report(
+    tmp_path: Path,
+    artifact_name: str,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    staged_dir = tmp_path / "staged"
+    staged_dir.mkdir()
+    payload, marker = _synthetic_violation_report()
+    manifest = payload["evidence_pack_manifest"]
+    assert isinstance(manifest, dict)
+    manifest["artifacts"] = [{"path": "agent-guard-report.json", "role": "report"}]
+    report = staged_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    envelope = _canonical_standalone_envelopes(payload)[artifact_name]
+    envelope["policy"] = {"path": "<external-policy>"}
+    (evidence_dir / artifact_name).write_text(json.dumps(envelope), encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["status"] == "violation"
+    assert marker not in result.stdout
+    assert marker not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "mutation"),
+    (
+        ("agent-guard-conformance.json", "status"),
+        ("agent-guard-conformance.json", "exit_code"),
+        ("agent-guard-conformance.json", "findings"),
+        ("agent-guard-conformance.json", "scanned_count"),
+        ("agent-guard-conformance.json", "scanned_unit"),
+        ("agent-guard-conformance.json", "profile"),
+        ("agent-guard-conformance.json", "conformance_finding_count"),
+        ("agent-guard-conformance.json", "tool"),
+        ("agent-guard-conformance.json", "policy"),
+        ("agent-surface-inventory.json", "status"),
+        ("agent-surface-inventory.json", "findings"),
+        ("agent-surface-inventory.json", "scanned_count"),
+        ("agent-surface-inventory.json", "scanned_unit"),
+        ("agent-surface-inventory.json", "surface_count"),
+        ("agent-surface-inventory.json", "tool"),
+        ("agent-surface-inventory.json", "policy"),
+        ("agent-surface-inventory.json", "external_policy"),
+        ("agent-guard-evidence-pack.json", "status"),
+        ("agent-guard-evidence-pack.json", "findings"),
+        ("agent-guard-evidence-pack.json", "scanned_count"),
+        ("agent-guard-evidence-pack.json", "scanned_unit"),
+        ("agent-guard-evidence-pack.json", "manifest_surface_count"),
+        ("agent-guard-evidence-pack.json", "manifest_tool"),
+        ("agent-guard-evidence-pack.json", "tool"),
+        ("agent-guard-evidence-pack.json", "policy"),
+        ("agent-guard-evidence-pack.json", "manifest_artifacts"),
+    ),
+)
+def test_packaged_consumer_cli_rejects_inconsistent_standalone_envelopes(
+    tmp_path: Path,
+    artifact_name: str,
+    mutation: str,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    payload, marker = _synthetic_violation_report()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    envelope = _canonical_standalone_envelopes(payload)[artifact_name]
+    _mutate_standalone_envelope(
+        envelope,
+        artifact_name=artifact_name,
+        mutation=mutation,
+        marker=marker,
+    )
+    (evidence_dir / artifact_name).write_text(json.dumps(envelope), encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert marker not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "artifacts"),
+    (
+        ("agent-guard-conformance.json", []),
+        (
+            "agent-guard-conformance.json",
+            [
+                {"path": "synthetic-report-one.json", "role": "report"},
+                {"path": "synthetic-report-two.json", "role": "report"},
+            ],
+        ),
+        ("agent-guard-evidence-pack.json", []),
+        (
+            "agent-guard-evidence-pack.json",
+            [
+                {"path": "synthetic-report-one.json", "role": "report"},
+                {"path": "synthetic-report-two.json", "role": "report"},
+            ],
+        ),
+    ),
+)
+def test_packaged_consumer_cli_rejects_standalone_envelopes_without_unique_report_artifact_claim(
+    tmp_path: Path,
+    artifact_name: str,
+    artifacts: list[dict[str, str]],
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    payload, marker = _synthetic_violation_report()
+    envelope = _canonical_standalone_envelopes(payload)[artifact_name]
+    envelope["policy"] = {"path": "<external-policy>"}
+    manifest = payload["evidence_pack_manifest"]
+    assert isinstance(manifest, dict)
+    manifest["artifacts"] = artifacts
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    (evidence_dir / artifact_name).write_text(json.dumps(envelope), encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert marker not in result.stderr
+    assert "synthetic-report-one.json" not in result.stderr
+    assert "synthetic-report-two.json" not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_accepts_canonical_rendered_artifacts(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    payload = json.loads(report.read_text(encoding="utf-8"))
+
+    for artifact_name, output_format in (
+        ("agent-guard-report.md", "markdown"),
+        ("agent-guard-results.sarif", "sarif"),
+        ("agent-guard-annotations.txt", "github-annotations"),
+    ):
+        (evidence_dir / artifact_name).write_text(
+            render_report_output(payload, output_format),
+            encoding="utf-8",
+        )
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["status"] == "ok"
+
+
+def test_packaged_consumer_cli_annotation_mode_is_quiet_when_optional_artifact_is_absent(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+
+    result = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        "--emit-annotations",
+        str(report),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("replacement_kind", ("file", "symlink"))
+def test_packaged_consumer_cli_emits_buffered_annotations_without_reopening_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfdbinary: pytest.CaptureFixture[bytes],
+    replacement_kind: str,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    payload, _ = _synthetic_violation_report()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    for artifact_name, envelope in _canonical_standalone_envelopes(payload).items():
+        (evidence_dir / artifact_name).write_text(json.dumps(envelope), encoding="utf-8")
+    for artifact_name, output_format in (
+        ("agent-guard-report.md", "markdown"),
+        ("agent-guard-results.sarif", "sarif"),
+    ):
+        (evidence_dir / artifact_name).write_text(
+            render_report_output(payload, output_format),
+            encoding="utf-8",
+        )
+    annotations_path = evidence_dir / "agent-guard-annotations.txt"
+    expected_annotations = render_report_output(payload, "github-annotations").encode("utf-8")
+    assert expected_annotations
+    annotations_path.write_bytes(expected_annotations)
+    injected = b"::error::" + b"sk-" + (b"a" * 24) + b"\n"
+    injected_target = tmp_path / "injected-annotations.txt"
+    injected_target.write_bytes(injected)
+    render = consumer_bundle.render_report_output
+
+    def replace_annotation_after_read(
+        report_payload: dict[str, object],
+        output_format: str,
+    ) -> str:
+        rendered = render(report_payload, output_format)
+        if output_format == "github-annotations":
+            annotations_path.unlink()
+            if replacement_kind == "symlink":
+                annotations_path.symlink_to(injected_target)
+            else:
+                annotations_path.write_bytes(injected)
+        return rendered
+
+    monkeypatch.setattr(consumer_bundle, "render_report_output", replace_annotation_after_read)
+
+    return_code = packaged_consumer_main(
+        [
+            "--evidence-dir",
+            str(evidence_dir),
+            "--emit-annotations",
+            str(report),
+        ]
+    )
+    stdout, stderr = capfdbinary.readouterr()
+
+    assert return_code == 0
+    assert stdout == expected_annotations
+    assert stderr == b""
+    assert injected not in stdout
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "output_format"),
+    (
+        ("agent-guard-report.md", "markdown"),
+        ("agent-guard-results.sarif", "sarif"),
+        ("agent-guard-annotations.txt", "github-annotations"),
+    ),
+)
+def test_packaged_consumer_cli_rejects_sanitized_mismatched_rendered_artifacts(
+    tmp_path: Path,
+    artifact_name: str,
+    output_format: str,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    marker = f"synthetic-{output_format}-artifact-mismatch"
+    rendered = render_report_output(payload, output_format)
+
+    if output_format == "sarif":
+        sarif = json.loads(rendered)
+        sarif["runs"][0]["properties"] = {"synthetic_marker": marker}
+        rendered = json.dumps(sarif, ensure_ascii=False, sort_keys=True) + "\n"
+    else:
+        rendered += f"{marker}\n"
+    artifact = evidence_dir / artifact_name
+    artifact.write_text(rendered, encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert marker not in result.stderr
+    assert str(artifact) not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_sanitizes_bundle_filename_failure(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    sentinel = "sk-" + ("a" * 24) + ".json"
+    (evidence_dir / sentinel).write_text("{}", encoding="utf-8")
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert sentinel not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_sanitizes_oversized_bundle_artifact_failure(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    sentinel = "oversized-artifact-sentinel"
+    oversized = sentinel.encode("utf-8") + (b"x" * (MAX_MARKDOWN_BYTES + 1 - len(sentinel)))
+    (evidence_dir / "agent-guard-report.md").write_bytes(oversized)
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert sentinel not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_rejects_unsafe_annotations_without_echoing_them(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(SAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    sentinel = "sk-" + ("a" * 24)
+    (evidence_dir / "agent-guard-annotations.txt").write_text(
+        f"::error::{sentinel}\n",
+        encoding="utf-8",
+    )
+
+    result = run_packaged_consumer_cli("--evidence-dir", str(evidence_dir), str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence bundle invalid\n"
+    assert sentinel not in result.stderr
+    assert str(tmp_path) not in result.stderr
 
 
 def test_evidence_consumer_example_shim_exports_packaged_main() -> None:

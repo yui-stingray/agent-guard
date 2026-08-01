@@ -40,3 +40,5 @@ def test_threat_model_keeps_external_risk_updates_out_of_runtime_scope() -> None
     assert "not by itself a requirement to add a runtime validator" in text
     assert "broad credential-scanning feature" in text
     assert "autonomous enforcement path" in text
+    assert "2026-07-28 protocol/runtime/OAuth changes do not justify adding runtime execution" in text
+    assert "No changelog item directly invalidates the current static committed-config labels" in text

@@ -7,6 +7,8 @@
 
 It does not post pull request comments, call an LLM reviewer, or make merge
 decisions. The packaged Action is an alpha, static-only evidence surface.
+It currently requires a Linux runner. This wrapper constraint is separate from
+the Python CLI's documented Windows support.
 Maintainers should treat the output as deterministic evidence.
 
 ## Recommended Action Workflow
@@ -24,16 +26,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.3
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           conformance-profile: recommended
       - name: Upload evidence
-        if: always()
+        if: >-
+          always() &&
+          steps.agent-guard.outputs.ready == 'true' &&
+          (steps.agent-guard.outputs.status == '0' || steps.agent-guard.outputs.status == '1')
         uses: actions/upload-artifact@v7
         with:
           name: agent-guard-evidence
-          path: ${{ steps.agent-guard.outputs.evidence-dir }}/
+          path: |
+            ${{ steps.agent-guard.outputs.report-json }}
+            ${{ steps.agent-guard.outputs.report-markdown }}
+            ${{ steps.agent-guard.outputs.report-sarif }}
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-conformance.json
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-evidence-pack.json
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
 ```
 
@@ -47,6 +60,45 @@ conformance result, and evidence-pack manifest. Markdown, SARIF, and GitHub
 annotations are rendered from the same sanitized JSON report instead of
 rerunning the full report scan. GitHub annotations can be disabled with
 `github-annotations: "false"`.
+
+The Action sets `ready=true` only after the complete fresh bundle validates and
+all path/status outputs have been recorded. Publication steps must require that
+output; `status` alone is not a publication signal because an output append can
+fail after exposing only a prefix of the path outputs. A fatal generation error
+attempts to expose only the sanitized numeric `status=2` for diagnostics;
+`ready` and every publication path output remain absent.
+
+Before generation, an existing evidence directory is checked against the fixed
+seven-name public-artifact allow-list and moved by whole-directory rename to a
+same-device backup outside the scan root. The transaction uses rename-only
+filesystem semantics; it does not fall back to copy/delete, and an `EXDEV`
+boundary fails closed. Ordinary fatal failures and catchable
+`HUP`, `INT`, or `TERM` signals run a restoration trap. `SIGKILL`, runner power
+loss, and filesystem failure cannot run or guarantee that trap; `ready` remains
+absent, and a backup that cannot be safely restored or removed is retained for
+manual recovery rather than overwritten.
+
+A relative `evidence-dir` is resolved from `root` and must stay beneath that
+root without symlinked path components. The Action rejects an escaping or
+symlink-redirected relative destination before it stages or writes evidence.
+It also rejects every `..` component, even when lexical normalization would
+remain beneath `root`; use the normalized root-relative path instead.
+An explicit absolute destination remains a caller-selected external location.
+This path check is not an atomic filesystem snapshot: a concurrent writer could
+replace a component after validation. Run the Action in a trusted runner against
+a quiescent checkout.
+
+The normal packaged consumer command,
+`python -I -m agent_guard.consumer --evidence-dir <dir> <report>`, prints its
+compatible JSON validation summary. Adding `--emit-annotations` suppresses that
+summary and emits only the exact canonical annotation bytes retained while the
+same invocation validates the whole bundle. If the optional annotation artifact
+is absent, the mode succeeds without writing annotation bytes.
+
+Here, public-safe means sanitized under the declared
+controlled-field/controlled-pattern contract. It is not a generic secret/PII
+absence guarantee or a replacement for dedicated secret scanners. Review the
+repository and the bounded output contract before publishing artifacts.
 
 The recommended report preset includes static MCP configuration evidence and
 fails on malformed committed MCP config files or deterministic risky MCP
@@ -82,7 +134,7 @@ resolved relative to that root unless they are absolute paths:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.3
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           root: services/api
           conformance-profile: recommended
@@ -96,7 +148,7 @@ to its base branch, fetch the base ref and pass it explicitly:
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.3
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -127,7 +179,7 @@ Fetch the base ref explicitly before running the action, the same way
         with:
           fetch-depth: 0
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.3
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           conformance-profile: recommended
           surface-delta-base-ref: origin/${{ github.base_ref }}
@@ -144,7 +196,7 @@ stable merge-base anchor instead of a branch name that can move:
       - name: Fetch PR base commit
         run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.3
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           conformance-profile: recommended
           surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
@@ -161,72 +213,48 @@ args/env values, or instruction/description text.
 
 ## Expanded Workflow Step
 
-Use this form when a repository wants the commands visible in workflow review
-instead of using the packaged composite action. The example mirrors the
-recommended static baseline after `agent-guard init --root . --write`; add
-`--digest-policy .agent-guard/context-digest-policy.yaml` only after generating
-and reviewing that digest policy file.
+Use the workflow generated by `init` when a repository wants every command
+visible in workflow review instead of using the packaged composite action. The
+generated `.github/workflows/agent-guard.yml` is the canonical expanded form;
+the complete YAML is deliberately not duplicated here because its staging,
+validation, and upload contract must change atomically with the package.
 
-```yaml
-permissions:
-  contents: read
-
-jobs:
-  agent-guard:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install agent-guard
-        run: python -m pip install yui-agent-guard
-      - name: Generate evidence
-        run: |
-          set +e
-          status=0
-          record_status() {
-            code="$1"
-            if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then
-              status="$code"
-            fi
-          }
-          mkdir -p .agent-guard/evidence
-          raw_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$raw_parent"
-          raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
-          trap 'rm -rf "$raw_dir"' EXIT
-          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
-          record_status "$?"
-          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
-          record_status "$?"
-          agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
-          record_status "$?"
-          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
-          record_status "$?"
-          agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
-          record_status "$?"
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --conformance-profile recommended --format json --output .agent-guard/evidence/agent-guard-report.json
-          record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
-          record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
-          record_status "$?"
-          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
-          record_status "$?"
-          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
-          record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
-          record_status "$?"
-          exit "$status"
-      - name: Upload evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: agent-guard-evidence
-          path: .agent-guard/evidence/
-          if-no-files-found: error
+```bash
+agent-guard init --root . --print
+agent-guard init --root . --write
+git diff -- .agent-guard .github/workflows/agent-guard.yml
 ```
+
+Review the printed plan before writing. If files already exist, resolve each
+reported conflict instead of overwriting reviewed repository policy. Add
+`--digest-policy .agent-guard/context-digest-policy.yaml` to the report command
+only after generating and reviewing that digest policy file.
+
+The generated workflow:
+
+- runs the context, path, content, MCP, workflow, drift, report, surface
+  inventory, render, conformance, and evidence-pack commands as the recommended
+  static baseline;
+- stages raw scanner JSON and public evidence in separate fresh directories
+  under `RUNNER_TEMP`, removes the raw directory, and never treats a prior
+  checkout `.agent-guard/evidence` directory as current output;
+- requires exactly `agent-guard-report.json`, `agent-guard-report.md`,
+  `agent-guard-results.sarif`, `agent-guard-conformance.json`,
+  `agent-guard-evidence-pack.json`, and `agent-surface-inventory.json`, each a
+  regular non-symlink file;
+- runs `python -I -m agent_guard.consumer --evidence-dir --emit-annotations`
+  over that complete bundle without importing checkout-provided Python modules,
+  emits the exact canonical annotation bytes retained by that validation
+  invocation, and never reopens the annotation path for publication;
+- records the internal `evidence-dir` step output, sets
+  `evidence_ready=true`, and writes `ready=true` last; it then uploads only
+  the six explicit files when
+  `if: always() && steps.generate-evidence.outputs.ready == 'true'`; and
+- handles output setup failures by phase: before `evidence-dir` is recorded,
+  cleanup removes incomplete public staging. After that output is recorded and
+  `evidence_ready=true`, a failure to append `ready=true` preserves the
+  validated fresh bundle, but leaves `ready` absent so the ready-gated upload
+  cannot publish it.
 
 Pin third-party actions to commit SHAs if that is required by the repository's
 supply-chain policy.
@@ -243,10 +271,13 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.3.3
+  - uses: yui-stingray/agent-guard@v0.3.4
     id: agent-guard
   - name: Upload SARIF
-    if: always()
+    if: >-
+      always() &&
+      steps.agent-guard.outputs.ready == 'true' &&
+      (steps.agent-guard.outputs.status == '0' || steps.agent-guard.outputs.status == '1')
     uses: github/codeql-action/upload-sarif@v4
     with:
       sarif_file: ${{ steps.agent-guard.outputs.report-sarif }}
@@ -254,10 +285,10 @@ steps:
 ```
 
 The SARIF file uses repository-relative paths and omits snippets, raw context
-text, raw workflow commands, raw repository/content/digest hashes, secrets, and
-absolute local paths. It may include SARIF `partialFingerprints` derived only
-from sanitized rule, location, and message metadata for code-scanning
-deduplication.
+text, raw workflow commands, raw repository/content/digest hashes, absolute
+local paths, and secret-shaped values covered by the controlled public-artifact
+contract. It may include SARIF `partialFingerprints` derived only from sanitized
+rule, location, and message metadata for code-scanning deduplication.
 
 ## How Maintainers Should Read It
 
@@ -291,7 +322,8 @@ GitHub annotations are intentionally quiet on clean runs. On failures, they
 contain only controlled scanner metadata such as scanner name, rule id, file,
 line, category, status, reason, and OWASP risk-theme labels when a deterministic
 rule maps to them. They do not include raw context text, matched snippets, hash
-values, workflow run bodies, secrets, or absolute local paths.
+values, workflow run bodies, absolute local paths, or secret-shaped values
+covered by the controlled public-artifact contract.
 
 ## Failure Policy
 
@@ -300,9 +332,27 @@ violation. That should fail the workflow. Prefer fixing the policy, context
 file, digest pin, workflow drift, or README/policy drift instead of bypassing
 the job.
 
-The workflow snippet keeps generating all evidence surfaces after the first
-non-zero report result, then exits with the captured failure status. The upload
-step uses `if: always()` so reviewers can inspect artifacts on failing runs.
+The generated expanded workflow keeps generating controlled evidence surfaces
+after the first status `1` finding, validates the fresh bundle, records its
+publication outputs, and then exits `1`. Fatal setup/runtime errors (`>=2`) and
+bundle validation failures remove incomplete staging and never publish
+`evidence_ready`, so its ready-gated upload cannot use a prior or partial
+directory.
+If its `evidence-dir` output append fails, cleanup removes that staging
+directory. Once `evidence-dir` is recorded, a later `ready=true` append failure
+retains the validated bundle but leaves `ready` absent, so the upload remains
+blocked.
+
+The packaged Action applies the same ready-gated status `0`/`1` publication
+boundary to its explicitly named public artifacts, but its transaction order is
+different. It commits the validated fresh bundle before recording outputs. A
+fatal generation error before that commit may expose only `status=2`, without
+publication paths. If an output append fails after the commit, the validated
+fresh bundle remains and a prefix of non-ready outputs may have been recorded,
+but the Action withholds `ready=true`. Consumers and uploads must therefore gate
+only on `ready == 'true'`; path outputs alone are not publication authority.
+The shared status reducer preserves status `1` for reviewed policy violations
+while allowing a later status `>=2` to dominate; fatal branches omit `ready`.
 
 If a repository wants pull request comments, build that as a separate reviewed
 wrapper that consumes the JSON artifact. Keep comments sanitized and avoid

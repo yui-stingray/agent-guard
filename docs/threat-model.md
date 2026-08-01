@@ -28,6 +28,10 @@ bodies, or absolute local paths. Standard SARIF schema/tool URIs and SARIF
 `partialFingerprints` derived only from sanitized rule, location, and message
 metadata are allowed for code-scanning interoperability.
 
+Public-safe means sanitized under this declared
+controlled-field/controlled-pattern contract. It is not a generic secret or
+PII absence guarantee and does not replace dedicated secret scanners.
+
 ## Trust Boundaries
 
 Repository files are input to deterministic scanners, not instructions to the
@@ -37,6 +41,18 @@ only; they do not become authority for `agent-guard` behavior.
 
 Maintainers remain responsible for deciding whether a finding is acceptable.
 `agent-guard` emits evidence, not approval decisions.
+
+The installed Python environment, the Git executable selected by the runner,
+and the operating system are trusted execution dependencies. Inherited Git
+routing environment variables and global/system Git configuration are ignored;
+lazy object fetching, replace refs, and fsmonitor helpers are disabled for
+bounded metadata and content-diff commands. The selected repository's own Git
+directory/worktree metadata remains necessary input, and `agent-guard` is not a
+sandbox for a compromised runner or attacker-controlled executable search path.
+Windows can contain bounded Git execution in a Job Object. POSIX process-group
+termination cannot portably contain a descendant that deliberately creates a new
+session, so helper-disabled Git command shapes reduce that path but do not turn
+the runner into a process sandbox.
 
 ## What It Can Catch
 
@@ -80,10 +96,20 @@ downstream runtime policy wrapper.
   egress controls, or tool output sanitization;
 - artifact integrity, dependency safety, maintainer approval, branch
   protection, or release provenance;
+- snapshot completeness while another process mutates the checkout during a
+  bounded filesystem walk;
+- complete shell semantics for workflow `run` bodies beyond the documented
+  bounded lexical recognizer;
 - that an OWASP risk-theme label is exploitable in the current repository.
 
 Those questions require runtime controls, dedicated credential scanners,
 provenance checks, human review, or domain-specific security testing.
+
+Static scans should run against a quiescent checkout. Repository-bound file
+opens prevent content and API scanners from following a swapped path outside
+the validated root, but they do not turn name enumeration into an atomic
+filesystem snapshot. A file created after enumeration can be absent from that
+run and requires a subsequent scan.
 
 ## MCP-Specific Boundary
 
@@ -119,18 +145,23 @@ without adding runtime enforcement to `agent-guard`.
 
 ## External Risk Context
 
-Reference snapshot: verified on 2026-07-09. The external sources used as risk
-context include the MCP 2025-11-25 latest specification family, the non-final
-MCP 2026-07-28 release candidate, OWASP Top 10 for Agentic Applications 2026
-(published 2025-12-09), OWASP Agentic Skills Top 10 Incubator/Public review
-(v1) material, SLSA v1.2 Approved specification, NIST AI 600-1 Generative AI
-Profile, NIST SSDF SP 800-218 v1.1 Final, the May 2025 v1.0 joint AI Data
-Security guidance, and the 2026 Five Eyes careful-adoption guidance for agentic
-AI services.
+Reference snapshot: the official [MCP 2026-07-28 changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
+was verified on 2026-07-31. The external sources used as risk context include
+the current MCP 2026-07-28 specification (the revision after 2025-11-25), OWASP
+Top 10 for Agentic Applications 2026 (published 2025-12-09), OWASP Agentic
+Skills Top 10 Incubator/Public review (v1) material, SLSA v1.2 Approved
+specification, NIST AI 600-1 Generative AI Profile, NIST SSDF SP 800-218 v1.1
+Final, the May 2025 v1.0 joint AI Data Security guidance, and the 2026 Five Eyes
+careful-adoption guidance for agentic AI services.
 
 MCP, OWASP agentic risk material, NIST/SSDF guidance, SLSA provenance material,
 and research on indirect prompt injection, AgentDojo, and MCP tool poisoning
 describe failure modes that static metadata cannot settle.
+
+The 2026-07-28 protocol/runtime/OAuth changes do not justify adding runtime
+execution or live OAuth validation to `agent-guard`. No changelog item directly
+invalidates the current static committed-config labels, so this update leaves
+their taxonomy and code unchanged.
 
 `agent-guard` uses that context to keep repository evidence explicit and
 sanitized. It should not absorb runtime validation layers, and these references

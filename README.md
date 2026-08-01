@@ -7,7 +7,7 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.3` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
+**Status**: `0.3.4` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
 runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
@@ -60,7 +60,7 @@ Using Python 3.11.4+, install the current alpha, preview the files it proposes,
 and write them only after review. The scanned repository can use any runtime:
 
 ```bash
-python -m pip install yui-agent-guard==0.3.3
+python -m pip install yui-agent-guard==0.3.4
 agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
@@ -128,7 +128,7 @@ See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
 SARIF status, and non-goals. For the static evidence threat model and explicit
 runtime/security non-goals, see [`docs/threat-model.md`](docs/threat-model.md).
-Downstream CI consumers that need fail-closed missing/invalid/stale checks,
+Downstream CI consumers that need fail-closed missing/invalid/report-visible drift checks,
 public-artifact linting, or strict release gates can start from
 [`docs/evidence-consumer-contracts.md`](docs/evidence-consumer-contracts.md).
 For adoption in an existing repository, start with
@@ -151,7 +151,7 @@ use `uvx` with the documented version pinned. This is the quickest evaluation pa
 when you do not want a tool installed into the target repository environment:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.3 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --print
 ```
 
 Windows PowerShell users can follow the non-activation virtual-environment
@@ -168,6 +168,9 @@ That requirement is for the `agent-guard` execution environment only. The
 repository being scanned can be Go, JavaScript, Ruby, a different Python
 version, or any other source tree because `agent-guard` reads repository files
 statically. The packaged GitHub Action provisions its own Python runtime.
+The Python CLI supports the platforms described in
+[`docs/compatibility.md`](docs/compatibility.md); the packaged composite Action
+currently requires a Linux runner.
 
 ## Quick start
 
@@ -207,8 +210,8 @@ policy or workflow alignment.
 
 `init --write` also creates `.github/workflows/agent-guard.yml`. Review and
 commit that generated workflow, or use the packaged alpha GitHub Action
-directly. The action generates static evidence only; it does not execute agents,
-MCP servers, or an LLM reviewer:
+directly on a Linux runner. The action generates static evidence only; it does
+not execute agents, MCP servers, or an LLM reviewer:
 
 ```yaml
 permissions:
@@ -219,15 +222,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: yui-stingray/agent-guard@v0.3.3
+      - id: agent-guard
+        uses: yui-stingray/agent-guard@v0.3.4
         with:
           conformance-profile: recommended
       - name: Upload evidence
-        if: always()
+        if: >-
+          always() &&
+          steps.agent-guard.outputs.ready == 'true' && (steps.agent-guard.outputs.status == '0' || steps.agent-guard.outputs.status == '1')
         uses: actions/upload-artifact@v7
         with:
           name: agent-guard-evidence
-          path: .agent-guard/evidence/
+          path: |
+            ${{ steps.agent-guard.outputs.report-json }}
+            ${{ steps.agent-guard.outputs.report-markdown }}
+            ${{ steps.agent-guard.outputs.report-sarif }}
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-conformance.json
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-evidence-pack.json
+            ${{ steps.agent-guard.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
 ```
 
@@ -257,7 +269,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.3.3"},
+  "tool": {"name": "agent-guard", "version": "0.3.4"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -367,7 +379,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.3.3
+    rev: v0.3.4
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -410,7 +422,13 @@ Supported modes:
 - `preregister`: scan explicit file or directory targets
 - `new`: scan changed files from git diff, optionally including untracked files
 
-`new` mode uses two behaviors: with `--since-ref`, it scans files changed between that ref and `HEAD`; without `--since-ref`, it scans the current working tree diff and can optionally include untracked files.
+`new` mode always scans bytes from the current working tree. With
+`--since-ref`, the `ref...HEAD` diff selects file names and does not add staged,
+unstaged, or untracked names. Without `--since-ref`, staged and unstaged names
+are selected and untracked names are optional. A selected staged file whose
+index and working-tree versions differ is rejected with exit `2` instead of
+claiming that either version was checked for commit. Use a clean, quiescent
+checkout when treating `--since-ref` output as change-range evidence.
 
 Typical use cases:
 - keep dangerous install instructions out of skills docs
@@ -541,14 +559,14 @@ secret-shaped inline values, unsafe URL schemes, broad authorization scopes, or
 inline authorization values. For recommended and strict evidence, keep the
 reviewed risk-label policy at `.agent-guard/mcp-policy.yaml`; external MCP
 policy files can be used for scanner experiments but do not satisfy conformance.
-The `strict` profile also turns the same v2 surface inventory labels into
-conformance findings. None of these modes execute MCP
-servers, inspect tool results, validate live OAuth flows, detect MCP
-tool-poisoning behavior, or act as an MCP runtime security validator. With
-`--evidence-pack-manifest`, it embeds a public-safe artifact handoff manifest
-for pull request review. Add `--agent-policy-audit-event <path>` to include a
-sanitized artifact reference to a companion `agent-policy` audit event without
-reading or embedding the event body.
+The `strict` profile also turns the same v2 surface inventory labels into conformance findings.
+None of these modes execute MCP servers, inspect tool results, validate live OAuth flows,
+detect MCP tool-poisoning behavior, or act as an MCP runtime security validator. The current
+MCP 2026-07-28 protocol/runtime/OAuth changes do not justify runtime execution or live OAuth
+validation. No changelog item directly invalidates the current static committed-config labels, so
+this update does not change their taxonomy or code. With `--evidence-pack-manifest`,
+it embeds a public-safe artifact handoff manifest for pull request review. Add
+`--agent-policy-audit-event <path>` to include a sanitized artifact reference to a companion `agent-policy` audit event without reading or embedding the event body.
 
 Read `recommended` as the reviewed static evidence baseline, not as the full
 pin-integrity profile. The recommended preset can emit digest and context-lock
@@ -595,10 +613,10 @@ and `Context Lock Coverage Evidence`.
 
 Report output omits raw context contents, snippets, matched text, raw regex
 patterns, raw evidence URLs, raw repository/content/digest hashes, secrets, and
-absolute local paths. This public-safe scope applies to
-report/render-report/evidence artifacts, not to raw per-scanner JSON captured
-for local automation. Markdown table cells escape HTML and Markdown control
-characters before output.
+absolute local paths. Here, public-safe means sanitized under the declared
+controlled-field/controlled-pattern contract, not a generic guarantee that an
+artifact contains no secrets or PII; it does not replace a dedicated secret scanner.
+This scope applies only to report/render-report/evidence artifacts, not raw per-scanner JSON; Markdown table cells escape HTML and Markdown control characters before output.
 
 Use `--format json` to emit the same sanitized evidence payload inside the
 shared `agent-guard.result.v1` envelope. This is the machine-readable report
@@ -749,7 +767,7 @@ The workflow guard checks a declared CI workflow for required guard commands
 and checks that configured policy files are still present in the repository.
 It is intentionally narrower than a workflow security scanner: it does not
 evaluate GitHub permissions, branch protection, workflow logs, action versions,
-or shell semantics.
+or complete shell semantics.
 Workflow policies must declare `schema_version:
 agent-guard.workflow_policy.v1` and at least one `required_files` or
 `workflow_checks` entry; empty policies are configuration errors.
@@ -760,11 +778,21 @@ Typical use cases:
 - make policy-file presence explicit before a workflow declares guard coverage
 - keep static guard coverage reviewable through deterministic JSON output
 
-Command matching only inspects active `jobs.*.steps[*].run` lines. Blank lines,
-comments, `echo` / `printf` documentation lines, and here-doc bodies are not
-treated as executed guard commands. Findings include repository-relative paths,
-rule ids, workflow ids, requirement ids, reasons, and controlled messages; they
-do not include raw workflow `run` bodies or raw command text.
+Command matching only inspects active `jobs.*.steps[*].run` lines. Its bounded
+lexical recognizer tracks supported quoting, substitutions, arrays,
+continuations, comments, and here-documents across lines. Blank lines, comments,
+`echo` / `printf` documentation lines, and recognized here-document bodies are
+not treated as executed guard commands. Unsupported, unterminated, or
+over-budget shell/YAML structure fails closed with exit `2`. A command does not
+count when its job or step has a recognized literal-false `if`, when job/step
+`continue-on-error` is not absent or explicitly false, or when its effective
+shell is an explicit custom template instead of `bash`, `sh`, `pwsh`,
+`powershell`, or `cmd`.
+Other context- or matrix-dependent `if` expressions are not evaluated. Matching
+also rejects an unconditional same-line `;` tail after a required command while
+retaining simple command-chain matching; it is not a complete shell parser or
+proof that a command runs on every workflow path.
+Findings include repository-relative paths, rule ids, workflow ids, requirement ids, reasons, and controlled messages; they do not include raw workflow `run` bodies or raw command text.
 
 It returns:
 - exit `0` on clean
@@ -998,7 +1026,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-version = "0.3.3"
+version = "0.3.4"
 target = Path("dist-verify")
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
@@ -1036,14 +1064,14 @@ if set(by_name) != set(expected):
 for filename in sorted(expected):
     urllib.request.urlretrieve(by_name[filename], target / filename)
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.3.3-py3-none-any.whl \
+gh attestation verify dist-verify/yui_agent_guard-0.3.4-py3-none-any.whl \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.3
-gh attestation verify dist-verify/yui_agent_guard-0.3.3.tar.gz \
+  --source-ref refs/tags/v0.3.4
+gh attestation verify dist-verify/yui_agent_guard-0.3.4.tar.gz \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.3
+  --source-ref refs/tags/v0.3.4
 ```
 
 ## License

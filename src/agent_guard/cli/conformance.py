@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ..conformance import build_conformance_report
 from ..profiles import PROFILE_NAMES
+from ..taxonomy import annotate_finding
 from .common import load_json_file, result_payload
 
 
@@ -51,7 +52,13 @@ def run_conformance_check(args: argparse.Namespace) -> int:
         return 2
 
     findings = conformance.get("findings", [])
-    finding_items = findings if isinstance(findings, list) else []
+    finding_items = (
+        [annotate_finding("conformance", item) for item in findings if isinstance(item, dict)]
+        if isinstance(findings, list)
+        else []
+    )
+    conformance["findings"] = finding_items
+    conformance["finding_count"] = len(finding_items)
     exit_code = 0 if conformance.get("status") == "ok" else 1
     result = result_payload(
         scanner="conformance",
@@ -78,4 +85,3 @@ def run_conformance_check(args: argparse.Namespace) -> int:
             finding = item if isinstance(item, dict) else {}
             print(f"- {finding.get('severity', 'medium')} {finding.get('rule_id', '-')} {finding.get('requirement_id', '-')}")
     return exit_code
-

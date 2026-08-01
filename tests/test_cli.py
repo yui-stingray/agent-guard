@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from pathlib import Path
+
+import yaml
 
 from agent_guard import __version__ as AGENT_GUARD_VERSION
 from agent_guard.cli import build_parser, safe_policy_path
@@ -31,6 +35,26 @@ def test_agent_guard_version_does_not_require_subcommand() -> None:
 
     assert result.returncode == 0
     assert result.stdout == f"agent-guard {AGENT_GUARD_VERSION}\n"
+    assert result.stderr == ""
+
+
+def test_cli_module_entrypoint_does_not_execute_when_imported_as_spawn_main() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import runpy; "
+                "runpy.run_module('agent_guard.cli', run_name='__mp_main__')"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == ""
     assert result.stderr == ""
 
 
@@ -63,9 +87,32 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     mcp_policy = contents[".agent-guard/mcp-policy.yaml"]
     workflow_policy = contents[".agent-guard/workflow-policy.yaml"]
     assert "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7" in workflow
+    assert "fetch-depth: 0" in workflow
+    assert "persist-credentials: false" in workflow
     assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
-    assert f"python -m pip install yui-agent-guard=={AGENT_GUARD_VERSION}" in workflow
+    assert f"python -I -m pip install yui-agent-guard=={AGENT_GUARD_VERSION}" in workflow
     assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in workflow
+    assert "- id: generate-evidence" in workflow
+    assert "if: always() && steps.generate-evidence.outputs.ready == 'true'" in workflow
+    assert ".agent-guard/evidence/" not in workflow
+    upload_paths = [
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-report.json",
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-report.md",
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-results.sarif",
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-conformance.json",
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-evidence-pack.json",
+        "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-surface-inventory.json",
+    ]
+    workflow_payload = yaml.safe_load(workflow)
+    checkout_step = workflow_payload["jobs"]["evidence"]["steps"][0]
+    assert checkout_step["with"] == {"fetch-depth": 0, "persist-credentials": False}
+    upload_step = next(
+        step
+        for step in workflow_payload["jobs"]["evidence"]["steps"]
+        if isinstance(step, dict) and step.get("name") == "Upload evidence"
+    )
+    assert upload_step["if"] == "always() && steps.generate-evidence.outputs.ready == 'true'"
+    assert upload_step["with"]["path"].splitlines() == upload_paths
     assert "schema_version: agent-guard.mcp_policy.v1" in mcp_policy
     assert "forbidden_risky_patterns:" in mcp_policy
     assert "agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json" in workflow
@@ -76,17 +123,28 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     )
     assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json" in workflow
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
-    assert "agent-guard drift check --root . --profile recommended --schema-version v2 --json" in workflow
+    assert (
+        'agent-guard drift check --root . --profile recommended --schema-version v2 '
+        '"${drift_base_args[@]}" --json'
+        in workflow
+    )
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
+        '--format json --output "$report_json" > /dev/null 2>&1'
         in workflow
     )
     report_lines = [line.strip() for line in workflow.splitlines() if line.strip().startswith("agent-guard report")]
     assert report_lines == [
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
+        '--format json --output "$report_json" > /dev/null 2>&1'
     ]
+    assert "AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}" in workflow
+    assert "AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in workflow
+    assert 'drift_base_args=(--base-ref "$base_sha")' in workflow
+    assert 'report_base_args=(--drift-base-ref "$base_sha")' in workflow
+    assert "pull request base SHA is unavailable" in workflow
     assert "render_report_output" not in workflow
     assert "record_status() {" in workflow
     assert (
@@ -96,22 +154,20 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert 'record_status "$?"' in workflow
     assert "code=$?" not in workflow
     assert (
-        "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
-        "--format markdown --output .agent-guard/evidence/agent-guard-report.md"
+        'agent-guard render-report --root . --input "$report_json" '
+        '--format markdown --output "$report_markdown" > /dev/null 2>&1'
         in workflow
     )
     assert (
-        "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
-        "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
+        'agent-guard render-report --root . --input "$report_json" '
+        '--format sarif --output "$report_sarif" > /dev/null 2>&1'
         in workflow
     )
     assert (
-        "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
-        "--format github-annotations"
+        'agent-guard render-report --root . --input "$report_json" '
+        '--format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"'
         in workflow
     )
-    assert "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json" in workflow
-    assert "agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json" in workflow
     raw_scanner_lines = [
         line.strip()
         for line in workflow.splitlines()
@@ -129,23 +185,70 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
             )
         )
     ]
-    assert raw_scanner_lines
-    assert "raw_dir=\"$(mktemp -d \"$raw_parent/agent-guard-raw.XXXXXX\")\"" in workflow
-    assert all('> "$raw_dir/' in line for line in raw_scanner_lines)
+    assert len(raw_scanner_lines) == 6
+    assert all('2>/dev/null > "$raw_dir/' in line for line in raw_scanner_lines)
     assert (
-        "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json "
-        "--profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json"
+        "if ! raw_dir=\"$(mktemp -d \"$raw_parent/agent-guard-raw.XXXXXX\" 2>/dev/null)\"; then"
+        not in workflow
+    )
+    assert (
+        "if ! raw_dir=\"$(mktemp -d \"$runner_temp/agent-guard-raw.XXXXXX\" 2>/dev/null)\"; then"
         in workflow
     )
     assert (
-        "agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json "
-        "--artifact .agent-guard/evidence/agent-guard-report.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json"
+        "if ! evidence_dir=\"$(mktemp -d \"$runner_temp/agent-guard-evidence.XXXXXX\" 2>/dev/null)\"; then"
         in workflow
     )
+    assert 'report_json="${evidence_dir%/}/agent-guard-report.json"' in workflow
+    assert 'surface_inventory_json="${evidence_dir%/}/agent-surface-inventory.json"' in workflow
+    assert "validate_raw_result() {" in workflow
+    assert 'if [ ! -f "$output_path" ] || [ -L "$output_path" ]; then' in workflow
+    assert workflow.count('validate_raw_result "$?" "$raw_dir/') == 7
+    assert (
+        'agent-guard conformance check --root . --evidence "$report_json" '
+        '--profile recommended --json 2>/dev/null > "$conformance_json"'
+        in workflow
+    )
+    assert (
+        'agent-guard evidence-pack manifest --root . --report "$report_json" '
+        '--artifact "$report_json" --json 2>/dev/null > "$evidence_pack_json"'
+        in workflow
+    )
+    assert "validate_public_evidence() {" in workflow
+    assert "public_artifact_names=(" in workflow
+    assert "if [ \"$status\" -ge 2 ]; then" in workflow
+    assert "::error::evidence generation failed" in workflow
+    assert "::error::evidence validation failed" in workflow
+    assert "::error::evidence output setup failed" in workflow
+    assert (
+        'if ! python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" '
+        '--emit-annotations "$report_json" 2>/dev/null; then'
+        in workflow
+    )
+    assert 'cat "$annotations_path"' not in workflow
+    assert workflow.index('--format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"') < workflow.index(
+        "agent_guard.consumer"
+    )
+    assert workflow.index("agent_guard.consumer") < workflow.index('rm -f "$annotations_path"')
+    assert workflow.index("validate_public_evidence() {") < workflow.index("printf 'ready=true\\n'")
+    assert workflow.index("agent_guard.consumer") < workflow.index("printf 'ready=true\\n'")
+    assert workflow.index("printf 'evidence-dir=%s\\n'") < workflow.index("printf 'ready=true\\n'")
+    assert workflow.index("evidence_ready=true") < workflow.index("printf 'ready=true\\n'")
+    assert "if ! write_evidence_dir_output 2>/dev/null; then" in workflow
+    assert "if ! write_ready_output 2>/dev/null; then" in workflow
     assert "workflow_checks:" in workflow_policy
     assert "path: .agent-guard/mcp-policy.yaml" in workflow_policy
     assert "command: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in workflow_policy
     assert "command: agent-guard drift check --root . --profile recommended --schema-version v2" in workflow_policy
+    assert (
+        'command: agent-guard conformance check --root . --evidence "$report_json" '
+        "--profile recommended"
+        in workflow_policy
+    )
+    assert (
+        'command: agent-guard evidence-pack manifest --root . --report "$report_json"'
+        in workflow_policy
+    )
     assert (
         "command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
         "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml"
@@ -308,7 +411,7 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
     workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
     workflow.write_text(
         workflow.read_text(encoding="utf-8").replace(
-            '          agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"\n',
+            '          agent-guard drift check --root . --profile recommended --schema-version v2 "${drift_base_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"\n',
             "",
         ),
         encoding="utf-8",

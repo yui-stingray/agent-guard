@@ -80,7 +80,11 @@ def test_conformance_cli_checks_report_profile_requirements(tmp_path: Path) -> N
     assert recommended.returncode == 1
     payload = json.loads(recommended.stdout)
     assert payload["conformance"]["status"] == "violation"
-    assert any(item["rule_id"] == "required_gate_missing" for item in payload["findings"])
+    missing_gate = next(item for item in payload["findings"] if item["rule_id"] == "required_gate_missing")
+    assert missing_gate["owasp_agentic_risk_themes"] == [
+        {"id": "ASI08", "name": "Cascading Failures"},
+    ]
+    assert payload["findings"] == payload["conformance"]["findings"]
     assert str(tmp_path) not in recommended.stdout
 
 
