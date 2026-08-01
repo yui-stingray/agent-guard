@@ -85,8 +85,8 @@ def test_default_isolated_scan_does_not_inherit_parent_thread_locks() -> None:
 
     holder = threading.Thread(target=hold_lock)
     holder.start()
-    assert held.wait(timeout=1)
     try:
+        assert held.wait(timeout=1)
         result = run_isolated_scan(
             _acquire_parent_thread_lock,
             timeout_error="scan timed out",
@@ -116,12 +116,14 @@ def test_default_context_avoids_fork_with_unregistered_low_level_thread() -> Non
         stopped.set()
 
     _thread.start_new_thread(hold_lock, ())
-    assert held.wait(timeout=1)
     try:
+        assert held.wait(timeout=1)
         assert bounded_scan._default_context().get_start_method() == "forkserver"
     finally:
         release.set()
-        assert stopped.wait(timeout=1)
+        stopped.wait(timeout=1)
+
+    assert stopped.is_set()
 
 
 def test_isolated_scan_rejects_oversized_result_with_sanitized_error() -> None:

@@ -27,6 +27,9 @@ import zlib
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, NoReturn
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 EXPECTED_EXPORTS = {
@@ -120,6 +123,22 @@ def project_requires_python() -> str:
     """Return pyproject.toml [project].requires-python."""
     with (ROOT / "pyproject.toml").open("rb") as handle:
         return str(tomllib.load(handle)["project"]["requires-python"])
+
+
+def project_runtime_requirement(distribution_name: str) -> Requirement:
+    """Return one declared runtime requirement by normalized distribution name."""
+
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        dependencies = tomllib.load(handle)["project"]["dependencies"]
+    normalized_name = canonicalize_name(distribution_name)
+    matches: list[Requirement] = []
+    for raw_requirement in dependencies:
+        requirement = Requirement(str(raw_requirement))
+        if canonicalize_name(requirement.name) == normalized_name:
+            matches.append(requirement)
+    if len(matches) != 1:
+        raise RuntimeError("project runtime dependency contract is invalid")
+    return matches[0]
 
 
 def find_release_distributions(version: str) -> tuple[Path, Path]:
@@ -1169,7 +1188,11 @@ def copy_runtime_dependency_to_venv(
     try:
         site_packages = Path(site_result.stdout.strip()).resolve(strict=True)
         site_packages.relative_to(venv_dir.resolve(strict=True))
-        dependency_package = Path(metadata.distribution("PyYAML").locate_file("yaml")).resolve(strict=True)
+        dependency_distribution = metadata.distribution("PyYAML")
+        dependency_requirement = project_runtime_requirement("PyYAML")
+        if not dependency_requirement.specifier.contains(dependency_distribution.version):
+            raise ValueError
+        dependency_package = Path(dependency_distribution.locate_file("yaml")).resolve(strict=True)
         if not dependency_package.is_dir() or not (dependency_package / "__init__.py").is_file():
             raise ValueError
         shutil.copytree(
@@ -1177,7 +1200,7 @@ def copy_runtime_dependency_to_venv(
             site_packages / "yaml",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
         )
-    except (metadata.PackageNotFoundError, OSError, RuntimeError, ValueError):
+    except (metadata.PackageNotFoundError, OSError, RuntimeError, TypeError, ValueError):
         raise RuntimeError("wheel contract runtime dependency could not be prepared") from None
 
 

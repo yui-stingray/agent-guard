@@ -145,6 +145,8 @@ def test_wheel_contract_copies_only_declared_runtime_dependency(
     (dependency_root / "unrelated.py").write_text("UNRELATED = True\n", encoding="utf-8")
 
     class SyntheticDistribution:
+        version = "6"
+
         def locate_file(self, path: str) -> Path:
             assert path == "yaml"
             return dependency_package
@@ -173,6 +175,52 @@ def test_wheel_contract_copies_only_declared_runtime_dependency(
 
     assert (site_packages / "yaml" / "__init__.py").read_text(encoding="utf-8") == "SAFE = True\n"
     assert not (site_packages / "unrelated.py").exists()
+
+
+@pytest.mark.parametrize("installed_version", ["5.999", "7"])
+def test_wheel_contract_rejects_incompatible_runtime_dependency_version(
+    installed_version: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    venv_dir = tmp_path / "venv"
+    site_packages = venv_dir / "site-packages"
+    site_packages.mkdir(parents=True)
+
+    class SyntheticDistribution:
+        version = installed_version
+
+        def locate_file(self, _path: str) -> Path:
+            pytest.fail("incompatible dependency was located before version rejection")
+
+    monkeypatch.setattr(
+        wheel_contract.metadata,
+        "distribution",
+        lambda name: SyntheticDistribution() if name == "PyYAML" else None,
+    )
+    monkeypatch.setattr(
+        wheel_contract,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["synthetic-python"],
+            0,
+            f"{site_packages}\n",
+            "",
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel contract runtime dependency could not be prepared$",
+    ) as exc_info:
+        wheel_contract.copy_runtime_dependency_to_venv(
+            Path("synthetic-python"),
+            venv_dir,
+            cwd=tmp_path,
+        )
+
+    assert installed_version not in str(exc_info.value)
+    assert not (site_packages / "yaml").exists()
 
 
 def test_wheel_contract_isolated_module_smoke_ignores_pythonpath_shadow(
