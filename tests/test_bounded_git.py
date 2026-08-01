@@ -270,6 +270,29 @@ def test_bounded_process_kills_descendant_holding_stdout_and_joins_reader(
     } == baseline_threads
 
 
+@pytest.mark.parametrize("returncode", [0, 7])
+def test_windows_job_wrapper_preserves_child_returncode(returncode: int) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            bounded_git._WINDOWS_JOB_WRAPPER,
+            sys.executable,
+            "-c",
+            f"raise SystemExit({returncode})",
+        ],
+        input=b"\0",
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == returncode
+    assert result.stdout == b""
+    assert result.stderr == b""
+
+
 def test_bounded_process_stops_at_output_limit(tmp_path: Path) -> None:
     started = time.monotonic()
     with pytest.raises(bounded_git.BoundedGitOutputLimitError):

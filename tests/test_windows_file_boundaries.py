@@ -25,7 +25,7 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
         (workflow_path, "name: ci\njobs: {}\n"),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        path.write_bytes(text.encode("utf-8"))
 
     api_text, api_relative = api_guard._read_repo_text(api_path, repo)
     assert api_text == "def handler():\n    return 'ok'\n"

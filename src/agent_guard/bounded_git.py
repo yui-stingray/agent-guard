@@ -86,9 +86,10 @@ if os.read(0, 1) != b"\0":
     raise SystemExit(125)
 try:
     child = subprocess.Popen(sys.argv[1:])
-    raise SystemExit(child.wait())
+    returncode = child.wait()
 except BaseException:
     raise SystemExit(125)
+raise SystemExit(returncode)
 """
 
 
