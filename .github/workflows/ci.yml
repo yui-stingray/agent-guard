@@ -75,6 +75,8 @@ jobs:
           python -m pytest -q
           tests/test_bounded_git.py::test_bounded_process_kills_descendant_holding_stdout_and_joins_reader
           tests/test_bounded_scan.py::test_isolated_scan_supports_spawn_context
+          tests/test_bounded_scan.py::test_default_isolated_scan_supports_standalone_programmatic_call
+          tests/test_public_api.py::test_public_scanners_support_unguarded_consumer_with_guarded_parity
           tests/test_content_guard.py::test_new_mode_applies_windows_git_filename_rejections
           tests/test_windows_file_boundaries.py
       - name: Verify Windows CLI report consumer contract

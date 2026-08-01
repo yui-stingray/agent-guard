@@ -1205,6 +1205,12 @@ def isolated_code_command(python: Path, code: str) -> list[str]:
     return [str(python), "-I", "-c", code]
 
 
+def isolated_script_command(python: Path, script: Path) -> list[str]:
+    """Build an isolated standalone-script command for wheel smoke checks."""
+
+    return [str(python), "-I", str(script)]
+
+
 def isolated_wheel_install_command(python: Path, wheel: Path) -> list[str]:
     """Build an offline, dependency-free install command for the local wheel."""
 
@@ -1307,6 +1313,7 @@ def main() -> int:
             assert agent_guard.__version__ == {version!r}
             assert metadata("yui-agent-guard")["Requires-Python"] == {requires_python!r}
             assert agent_guard.scan_paths is agent_guard.scan_content_paths
+            assert (resources.files("agent_guard") / "_bounded_scan_worker.py").is_file()
             for name in expected_exports:
                 assert getattr(agent_guard, name) is not None
 
@@ -1366,6 +1373,118 @@ def main() -> int:
             encoding="utf-8",
         )
         (repo / ".env.example").write_text("TOKEN=\n", encoding="utf-8")
+        (repo / "blocked-item.md").write_text(
+            'endpoint = "https://blocked.invalid/v1"\nBLOCKED_CONTENT\n',
+            encoding="utf-8",
+        )
+        unguarded_consumer = temp / "unguarded-consumer.py"
+        unguarded_consumer.write_text(
+            textwrap.dedent(
+                """
+                import json
+                from pathlib import Path
+
+                import agent_guard
+                from agent_guard.content_guard import build_rules, scan_file
+
+                root = Path.cwd()
+                target = root / "blocked-item.md"
+                api_policy = {
+                    "scan": {"include": ["blocked-item.md"], "exclude": []},
+                    "policy": {
+                        "allowed_api_patterns": [],
+                        "forbidden_api_patterns": [r"^https://blocked\\.invalid/"],
+                    },
+                }
+                path_policy = {
+                    "scan": {"include": ["blocked-item.md"], "exclude": []},
+                    "policy": {
+                        "allowed_path_patterns": [],
+                        "forbidden_path_patterns": [
+                            {
+                                "id": "blocked_path",
+                                "pattern": "blocked-item",
+                                "severity": "high",
+                                "message": "synthetic blocked path",
+                            }
+                        ],
+                    },
+                }
+                content_rules = build_rules(
+                    {
+                        "forbidden_patterns": [
+                            {
+                                "id": "blocked_content",
+                                "pattern": "BLOCKED_CONTENT",
+                                "severity": "high",
+                                "message": "synthetic blocked content",
+                            }
+                        ]
+                    }
+                )
+                api_findings = agent_guard.scan_urls(root=root, policy=api_policy)
+                path_findings, _ = agent_guard.scan_repo_paths(
+                    root=root,
+                    policy=path_policy,
+                )
+                content_findings = agent_guard.scan_paths(
+                    [target],
+                    content_rules,
+                    root,
+                )
+                content_alias_findings = agent_guard.scan_content_paths(
+                    [target],
+                    content_rules,
+                    root,
+                )
+                file_findings = scan_file(target, content_rules, root)
+                results = {
+                    "scan_urls": [
+                        [item.path, item.line, type(item).__name__]
+                        for item in api_findings
+                    ],
+                    "scan_repo_paths": [
+                        [item.path, item.rule_id, type(item).__name__]
+                        for item in path_findings
+                    ],
+                    "scan_paths": [
+                        [item.file, item.line, item.rule_id, type(item).__name__]
+                        for item in content_findings
+                    ],
+                    "scan_content_paths": [
+                        [item.file, item.line, item.rule_id, type(item).__name__]
+                        for item in content_alias_findings
+                    ],
+                    "scan_file": [
+                        [item.file, item.line, item.rule_id, type(item).__name__]
+                        for item in file_findings
+                    ],
+                }
+                print(json.dumps(results, sort_keys=True))
+                """
+            ),
+            encoding="utf-8",
+        )
+        unguarded_result = run(
+            isolated_script_command(python, unguarded_consumer),
+            cwd=repo,
+        )
+        assert json.loads(unguarded_result.stdout) == {
+            "scan_content_paths": [
+                ["blocked-item.md", 2, "blocked_content", "ContentGuardFinding"]
+            ],
+            "scan_file": [
+                ["blocked-item.md", 2, "blocked_content", "ContentGuardFinding"]
+            ],
+            "scan_paths": [
+                ["blocked-item.md", 2, "blocked_content", "ContentGuardFinding"]
+            ],
+            "scan_repo_paths": [
+                ["blocked-item.md", "blocked_path", "PathGuardFinding"]
+            ],
+            "scan_urls": [["blocked-item.md", 1, "ApiGuardFinding"]],
+        }
+        assert unguarded_result.stderr == ""
         cli = run(
             isolated_module_command(
                 python,

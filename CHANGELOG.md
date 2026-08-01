@@ -8,6 +8,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## 0.3.4 - 2026-08-01
 
+- Preserved top-level standalone compatibility for the public API, content, and
+  path scanners. Default isolation uses a fresh package-owned interpreter with
+  a bounded framed protocol and package-origin handshake, so consumers do not
+  need a `__main__` guard; scan work still avoids automatic POSIX `fork` and
+  inherited parent-thread locks. Windows CI exercises the same unguarded public
+  scanner contract.
 - Bounded workflow shell lexing per command by characters, lexer steps,
   operators, and segments before materialization. Required-command matching now
   streams bounded segments, and incremental array-assignment state replaces
@@ -30,10 +36,8 @@ Why: keep static guard releases auditable while the package is still alpha.
   Registered and preregistration
   content walks now share a monotonic deadline and charge glob-state work as well
   as directory entries. Errors remain sanitized and this does not broaden
-  agent-guard into a generic secret scanner. POSIX callers use `forkserver`
-  where available and otherwise use `spawn`; automatic `fork` selection is
-  avoided so Python and native parent-thread locks are not inherited.
-  Programmatic callers must apply the standard Python `__main__` guard.
+  agent-guard into a generic secret scanner. Automatic POSIX `fork` selection
+  is avoided so Python and native parent-thread locks are not inherited.
 - Made evidence-artifact inventory metadata come from regular Git-index blobs
   so generated or modified worktree artifacts cannot feed back into their own
   report. Inventory and content-diff Git calls disable lazy fetch and ignore

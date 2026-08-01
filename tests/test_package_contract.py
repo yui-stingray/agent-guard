@@ -108,6 +108,15 @@ def test_wheel_contract_install_command_is_offline_and_dependency_free() -> None
     ]
 
 
+def test_wheel_contract_standalone_script_command_is_isolated() -> None:
+    command = wheel_contract.isolated_script_command(
+        Path("contract-python"),
+        Path("consumer.py"),
+    )
+
+    assert command == ["contract-python", "-I", "consumer.py"]
+
+
 def test_wheel_contract_subprocess_failure_is_bounded_and_sanitized(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

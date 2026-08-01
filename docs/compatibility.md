@@ -19,12 +19,14 @@ POSIX host. These wrapper limits do not restrict the language or operating
 system represented by the repository files being scanned, and they do not
 reduce the Python CLI's Windows support.
 
-Isolated scanner workers use `forkserver` on POSIX hosts where it is available
-and otherwise use `spawn`; they do not automatically select `fork` because the
-parent process may contain Python or native threads whose locks must not be
-inherited. Programmatic entry points must therefore use the normal
-`if __name__ == "__main__":` guard. The packaged CLI and Action entry points
-already provide that guard.
+Isolated scans launch a fresh package-owned Python interpreter in isolated mode
+and exchange bounded framed messages with `agent_guard`'s internal worker
+module. The parent anchors imports to its canonical package origin and rejects
+a worker whose opaque origin identity does not match. The worker does not import
+the consumer's `__main__` module, so public programmatic scanners support
+ordinary top-level standalone scripts as well as guarded callers. Scan work does
+not use automatic POSIX `fork`, so Python and native locks held by parent threads
+are not inherited into the scanner interpreter.
 
 ## Packaged Evidence Schemas
 
@@ -57,7 +59,7 @@ outside the repository root, and limits each isolated matching run to five
 seconds after worker startup. Registered and preregistration content target
 walks also share a monotonic five-second enumeration deadline and charge
 directory entries plus pattern/path glob-state work against the fixed traversal
-budget. Isolated result messages are capped at 16 MiB;
+budget. Isolated request and result messages are each capped at 16 MiB;
 scanner-specific budgets stop oversized finding sets before materialization,
 and supported POSIX workers lower their address-space ceiling to 512 MiB. API
 directory walks charge `scandir` entries incrementally and prune lexical

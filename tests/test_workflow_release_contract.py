@@ -541,6 +541,8 @@ def test_ci_has_focused_windows_cli_contract() -> None:
     commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert "test_bounded_process_kills_descendant_holding_stdout_and_joins_reader" in commands
     assert "test_isolated_scan_supports_spawn_context" in commands
+    assert "test_default_isolated_scan_supports_standalone_programmatic_call" in commands
+    assert "test_public_scanners_support_unguarded_consumer_with_guarded_parity" in commands
     assert "test_new_mode_applies_windows_git_filename_rejections" in commands
     assert "tests/test_windows_file_boundaries.py" in commands
     assert "python -m agent_guard.cli report" in commands
