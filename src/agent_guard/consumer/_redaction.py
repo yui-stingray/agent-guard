@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 import re
-from typing import Any
 
 from ..public_redaction import (
     LOCAL_PATH_PUBLIC_TEXT_RE,
@@ -72,7 +71,7 @@ def _is_structurally_sensitive_public_key(key: str) -> bool:
 
 
 def validate_public_evidence_shape(
-    value: Any,
+    value: object,
     *,
     path: str = "$",
     _field_path: tuple[str, ...] = (),

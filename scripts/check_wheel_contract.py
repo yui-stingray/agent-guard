@@ -6,9 +6,11 @@ Why: editable installs can hide packaging mistakes; releases must prove the whee
 from __future__ import annotations
 
 import hashlib
+from importlib import metadata
 import json
 import os
 import queue
+import shutil
 import signal
 import stat
 import struct
@@ -62,6 +64,7 @@ MAX_TRACKED_PATHS = MAX_ARCHIVE_MEMBERS
 GIT_INVENTORY_TIMEOUT_SECONDS = 10.0
 GIT_READ_CHUNK_BYTES = 64 * 1024
 GIT_TERMINATE_TIMEOUT_SECONDS = 1.0
+WHEEL_SMOKE_SUBPROCESS_TIMEOUT_SECONDS = 120.0
 _ZIP_EOCD_SIGNATURE = b"PK\x05\x06"
 _ZIP64_EOCD_SIGNATURE = b"PK\x06\x06"
 _ZIP64_LOCATOR_SIGNATURE = b"PK\x06\x07"
@@ -1111,15 +1114,71 @@ def isolated_code_command(python: Path, code: str) -> list[str]:
     return [str(python), "-I", "-c", code]
 
 
+def isolated_wheel_install_command(python: Path, wheel: Path) -> list[str]:
+    """Build an offline, dependency-free install command for the local wheel."""
+
+    return isolated_module_command(
+        python,
+        "pip",
+        "install",
+        "--quiet",
+        "--disable-pip-version-check",
+        "--no-index",
+        "--no-deps",
+        str(wheel),
+    )
+
+
 def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess and return its completed process."""
-    result = subprocess.run(command, cwd=cwd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"command failed with exit {result.returncode}: {command!r}\n"
-            f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    """Run a bounded subprocess without exposing child output on failure."""
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=WHEEL_SMOKE_SUBPROCESS_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("wheel contract subprocess timed out") from None
+    except OSError:
+        raise RuntimeError("wheel contract subprocess could not start") from None
+    if result.returncode != 0:
+        raise RuntimeError(f"wheel contract subprocess failed with exit {result.returncode}")
     return result
+
+
+def copy_runtime_dependency_to_venv(
+    python: Path,
+    venv_dir: Path,
+    *,
+    cwd: Path,
+) -> None:
+    """Copy only the installed PyYAML package into the isolated smoke venv."""
+
+    site_result = run(
+        isolated_code_command(
+            python,
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
+        ),
+        cwd=cwd,
+    )
+    try:
+        site_packages = Path(site_result.stdout.strip()).resolve(strict=True)
+        site_packages.relative_to(venv_dir.resolve(strict=True))
+        dependency_package = Path(metadata.distribution("PyYAML").locate_file("yaml")).resolve(strict=True)
+        if not dependency_package.is_dir() or not (dependency_package / "__init__.py").is_file():
+            raise ValueError
+        shutil.copytree(
+            dependency_package,
+            site_packages / "yaml",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+    except (metadata.PackageNotFoundError, OSError, RuntimeError, ValueError):
+        raise RuntimeError("wheel contract runtime dependency could not be prepared") from None
 
 
 def main() -> int:
@@ -1134,7 +1193,8 @@ def main() -> int:
         venv_dir = temp / "venv"
         venv.EnvBuilder(with_pip=True).create(venv_dir)
         python = venv_python_path(venv_dir)
-        run(isolated_module_command(python, "pip", "install", "--quiet", str(wheel)), cwd=temp)
+        run(isolated_wheel_install_command(python, wheel), cwd=temp)
+        copy_runtime_dependency_to_venv(python, venv_dir, cwd=temp)
         smoke = textwrap.dedent(
             f"""
             import json

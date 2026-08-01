@@ -54,6 +54,127 @@ def test_wheel_contract_uses_platform_specific_venv_interpreter() -> None:
     assert wheel_contract.venv_python_path(venv_dir, platform_name="nt") == venv_dir / "Scripts" / "python.exe"
 
 
+def test_wheel_contract_install_command_is_offline_and_dependency_free() -> None:
+    command = wheel_contract.isolated_wheel_install_command(
+        Path("contract-python"),
+        Path("contract-wheel.whl"),
+    )
+
+    assert command == [
+        "contract-python",
+        "-I",
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--disable-pip-version-check",
+        "--no-index",
+        "--no-deps",
+        "contract-wheel.whl",
+    ]
+
+
+def test_wheel_contract_subprocess_failure_is_bounded_and_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    private_output = "synthetic private subprocess output"
+
+    def failed_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert kwargs["timeout"] == wheel_contract.WHEEL_SMOKE_SUBPROCESS_TIMEOUT_SECONDS
+        return subprocess.CompletedProcess(command, 7, private_output, private_output)
+
+    monkeypatch.setattr(wheel_contract.subprocess, "run", failed_run)
+
+    with pytest.raises(RuntimeError, match="^wheel contract subprocess failed with exit 7$") as exc_info:
+        wheel_contract.run(["synthetic-command"], cwd=tmp_path)
+
+    assert private_output not in str(exc_info.value)
+
+
+def test_wheel_contract_subprocess_timeout_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    private_output = "synthetic private timeout output"
+
+    def timed_out_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+            output=private_output,
+            stderr=private_output,
+        )
+
+    monkeypatch.setattr(wheel_contract.subprocess, "run", timed_out_run)
+
+    with pytest.raises(RuntimeError, match="^wheel contract subprocess timed out$") as exc_info:
+        wheel_contract.run(["synthetic-command"], cwd=tmp_path)
+
+    assert private_output not in str(exc_info.value)
+
+
+def test_wheel_contract_subprocess_start_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    private_output = "synthetic private launch detail"
+
+    def failed_start(_command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise OSError(private_output)
+
+    monkeypatch.setattr(wheel_contract.subprocess, "run", failed_start)
+
+    with pytest.raises(RuntimeError, match="^wheel contract subprocess could not start$") as exc_info:
+        wheel_contract.run(["synthetic-command"], cwd=tmp_path)
+
+    assert private_output not in str(exc_info.value)
+
+
+def test_wheel_contract_copies_only_declared_runtime_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    venv_dir = tmp_path / "venv"
+    site_packages = venv_dir / "site-packages"
+    site_packages.mkdir(parents=True)
+    dependency_root = tmp_path / "outer-site-packages"
+    dependency_package = dependency_root / "yaml"
+    dependency_package.mkdir(parents=True)
+    (dependency_package / "__init__.py").write_text("SAFE = True\n", encoding="utf-8")
+    (dependency_root / "unrelated.py").write_text("UNRELATED = True\n", encoding="utf-8")
+
+    class SyntheticDistribution:
+        def locate_file(self, path: str) -> Path:
+            assert path == "yaml"
+            return dependency_package
+
+    monkeypatch.setattr(
+        wheel_contract.metadata,
+        "distribution",
+        lambda name: SyntheticDistribution() if name == "PyYAML" else None,
+    )
+    monkeypatch.setattr(
+        wheel_contract,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["synthetic-python"],
+            0,
+            f"{site_packages}\n",
+            "",
+        ),
+    )
+
+    wheel_contract.copy_runtime_dependency_to_venv(
+        Path("synthetic-python"),
+        venv_dir,
+        cwd=tmp_path,
+    )
+
+    assert (site_packages / "yaml" / "__init__.py").read_text(encoding="utf-8") == "SAFE = True\n"
+    assert not (site_packages / "unrelated.py").exists()
+
+
 def test_wheel_contract_isolated_module_smoke_ignores_pythonpath_shadow(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
