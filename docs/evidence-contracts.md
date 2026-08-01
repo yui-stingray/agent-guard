@@ -56,24 +56,24 @@ linting, and strict release gates using the same packaged consumer path.
 
 ## Public Artifact Boundary
 
-Public-safe claims apply to `agent-guard report`, `agent-guard render-report`,
-standalone `agent-guard surface inventory`, GitHub annotations, SARIF rendered
-from a report, conformance output, and evidence-pack manifests. Standalone
-surface inventory output is recursively sanitized before Action upload so
-secret-shaped repository-relative metadata is not published raw.
-Raw per-scanner JSON from commands such as
-`agent-guard api check --json`, `content check --json`, `context check --json`,
-`mcp check --json`, or `workflow check --json` is intended for local automation
-and CI internals. Depending on the scanner and policy, raw JSON may include
-scanner-specific metadata, policy details, server metadata, or other
-diagnostics. Do not upload raw scanner JSON as a public artifact unless a
-maintainer has reviewed that exact output.
+Public-safe means sanitized under the declared controlled-field/controlled-pattern contract,
+not a generic secret/PII absence guarantee or replacement for dedicated secret scanners. It applies to
+`agent-guard report`, `agent-guard render-report`, standalone `agent-guard surface inventory`,
+GitHub annotations, SARIF rendered from a report, conformance output, and evidence-pack manifests.
+Standalone surface inventory output is recursively sanitized before Action upload so secret-shaped repository-relative metadata is not published raw.
 
-OWASP Agentic Top 10 labels, MCP risk labels, and other public crosswalks are
-static risk-theme metadata attached to deterministic repository findings. They
-are not vulnerability proofs, runtime prompt/tool poisoning detection, runtime
-MCP security validation, live OAuth validation, generic secret scanning,
-SLSA/provenance verification, or compliance attestation.
+Raw per-scanner JSON, including `api`, `content`, `context`, `mcp`, or `workflow` checks with `--json`, is for
+local automation and CI internals; depending on the scanner and policy, it may include scanner metadata, policy details, server metadata, or other diagnostics.
+Do not upload raw scanner JSON as a public artifact unless a maintainer has reviewed that exact output.
+
+The current MCP 2026-07-28 protocol/runtime/OAuth changes do not expand this static boundary.
+No changelog item directly invalidates the current committed-config labels, so they do not require
+runtime execution, live OAuth validation, or taxonomy/code changes.
+
+OWASP Agentic Top 10 labels, MCP risk labels, and other public crosswalks are static
+risk-theme metadata attached to deterministic repository findings. They are not vulnerability proofs,
+runtime prompt/tool poisoning detection, runtime MCP security validation, live OAuth validation,
+generic secret scanning, SLSA/provenance verification, or compliance attestation.
 
 See [`docs/threat-model.md`](threat-model.md) for the static evidence boundary:
 what `agent-guard` can catch in repository files and sanitized artifacts, what
@@ -286,7 +286,7 @@ requires additional repository permissions.
 
 - a general LLM reviewer or issue triage bot;
 - a model router, MoA orchestrator, or model-quality scorer;
-- a broad replacement for dedicated credential scanners;
+- a broad replacement for dedicated secret or credential scanners;
 - an agent execution log UI;
 - a runtime prompt-injection, MCP tool-poisoning, or memory-poisoning detector;
 - a live OAuth validator;

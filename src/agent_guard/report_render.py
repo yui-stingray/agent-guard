@@ -29,4 +29,4 @@ def emit_report_output(rendered: str, output_path: str) -> None:
 
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
+    path.write_bytes(rendered.encode("utf-8"))

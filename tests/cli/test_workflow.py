@@ -7,6 +7,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from agent_guard import workflow_guard
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
 
 def test_workflow_cli_json_ok(tmp_path: Path) -> None:
@@ -271,3 +274,114 @@ def test_workflow_cli_json_error_scrubs_windows_policy_path(tmp_path: Path) -> N
     assert payload["policy"] == {"path": "<external-policy>"}
     assert "C:\\Users" not in payload["error"]
     assert "maintainer" not in payload["error"]
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("field_name", ["id", "command"])
+def test_workflow_cli_oversized_policy_metadata_is_sanitized_exit_two(
+    tmp_path: Path,
+    field_name: str,
+    json_output: bool,
+) -> None:
+    marker = f"synthetic-cli-oversized-{field_name}-marker"
+    oversized = marker + (
+        "界" * (workflow_guard.MAX_WORKFLOW_POLICY_STRING_BYTES // 3 + 1)
+    )
+    policy = tmp_path / "workflow-policy.yaml"
+    check_id = oversized if field_name == "id" else "ci_smoke"
+    command = oversized if field_name == "command" else "agent-guard report"
+    write(
+        policy,
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "workflow_checks:\n"
+        f"  - id: {check_id}\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: guard\n"
+        f"        command: {command}\n",
+    )
+    args = ["workflow", "check", "--root", str(tmp_path), "--policy", str(policy)]
+    if json_output:
+        args.append("--json")
+
+    result = run_cli(*args)
+
+    assert result.returncode == 2
+    assert marker not in result.stdout
+    assert marker not in result.stderr
+    if json_output:
+        payload = json.loads(result.stdout)
+        assert_shared_envelope(
+            payload,
+            scanner="workflow",
+            status="error",
+            exit_code=2,
+            finding_count=0,
+        )
+        assert payload["error"] == "workflow configuration exceeds safety limits"
+    else:
+        assert result.stdout == "ERROR: workflow configuration exceeds safety limits\n"
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("flood_kind", ["operators", "parentheses"])
+def test_workflow_cli_shell_flood_limits_are_sanitized_exit_two(
+    tmp_path: Path,
+    flood_kind: str,
+    json_output: bool,
+) -> None:
+    workflow_marker = f"synthetic-cli-{flood_kind}-workflow-marker"
+    policy_marker = f"synthetic-cli-{flood_kind}-policy-marker"
+    if flood_kind == "operators":
+        command = workflow_marker + (
+            ";" * (workflow_guard.MAX_WORKFLOW_COMMAND_OPERATORS + 1)
+        )
+    else:
+        command = workflow_marker + (
+            "(" * (workflow_guard.MAX_WORKFLOW_LEXER_STEPS + 1)
+        )
+
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {command}\n",
+    )
+    policy = tmp_path / "workflow-policy.yaml"
+    write(
+        policy,
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "workflow_checks:\n"
+        f"  - id: {policy_marker}\n"
+        "    path: .github/workflows/ci.yml\n"
+        "    required_commands:\n"
+        "      - id: guard\n"
+        f"        command: {policy_marker}\n",
+    )
+    args = ["workflow", "check", "--root", str(tmp_path), "--policy", str(policy)]
+    if json_output:
+        args.append("--json")
+
+    result = run_cli(*args)
+
+    assert result.returncode == 2
+    assert workflow_marker not in result.stdout
+    assert workflow_marker not in result.stderr
+    assert policy_marker not in result.stdout
+    assert policy_marker not in result.stderr
+    assert str(tmp_path) not in result.stdout
+    assert str(tmp_path) not in result.stderr
+    if json_output:
+        payload = json.loads(result.stdout)
+        assert_shared_envelope(
+            payload,
+            scanner="workflow",
+            status="error",
+            exit_code=2,
+            finding_count=0,
+        )
+        assert payload["error"] == "workflow configuration exceeds safety limits"
+    else:
+        assert result.stdout == "ERROR: workflow configuration exceeds safety limits\n"

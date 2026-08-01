@@ -80,7 +80,7 @@ def run_content_check(args: argparse.Namespace) -> int:
                 Path(args.scan_dir),
                 file_globs,
                 exclude_globs,
-                since_ref=str(args.since_ref).strip(),
+                since_ref=str(args.since_ref),
                 include_untracked=not bool(args.no_untracked),
             )
         else:

@@ -170,9 +170,9 @@ workflow_checks:
       - id: evidence_report_with_drift
         command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml
       - id: conformance_check
-        command: agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended
+        command: agent-guard conformance check --root . --evidence "$report_json" --profile recommended
       - id: evidence_pack_manifest
-        command: agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json
+        command: agent-guard evidence-pack manifest --root . --report "$report_json"
 """
 
 
@@ -195,12 +195,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install agent-guard
-        run: python -m pip install yui-agent-guard==__AGENT_GUARD_VERSION__
-      - name: Generate evidence
+        run: python -I -m pip install yui-agent-guard==__AGENT_GUARD_VERSION__
+      - id: generate-evidence
+        name: Generate evidence
+        env:
+          AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}
+          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set +e
           status=0
@@ -210,44 +217,192 @@ jobs:
               status="$code"
             fi
           }
-          mkdir -p .agent-guard/evidence
-          raw_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$raw_parent"
-          raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
-          trap 'rm -rf "$raw_dir"' EXIT
-          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > "$raw_dir/context.json"
+          drift_base_args=()
+          report_base_args=()
+          case "${AGENT_GUARD_EVENT_NAME:-}" in
+            pull_request)
+              base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
+              if [ -z "$base_sha" ]; then
+                echo "::error::pull request base SHA is unavailable"
+                exit 2
+              fi
+              case "$base_sha" in
+                *[!0-9a-f]*)
+                  echo "::error::pull request base SHA is invalid"
+                  exit 2
+                  ;;
+              esac
+              if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+                echo "::error::pull request base SHA is invalid"
+                exit 2
+              fi
+              drift_base_args=(--base-ref "$base_sha")
+              report_base_args=(--drift-base-ref "$base_sha")
+              ;;
+            push)
+              ;;
+            *)
+              echo "::error::workflow event type is unsupported"
+              exit 2
+              ;;
+          esac
+          runner_temp="${RUNNER_TEMP:-/tmp}"
+          if ! mkdir -p "$runner_temp" 2>/dev/null; then
+            echo "::error::evidence staging setup failed"
+            exit 2
+          fi
+          if ! raw_dir="$(mktemp -d "$runner_temp/agent-guard-raw.XXXXXX" 2>/dev/null)"; then
+            echo "::error::evidence staging setup failed"
+            exit 2
+          fi
+          if ! evidence_dir="$(mktemp -d "$runner_temp/agent-guard-evidence.XXXXXX" 2>/dev/null)"; then
+            rm -rf "$raw_dir" 2>/dev/null || true
+            echo "::error::evidence staging setup failed"
+            exit 2
+          fi
+          evidence_ready=false
+          cleanup() {
+            rm -rf "$raw_dir" 2>/dev/null || true
+            if [ "$evidence_ready" != "true" ]; then
+              rm -rf "$evidence_dir" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+          report_json="${evidence_dir%/}/agent-guard-report.json"
+          report_markdown="${evidence_dir%/}/agent-guard-report.md"
+          report_sarif="${evidence_dir%/}/agent-guard-results.sarif"
+          conformance_json="${evidence_dir%/}/agent-guard-conformance.json"
+          evidence_pack_json="${evidence_dir%/}/agent-guard-evidence-pack.json"
+          surface_inventory_json="${evidence_dir%/}/agent-surface-inventory.json"
+          public_artifact_names=(
+            agent-guard-report.json
+            agent-guard-report.md
+            agent-guard-results.sarif
+            agent-guard-conformance.json
+            agent-guard-evidence-pack.json
+            agent-surface-inventory.json
+          )
+          validate_raw_result() {
+            code="$1"
+            output_path="$2"
+            if [ ! -f "$output_path" ] || [ -L "$output_path" ]; then
+              return 2
+            fi
+            return "$code"
+          }
+          agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json 2>/dev/null > "$raw_dir/context.json"
+          validate_raw_result "$?" "$raw_dir/context.json"
           record_status "$?"
-          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json > "$raw_dir/path.json"
+          agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json 2>/dev/null > "$raw_dir/path.json"
+          validate_raw_result "$?" "$raw_dir/path.json"
           record_status "$?"
-          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json > "$raw_dir/content.json"
+          agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json 2>/dev/null > "$raw_dir/content.json"
+          validate_raw_result "$?" "$raw_dir/content.json"
           record_status "$?"
-          agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > "$raw_dir/mcp.json"
+          agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json 2>/dev/null > "$raw_dir/mcp.json"
+          validate_raw_result "$?" "$raw_dir/mcp.json"
           record_status "$?"
-          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > .agent-guard/evidence/agent-surface-inventory.json
+          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json 2>/dev/null > "$raw_dir/workflow.json"
+          validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
-          agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > "$raw_dir/workflow.json"
+          agent-guard drift check --root . --profile recommended --schema-version v2 "${drift_base_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"
+          validate_raw_result "$?" "$raw_dir/drift.json"
           record_status "$?"
-          agent-guard drift check --root . --profile recommended --schema-version v2 --json > "$raw_dir/drift.json"
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" --format json --output "$report_json" > /dev/null 2>&1
           record_status "$?"
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json
+          agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json 2>/dev/null > "$surface_inventory_json"
+          validate_raw_result "$?" "$surface_inventory_json"
           record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
+          agent-guard render-report --root . --input "$report_json" --format markdown --output "$report_markdown" > /dev/null 2>&1
           record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
+          agent-guard render-report --root . --input "$report_json" --format sarif --output "$report_sarif" > /dev/null 2>&1
           record_status "$?"
-          agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json > .agent-guard/evidence/agent-guard-conformance.json
+          agent-guard conformance check --root . --evidence "$report_json" --profile recommended --json 2>/dev/null > "$conformance_json"
+          validate_raw_result "$?" "$conformance_json"
           record_status "$?"
-          agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json > .agent-guard/evidence/agent-guard-evidence-pack.json
+          agent-guard evidence-pack manifest --root . --report "$report_json" --artifact "$report_json" --json 2>/dev/null > "$evidence_pack_json"
+          validate_raw_result "$?" "$evidence_pack_json"
           record_status "$?"
-          agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format github-annotations
+          if [ "$status" -ge 2 ]; then
+            echo "::error::evidence generation failed"
+            exit 2
+          fi
+          validate_public_evidence() (
+            if [ ! -d "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
+              return 1
+            fi
+            shopt -s nullglob dotglob
+            evidence_entries=("$evidence_dir"/*)
+            if [ "${#evidence_entries[@]}" -ne "${#public_artifact_names[@]}" ]; then
+              return 1
+            fi
+            for artifact_name in "${public_artifact_names[@]}"; do
+              artifact_path="${evidence_dir%/}/$artifact_name"
+              if [ ! -f "$artifact_path" ] || [ -L "$artifact_path" ]; then
+                return 1
+              fi
+            done
+          )
+          if ! validate_public_evidence; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          agent-guard render-report --root . --input "$report_json" --format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"
+          validate_raw_result "$?" "$raw_dir/annotations.txt"
           record_status "$?"
+          if [ "$status" -ge 2 ]; then
+            echo "::error::evidence generation failed"
+            exit 2
+          fi
+          annotations_path="${evidence_dir%/}/agent-guard-annotations.txt"
+          if ! mv "${raw_dir%/}/annotations.txt" "$annotations_path" 2>/dev/null; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          if [ ! -f "$annotations_path" ] || [ -L "$annotations_path" ]; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          if ! python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" --emit-annotations "$report_json" 2>/dev/null; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          if ! rm -f "$annotations_path" 2>/dev/null; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          if ! validate_public_evidence; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+          write_evidence_dir_output() {
+            printf 'evidence-dir=%s\\n' "$evidence_dir" >> "$GITHUB_OUTPUT"
+          }
+          if ! write_evidence_dir_output 2>/dev/null; then
+            echo "::error::evidence output setup failed"
+            exit 2
+          fi
+          evidence_ready=true
+          write_ready_output() {
+            printf 'ready=true\\n' >> "$GITHUB_OUTPUT"
+          }
+          if ! write_ready_output 2>/dev/null; then
+            echo "::error::evidence output setup failed"
+            exit 2
+          fi
           exit "$status"
       - name: Upload evidence
-        if: always()
+        if: always() && steps.generate-evidence.outputs.ready == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-guard-evidence
-          path: .agent-guard/evidence/
+          path: |
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-report.json
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-report.md
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-results.sarif
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-conformance.json
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-evidence-pack.json
+            ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
 """.replace("__AGENT_GUARD_VERSION__", PACKAGE_VERSION)
 

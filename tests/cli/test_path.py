@@ -117,3 +117,68 @@ def test_path_cli_json_error(tmp_path: Path) -> None:
     assert_shared_envelope(payload, scanner="path", status="error", exit_code=2, finding_count=0)
     assert str(tmp_path) not in payload["error"]
     assert payload["policy"] == {"path": "missing.yaml"}
+
+
+def test_path_cli_rejects_yaml_merge_with_sanitized_policy_limit(
+    tmp_path: Path,
+) -> None:
+    sentinel = "synthetic-path-cli-yaml-sentinel"
+    policy = tmp_path / "path_policy.yaml"
+    policy.write_text(
+        f"base: &base {{marker: {sentinel}}}\n"
+        "policy:\n"
+        "  <<: *base\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "path",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="path",
+        status="error",
+        exit_code=2,
+        finding_count=0,
+    )
+    assert payload["error"] == "path policy exceeds configured limits"
+    assert sentinel not in result.stdout
+    assert str(tmp_path) not in payload["error"]
+
+
+def test_path_cli_rejects_external_include_without_leaking_target(tmp_path: Path) -> None:
+    sentinel = "sk-" + ("h" * 24)
+    outside = tmp_path.parent / f"{tmp_path.name}-{sentinel}-outside"
+    write(outside / "synthetic-marker.txt", "safe\n")
+    policy = tmp_path / "path_policy.yaml"
+    policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        f"    - {str(outside)!r}\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_path_patterns: []\n"
+        "  forbidden_path_patterns: []\n",
+        encoding="utf-8",
+    )
+
+    json_result = run_cli("path", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+    text_result = run_cli("path", "check", "--root", str(tmp_path), "--policy", str(policy))
+
+    for result in (json_result, text_result):
+        assert result.returncode == 2
+        for output in (result.stdout, result.stderr):
+            assert sentinel not in output
+            assert str(outside) not in output
+    payload = json.loads(json_result.stdout)
+    assert payload["error"] == "path scan target must stay under repo root"
+    assert text_result.stdout.strip() == "ERROR: path scan target must stay under repo root"

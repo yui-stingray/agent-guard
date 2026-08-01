@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
       - uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819  # v0.1.11
 
   action-smoke:
@@ -29,23 +31,74 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
       - id: agent-guard
         uses: ./
         with:
           github-annotations: "false"
       - name: Verify packaged action consumer contract
         env:
+          ACTION_READY: ${{ steps.agent-guard.outputs.ready }}
           ACTION_STATUS: ${{ steps.agent-guard.outputs.status }}
+          EVIDENCE_DIR: ${{ steps.agent-guard.outputs.evidence-dir }}
           REPORT_JSON: ${{ steps.agent-guard.outputs.report-json }}
           REPORT_MARKDOWN: ${{ steps.agent-guard.outputs.report-markdown }}
           REPORT_SARIF: ${{ steps.agent-guard.outputs.report-sarif }}
         run: |
           set -euo pipefail
+          test "$ACTION_READY" = "true"
           test "$ACTION_STATUS" = "0"
           test -f "$REPORT_JSON"
           test -f "$REPORT_MARKDOWN"
           test -f "$REPORT_SARIF"
-          python -m agent_guard.consumer "$REPORT_JSON"
+          AGENT_GUARD_ROOT=. \
+            AGENT_GUARD_EVIDENCE_DIR="$EVIDENCE_DIR" \
+            AGENT_GUARD_REPORT_JSON="$REPORT_JSON" \
+            sh examples/evidence_contracts_ci.sh consume
+
+  windows-cli-smoke:
+    name: Windows CLI contract
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+      - name: Install package + dev deps
+        run: python -m pip install -e ".[dev]"
+      - name: Verify Windows process and path boundaries
+        run: >-
+          python -m pytest -q
+          tests/test_bounded_git.py::test_bounded_process_kills_descendant_holding_stdout_and_joins_reader
+          tests/test_bounded_scan.py::test_isolated_scan_supports_spawn_context
+          tests/test_bounded_scan.py::test_default_isolated_scan_supports_standalone_programmatic_call
+          tests/test_public_api.py::test_public_scanners_support_unguarded_consumer_with_guarded_parity
+          tests/test_content_guard.py::test_new_mode_applies_windows_git_filename_rejections
+          tests/test_windows_file_boundaries.py
+      - name: Verify Windows CLI report consumer contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}\\agent-guard-windows-report.json"
+          set +e
+          python -m agent_guard.cli report \
+            --root . \
+            --context-policy .agent-guard/context-policy.yaml \
+            --evidence-preset recommended \
+            --mcp-policy .agent-guard/mcp-policy.yaml \
+            --digest-policy .agent-guard/context-digest-policy.yaml \
+            --format json \
+            --output "$report"
+          report_status=$?
+          set -e
+          # Exit 1 is a generated diagnostic report with findings, not a fatal error.
+          test "$report_status" -le 1
+          test -f "$report"
+          python -m agent_guard.consumer "$report"
 
   test:
     name: pytest (py${{ matrix.python-version }})
@@ -56,6 +109,8 @@ jobs:
         python-version: ['3.11.4', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: ${{ matrix.python-version }}

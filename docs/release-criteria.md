@@ -42,7 +42,16 @@ Before tagging, verify:
 - self-dogfood `path`, `context`, `context lock`, `digest`, `content`,
   `workflow`, `surface inventory`, `drift`, and `report` gates pass;
 - packaged schemas are present in the wheel;
-- wheel contract check passes from a clean install;
+- wheel contract check passes from a clean install, and exact wheel/sdist member
+  sets match the sanitized tracked-file inventory, bounded by bytes, path count,
+  and deadline, plus fixed package metadata without missing, extra, duplicate,
+  unsafe, non-regular, or oversized members; wheel count and central-directory
+  limits are checked before ZIP member metadata is materialized, and the sdist
+  is copied to a private bounded snapshot before its single gzip member,
+  decompressed stream, consecutive extension headers, and bounded PAX/GNU
+  metadata are preflighted before Python's `tarfile` reader materializes member
+  metadata; GNU sparse forms and PAX size overrides are not accepted by this
+  regular-file-only release contract;
 - the clean build contains exactly the current wheel and sdist, and
   exact-version PyPI metadata exposes exactly those two files as non-yanked;
 - GitHub Actions CI is green on the release commit;

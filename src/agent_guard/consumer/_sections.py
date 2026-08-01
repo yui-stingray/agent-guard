@@ -258,9 +258,9 @@ def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
     if status == "ok":
         require(exit_code == 0, "$.exit_code must be 0 when status is ok")
     if status == "violation":
-        require(isinstance(exit_code, int) and exit_code != 0, "$.exit_code must be non-zero when status is violation")
+        require(exit_code == 1, "$.exit_code must be 1 when status is violation")
     if status == "error":
-        require(isinstance(exit_code, int) and exit_code != 0, "$.exit_code must be non-zero when status is error")
+        require(exit_code == 2, "$.exit_code must be 2 when status is error")
         error = payload.get("error")
         require(isinstance(error, str) and bool(error.strip()), "$.error must be a non-empty string when status is error")
 

@@ -5,6 +5,10 @@ Why: let downstream wrappers import the consumer instead of copying example code
 
 from __future__ import annotations
 
+from ._bundle import (
+    ALLOWED_EVIDENCE_ARTIFACT_NAMES,
+    validate_evidence_bundle,
+)
 from ._cli import main, parse_args
 from ._redaction import (
     FORBIDDEN_PUBLIC_KEYS,
@@ -40,6 +44,7 @@ from ._sections import (
 )
 
 __all__ = [
+    "ALLOWED_EVIDENCE_ARTIFACT_NAMES",
     "FORBIDDEN_PUBLIC_KEYS",
     "LOCAL_PATH_RE",
     "MCP_POLICY_CONFORMANCE_RULES",
@@ -60,6 +65,7 @@ __all__ = [
     "schema_condition_matches",
     "validate_against_schema",
     "validate_conformance",
+    "validate_evidence_bundle",
     "validate_evidence_pack_manifest",
     "validate_gate_counts",
     "validate_public_evidence_shape",

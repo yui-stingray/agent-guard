@@ -6,6 +6,146 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.4 - 2026-08-01
+
+- Preserved top-level standalone compatibility for the public API, content, and
+  path scanners. Default isolation uses a fresh package-owned interpreter with
+  a bounded framed protocol and package-origin handshake, so consumers do not
+  need a `__main__` guard; scan work still avoids automatic POSIX `fork` and
+  inherited parent-thread locks. Windows CI exercises the same unguarded public
+  scanner contract.
+- Bounded workflow shell lexing per command by characters, lexer steps,
+  operators, and segments before materialization. Required-command matching now
+  streams bounded segments, and incremental array-assignment state replaces
+  repeated prefix copies and regex scans. Limit failures remain sanitized.
+- Made every path-bearing Git query in content `new` mode use an explicit
+  repository-top literal pathspec, including staged-index metadata and
+  index/worktree mismatch checks, so scan-directory bytes cannot become Git
+  pathspec syntax.
+- Bounded API, content, and path policy YAML by event count, nesting, aliases,
+  and iterative object-graph traversal before scanner use. YAML merge expansion
+  and cyclic or excessive alias graphs now fail with each scanner's existing
+  sanitized policy-limit error; bounded non-merge anchors remain supported.
+- Bound API, content, and path policy inputs and scan work, isolate
+  policy-controlled regular-expression matching behind a fixed execution
+  deadline, apply finding/result budgets before result materialization, and
+  reject include targets that resolve outside the repository. Supported POSIX
+  workers also lower their address-space ceiling. API walks charge incremental
+  directory entries and prune lexical exclusions before resolution, so excluded
+  external symlinks are not inspected while selected ones still fail closed.
+  Registered and preregistration
+  content walks now share a monotonic deadline and charge glob-state work as well
+  as directory entries. Errors remain sanitized and this does not broaden
+  agent-guard into a generic secret scanner. Automatic POSIX `fork` selection
+  is avoided so Python and native parent-thread locks are not inherited.
+- Made evidence-artifact inventory metadata come from regular Git-index blobs
+  so generated or modified worktree artifacts cannot feed back into their own
+  report. Inventory and content-diff Git calls disable lazy fetch and ignore
+  inherited repository/index/object routing environment overrides, inherited
+  global/system configuration, replace refs, and fsmonitor helpers. Content base refs are
+  resolved to commit object ids before diffing, Git output and runtime are
+  bounded. Git execution is restricted to the helper-disabled query shapes used
+  by static evidence; Windows uses a Job Object and POSIX terminates the direct
+  process group. A POSIX descendant that deliberately starts a new session is
+  outside that portable containment boundary, so the selected Python, Git, and
+  executable search path remain trusted. The packaged Action now stages prior
+  public artifacts by same-device, rename-only directory operations outside the
+  scan root that fail closed on `EXDEV` instead of falling back to copy/delete,
+  restores them after ordinary fatal generation failures and catchable signals
+  when possible, retains the staged backup if restoration itself fails, and
+  verifies required outputs before replacement. Uncatchable termination such as
+  `SIGKILL` or runner power loss cannot execute shell restoration traps.
+- Made the CI Action smoke replay the fail-closed evidence consumer against the
+  current repository, and made generated pull-request workflows anchor drift
+  evidence to the fetched base commit. Added a focused Windows CLI contract job
+  for Job Object cleanup, spawn-based scans, Windows path rejection, and report
+  consumption, including native final-handle reads and outside-junction
+  rejection. The packaged Action remains Linux-runner-only, while the shell
+  consumer example requires a POSIX host.
+- Added a bounded packaged public-bundle consumer mode, replaced the duplicated
+  shell validator with that entry point, and made stale-report wording match the
+  sanitized report-visible comparison rather than imply whole-tree identity.
+  Present Markdown, SARIF, and annotation artifacts must now exactly match
+  canonical renders of the selected report. Bundle directory enumeration stops
+  at the first excess entry, and public `consume`/`lint-public` flows run bounded
+  bundle validation before report-only parsing or digest inspection.
+- Bound standalone bundle envelopes to the selected report's tool and policy
+  claims, and require a standalone evidence-pack manifest to exactly match the
+  embedded manifest. Relocated runner-staged bundles may use only the controlled
+  `<external-policy>` sentinel where the report contract permits it; arbitrary
+  policy metadata remains rejected.
+- Made generated workflows build public evidence in fresh runner-temporary
+  staging, validate the complete bundle with an isolated Python import before
+  emitting captured annotations, and expose upload-ready outputs only after an
+  exact artifact allowlist passes. Raw-output and output-file failures now stop
+  with sanitized configuration errors instead of publishing partial evidence.
+- Applied the same pre-publication bundle validation, annotation staging,
+  raw-output checks, isolated Python imports, and checked output writes to the
+  packaged Action. The downstream `consume` gate now preserves an up-to-date
+  report's policy-finding exit status instead of converting it to success. A
+  fatal Action generation path records only sanitized `status=2`; `ready` and
+  publication path outputs remain absent.
+- Made generated workflows retain a validated fresh directory before recording
+  `ready=true` as their final publication operation. The shell consumer installs
+  restoration traps before moving the original evidence so a termination at the
+  setup boundary restores the prior bundle. Package, Action, installation, and
+  attestation examples are synchronized to the `0.3.4` release contract.
+- Rejected required workflow commands that can be skipped through same-line
+  semicolon tails, pipelines, background execution, or short-circuit OR lists;
+  excluded recognized literal-false jobs/steps, failure-masking `continue-on-error`,
+  and custom shell templates from required-command evidence;
+  added a bounded stateful shell lexer for quoting, substitutions, arrays,
+  comments, continuations, and supported here-documents; bounded workflow YAML,
+  object-graph, traversal, command, match, and finding work while rejecting YAML
+  merge expansion; made repository-scoped workflow reads descriptor-bound
+  against symlink swaps;
+  refreshed the static-only MCP reference to the final 2026-07-28
+  specification; and clarified that public-safe means bounded sanitization
+  rather than a generic secret or PII absence guarantee.
+- Required root-relative Action and shell-example evidence destinations to stay
+  beneath the selected root without parent traversal or symlinked path
+  components before any staging or publication mutation. Explicit absolute
+  destinations retain their caller-selected semantics.
+- Capped each workflow-policy string, aggregate distinct workflow input, and
+  serialized finding work; duplicate normalized workflow paths now share one
+  descriptor-bound read and parse while retaining independent check identities.
+  Limit failures remain sanitized and are checked before finding materialization.
+- Made content `new` mode consume bounded NUL-delimited Git path lists without
+  altering special file names; repository-configured clean/process filters and
+  text converters are neutralized for diff discovery, and configured filter
+  names are enumerated without reading or executing their commands. Rename
+  detection is disabled so configured rename policy cannot hide added paths.
+  Every Git entry is charged, but policy-excluded or nonmatching lexical paths
+  are discarded before symlink containment resolution, so a nonselected
+  external symlink cannot block selected evidence.
+  Selected staged paths fail closed on skip-worktree, assume-unchanged, or
+  fsmonitor-valid index flags and on a remaining index/worktree mismatch. The
+  scanner still reads current working-tree files; it does not add a Git-blob
+  scanning mode, and built-in Git text normalization remains compatible.
+- Documented that bounded static walks require a quiescent checkout: repository-
+  bound reads prevent outside-root byte access, but do not claim atomic
+  filesystem snapshot completeness under a concurrent writer.
+- Made report and render-report output-file writes emit deterministic UTF-8/LF
+  bytes on every platform, and made report-only and bundle consumers reject
+  duplicate JSON object members recursively before semantic validation with
+  stable sanitized errors. Rendered artifacts remain exact comparisons; the
+  consumer does not normalize line-ending drift.
+- Made the release contract derive exact wheel and sdist member sets from a
+  sanitized tracked-file inventory bounded by output bytes, path count, and a
+  fixed deadline. Clean-build enumeration stops after the two expected
+  distributions, and wheel member count and central-directory size are checked
+  before Python's ZIP reader materializes member metadata. The sdist preflight
+  first copies the bounded compressed input into a private snapshot, accepts one
+  gzip member with limited zero padding, and incrementally bounds decompressed
+  tar bytes, consecutive extension headers, PAX records, and PAX/GNU extension
+  metadata before Python's tar reader materializes those records. GNU sparse
+  forms and PAX size overrides are outside the regular-file-only release
+  contract and fail closed. Missing, extra, duplicate, unsafe, non-regular, or
+  oversized archive members fail before isolated wheel installation.
+- Made non-Git evidence fallback enumeration use incremental directory entries
+  and stop at the configured candidate count before constructing or sorting
+  additional paths.
+
 ## 0.3.3 - 2026-07-27
 
 - Released a bounded P0 public-artifact hygiene patch so the standalone

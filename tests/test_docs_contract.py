@@ -10,7 +10,10 @@ import re
 import tomllib
 from pathlib import Path
 
+import yaml
+
 from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
+from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,12 +21,15 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
+EVIDENCE_CONSUMER_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-consumer-contracts.md"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 EXISTING_REPO_QUICKSTART = REPO_ROOT / "docs" / "quickstart-existing-repo.md"
 GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
+ACTION_METADATA = REPO_ROOT / "action.yml"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
+COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 
 
@@ -34,6 +40,22 @@ def pyproject_version() -> str:
 
 def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
+
+
+def test_copyable_action_snippets_match_release_metadata() -> None:
+    docs = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
+    )
+    pins = set(re.findall(r"yui-stingray/agent-guard@([^\s]+)", docs))
+    referenced_outputs = set(
+        re.findall(r"steps\.agent-guard\.outputs\.([A-Za-z0-9-]+)", docs)
+    )
+    action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
+
+    assert pins == {f"v{pyproject_version()}"}
+    assert referenced_outputs
+    assert referenced_outputs <= set(action["outputs"])
 
 
 def test_readme_documents_python_patch_floor() -> None:
@@ -54,6 +76,37 @@ def test_evidence_sample_documented_commands_match_current_docs() -> None:
     ]
 
     assert sample_surfaces == collect_documented_guard_surfaces(REPO_ROOT)
+
+
+def test_evidence_sample_workflow_surfaces_match_current_workflows() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    workflow_surface_names = {
+        "evidence_artifact_reference",
+        "workflow_file",
+        "workflow_reference",
+    }
+    sample_surfaces = [
+        item
+        for item in payload["surface_inventory"]["surfaces"]
+        if item.get("surface") in workflow_surface_names
+    ]
+
+    expected_surfaces = sorted(
+        collect_workflow_surfaces(REPO_ROOT, include_artifacts=True),
+        key=lambda item: (str(item.get("path", "")), str(item.get("surface", ""))),
+    )
+    assert sample_surfaces == expected_surfaces
+
+
+def test_evidence_sample_tool_versions_match_current_package() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    version = pyproject_version()
+
+    assert payload["tool"] == {"name": "agent-guard", "version": version}
+    assert payload["evidence_pack_manifest"]["tool"] == {
+        "name": "agent-guard",
+        "version": version,
+    }
 
 
 def test_evidence_sample_only_describes_committed_evidence_artifacts() -> None:
@@ -79,11 +132,16 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
     version = pyproject_version()
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+    consumer_contracts = EVIDENCE_CONSUMER_CONTRACTS_DOC.read_text(encoding="utf-8")
 
     assert f"python -m pip install yui-agent-guard=={version}" in readme
     assert f"--from yui-agent-guard=={version}" in readme
     assert f"--from yui-agent-guard=={version}" in quickstart
     assert f"python -m pip install yui-agent-guard=={version}" in quickstart
+    assert consumer_contracts.count(
+        f"python -m pip install yui-agent-guard=={version}"
+    ) == 2
+    assert re.search(r"pip install yui-agent-guard(?:\s|$)", consumer_contracts) is None
 
     bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
     assert bootstrap.index("agent-guard init --root . --print") < bootstrap.index(
@@ -230,6 +288,9 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "SARIF is a thin adapter" in readme
     assert "Raw scanner JSON is for local automation and CI internals" in readme
     assert "Public-safe evidence" in readme
+    assert "controlled-field/controlled-pattern contract" in readme
+    assert "not a generic guarantee that an artifact contains no secrets or PII" in readme_single_line
+    assert "does not replace a dedicated secret scanner" in readme_single_line
     assert "apply to `agent-guard report`" in readme
     assert "URL/API endpoint references" in readme
     assert "MCP configuration metadata" in readme
@@ -253,6 +314,8 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "MCP runtime security validator" in readme
     assert "they do not prove" in readme
     assert "live OAuth flow is correctly implemented" in readme
+    assert "2026-07-28 protocol/runtime/OAuth changes do not justify" in readme
+    assert "No changelog item directly invalidates the current static committed-config labels" in readme_single_line
     assert "Read `recommended` as the reviewed static evidence baseline" in readme
     assert "recommended conformance does not require those gates" in readme_single_line
     assert "Use `strict` when context-lock coverage, digest drift" in readme_single_line
@@ -282,6 +345,9 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "large governance framework" in docs
     assert "Public Artifact Boundary" in docs
     assert "Raw per-scanner JSON" in docs
+    assert "controlled-field/controlled-pattern contract" in docs
+    assert "not a generic secret/PII absence guarantee" in docs_single_line
+    assert "dedicated secret scanners" in docs
     assert "Do not" in docs
     assert "upload raw scanner JSON as a public artifact" in docs
     assert "owasp_agentic_risk_themes" in docs
@@ -293,6 +359,8 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "live OAuth validator" in docs
     assert "they do not prove" in docs
     assert "live OAuth flow is correctly implemented" in docs
+    assert "2026-07-28 protocol/runtime/OAuth changes do not expand this" in docs
+    assert "No changelog item directly invalidates the current committed-config labels" in docs_single_line
     assert "docs/threat-model.md" in docs
     assert "static evidence boundary" in docs
     assert "Review the `init --print` plan before" in docs
@@ -393,42 +461,72 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "conformance-profile: strict" in actions
     assert "packaged action always generates the recommended evidence preset" in actions_single_line
     assert "${{ steps.agent-guard.outputs.evidence-dir }}" in actions
-    assert "status=0" in actions
-    assert "record_status() {" in actions
-    assert (
-        'if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then'
-        in actions
+    recommended_yaml = actions.split("## Recommended Action Workflow", 1)[1].split(
+        "```yaml", 1
+    )[1].split("```", 1)[0]
+    recommended_workflow = yaml.safe_load(recommended_yaml)
+    recommended_checkout = recommended_workflow["jobs"]["agent-guard"]["steps"][0]
+    assert recommended_checkout["with"]["persist-credentials"] is False
+    action_lines = actions.splitlines()
+    checkout_lines = [
+        index
+        for index, line in enumerate(action_lines)
+        if line.strip() == "- uses: actions/checkout@v7"
+    ]
+    assert checkout_lines
+    assert all(
+        "persist-credentials: false" in "\n".join(action_lines[index : index + 6])
+        for index in checkout_lines
     )
-    assert 'record_status "$?"' in actions
-    assert "code=$?" not in actions
-    assert "agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2" in actions
-    assert "agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in actions
+    recommended_upload = next(
+        step
+        for step in recommended_workflow["jobs"]["agent-guard"]["steps"]
+        if isinstance(step, dict) and step.get("name") == "Upload evidence"
+    )
+    assert recommended_upload["if"] == (
+        "always() && steps.agent-guard.outputs.ready == 'true' && "
+        "(steps.agent-guard.outputs.status == '0' || "
+        "steps.agent-guard.outputs.status == '1')"
+    )
+    assert recommended_upload["with"]["path"].splitlines() == [
+        "${{ steps.agent-guard.outputs.report-json }}",
+        "${{ steps.agent-guard.outputs.report-markdown }}",
+        "${{ steps.agent-guard.outputs.report-sarif }}",
+        "${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-conformance.json",
+        "${{ steps.agent-guard.outputs.evidence-dir }}/agent-guard-evidence-pack.json",
+        "${{ steps.agent-guard.outputs.evidence-dir }}/agent-surface-inventory.json",
+    ]
+    expanded = actions.split("## Expanded Workflow Step", 1)[1].split("## Optional SARIF Upload", 1)[0]
+    expanded_single_line = " ".join(expanded.split())
+    assert "agent-guard init --root . --print" in expanded
+    assert "agent-guard init --root . --write" in expanded
+    assert "separate fresh directories under `RUNNER_TEMP`" in expanded_single_line
+    assert "prior checkout `.agent-guard/evidence`" in expanded_single_line
+    assert "regular non-symlink file" in expanded_single_line
+    assert "python -I -m agent_guard.consumer --evidence-dir" in expanded
+    assert (
+        "`evidence-dir` step output, sets `evidence_ready=true`, and writes "
+        "`ready=true` last"
+        in expanded_single_line
+    )
+    assert "if: always() && steps.generate-evidence.outputs.ready == 'true'" in expanded
+    assert "Fatal setup/runtime errors (`>=2`)" in actions
+    assert (
+        "before `evidence-dir` is recorded, cleanup removes incomplete public staging"
+        in expanded_single_line
+    )
+    assert "After that output is recorded and `evidence_ready=true`" in expanded_single_line
+    assert "ready-gated upload cannot publish it" in expanded_single_line
     assert "mcp-policy" in actions
-    assert "agent-guard drift check --root . --profile recommended --schema-version v2" in actions
     assert "--evidence-preset recommended" in actions
-    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in actions
-    assert "agent-guard conformance check --root ." in actions
-    assert "agent-guard evidence-pack manifest --root ." in actions
-    assert 'exit "$status"' in actions
     assert "if: always()" in actions
     assert "Recommended evidence is the default reviewed static baseline" in actions
     assert "use `conformance-profile: strict` when digest/context-lock" in actions
-    assert "recommended static baseline after `agent-guard init --root . --write`" in actions
-    assert "add `--digest-policy .agent-guard/context-digest-policy.yaml` only after generating" in actions_single_line
-    assert (
-        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "
-        "--conformance-profile recommended --format json"
-        in actions_single_line
-    )
+    assert "generated `.github/workflows/agent-guard.yml` is the canonical expanded form" in actions_single_line
+    assert "Add `--digest-policy .agent-guard/context-digest-policy.yaml` to the report command" in actions_single_line
     assert "If the reviewed MCP policy is missing" in actions
     assert "`required_mcp_policy_not_reviewed`" in actions
     assert "not by pointing recommended evidence at an external policy file" in actions_single_line
-    assert (
-        "agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
-        "--format github-annotations"
-        in actions
-    )
     assert "does not post pull request comments" in actions
     assert "examples/evidence_consumer.py" in actions
     assert "docs/threat-model.md" in actions
@@ -445,6 +543,9 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "recursively sanitized surface inventory" in actions
     assert "do not upload it publicly" in actions
     assert "unless a maintainer has reviewed" in actions_single_line
+    assert "controlled-field/controlled-pattern contract" in actions_single_line
+    assert "not a generic secret/PII absence guarantee" in actions_single_line
+    assert "secret-shaped values covered by the controlled public-artifact contract" in actions_single_line
     raw_json_doc_lines = [
         line.strip()
         for line in actions.splitlines()
@@ -461,10 +562,22 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
             )
         )
     ]
-    assert raw_json_doc_lines
-    assert all(">" in line for line in raw_json_doc_lines)
+    assert raw_json_doc_lines == []
     assert "Parallel Step Support" not in actions
     assert "step-level `parallel`" not in actions
+
+
+def test_evidence_consumer_docs_describe_directory_transaction_boundary() -> None:
+    docs = EVIDENCE_CONSUMER_CONTRACTS_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
+
+    assert "fixed seven-name public-artifact allow-list" in docs_single_line
+    assert "same-device backup outside the selected scan root" in docs_single_line
+    assert "does not copy the consumed report" in docs
+    assert "temporarily absent or hold regenerated or partial evidence" in docs_single_line
+    assert "catchable `HUP`, `INT`, or `TERM` signals" in docs
+    assert "SIGKILL" in docs
+    assert "static evidence consumers" in docs
 
 
 def test_marketplace_readiness_stays_manual_and_static_only() -> None:
@@ -524,9 +637,16 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
     assert "examples/evidence_consumer.py" in docs
     assert "agent-guard.report_evidence.v1" in docs
     assert "not as runtime safety guarantees" in docs_single_line
-    assert "Reference snapshot: verified on 2026-07-09" in docs
-    assert "MCP 2025-11-25 latest specification family" in docs
-    assert "non-final MCP 2026-07-28 release candidate" in docs_single_line
+    assert "MCP 2026-07-28 changelog" in docs
+    assert "was verified on 2026-07-31" in docs
+    assert "current MCP 2026-07-28 specification" in docs
+    assert "MCP 2025-11-25 latest specification family" not in docs
+    assert "non-final MCP 2026-07-28 release candidate" not in docs_single_line
+    assert "controlled-field/controlled-pattern contract" in docs
+    assert "not a generic secret or PII absence guarantee" in docs_single_line
+    assert "dedicated secret scanners" in docs
+    assert "2026-07-28 protocol/runtime/OAuth changes do not justify" in docs
+    assert "No changelog item directly invalidates the current static committed-config labels" in docs_single_line
     assert "OWASP Top 10 for Agentic Applications 2026" in docs_single_line
     assert "published 2025-12-09" in docs
     assert "OWASP Agentic Skills Top 10 Incubator/Public review (v1) material" in docs_single_line
@@ -537,6 +657,15 @@ def test_threat_model_doc_keeps_static_boundary() -> None:
     assert "2026 Five Eyes careful-adoption guidance for agentic AI services" in docs_single_line
     assert "must not be described as certification, compliance" in docs_single_line
     assert "live OAuth validation, or runtime MCP/tool-poisoning detection" in docs_single_line
+
+
+def test_compatibility_doc_keeps_public_safe_contract_bounded() -> None:
+    docs = COMPATIBILITY_DOC.read_text(encoding="utf-8")
+
+    assert "bounded sanitization contract over declared controlled fields" in docs
+    assert "not a generic guarantee that an artifact contains" in docs
+    assert "no secrets or PII" in docs
+    assert "does not replace dedicated secret scanners" in docs
 
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:
@@ -631,4 +760,4 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
     assert "currently unreleased" not in surface_delta_section
     assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
-    assert "yui-stingray/agent-guard@v0.3.3" in surface_delta_section
+    assert f"yui-stingray/agent-guard@v{pyproject_version()}" in surface_delta_section

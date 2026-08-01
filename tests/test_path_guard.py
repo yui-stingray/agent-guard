@@ -5,12 +5,19 @@ Why: catch private artifacts and env-file leaks before content scanning is possi
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 
-from agent_guard.path_guard import PathGuardFinding, load_path_policy, scan_paths
+from agent_guard import bounded_scan, bounded_yaml, path_guard
+from agent_guard.path_guard import (
+    MAX_PATH_POLICY_REGEX_COUNT,
+    PathGuardFinding,
+    load_path_policy,
+    scan_paths,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +64,41 @@ def policy_file(tmp_path: Path) -> Path:
     path = tmp_path / "path_policy.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
+
+
+YAML_POLICY_SENTINEL = "synthetic-path-yaml-policy-sentinel"
+
+
+def _alias_expansion_policy() -> str:
+    lines = [f"n0: &n0 [{YAML_POLICY_SENTINEL}]\n"]
+    for index in range(1, 18):
+        lines.append(f"n{index}: &n{index} [*n{index - 1}, *n{index - 1}]\n")
+    lines.append("root: *n17\n")
+    return "".join(lines)
+
+
+YAML_POLICY_LIMIT_CASES = [
+    pytest.param(
+        "root: " + ("[" * 65) + YAML_POLICY_SENTINEL + ("]" * 65) + "\n",
+        id="deep",
+    ),
+    pytest.param(
+        f"base: &base [{YAML_POLICY_SENTINEL}]\nrefs:\n"
+        + ("  - *base\n" * 129),
+        id="aliases",
+    ),
+    pytest.param(
+        f"base: &base {{marker: {YAML_POLICY_SENTINEL}}}\n"
+        "policy:\n"
+        "  <<: *base\n",
+        id="merge",
+    ),
+    pytest.param(
+        f"cycle: &cycle [{YAML_POLICY_SENTINEL}, *cycle]\n",
+        id="cycle",
+    ),
+    pytest.param(_alias_expansion_policy(), id="alias-expansion"),
+]
 
 
 def test_path_guard_blocks_private_artifacts_and_sensitive_names(tmp_path: Path) -> None:
@@ -142,5 +184,237 @@ def test_malformed_path_policy_raises(tmp_path: Path) -> None:
     bad = tmp_path / "bad.yaml"
     bad.write_text("- not-a-mapping\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="policy file must be YAML object"):
+    with pytest.raises(ValueError, match="^path policy is invalid$"):
         load_path_policy(bad)
+
+
+@pytest.mark.parametrize("raw_policy", YAML_POLICY_LIMIT_CASES)
+def test_path_policy_yaml_limits_are_fast_and_sanitized(
+    tmp_path: Path,
+    raw_policy: str,
+) -> None:
+    policy_path = tmp_path / "path-policy.yaml"
+    policy_path.write_text(raw_policy, encoding="utf-8")
+
+    started = time.monotonic()
+    with pytest.raises(
+        ValueError,
+        match="^path policy exceeds configured limits$",
+    ) as exc_info:
+        load_path_policy(policy_path)
+
+    assert time.monotonic() - started < 3
+    assert YAML_POLICY_SENTINEL not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("failure_type", [RecursionError, OverflowError, MemoryError])
+def test_path_policy_yaml_resource_failures_are_sanitized_limits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[BaseException],
+) -> None:
+    policy_path = tmp_path / "path-policy.yaml"
+    policy_path.write_text("{}\n", encoding="utf-8")
+
+    def fail_safe_load(_text: str) -> object:
+        raise failure_type(YAML_POLICY_SENTINEL)
+
+    monkeypatch.setattr(path_guard.yaml, "safe_load", fail_safe_load)
+
+    with pytest.raises(
+        ValueError,
+        match="^path policy exceeds configured limits$",
+    ) as exc_info:
+        load_path_policy(policy_path)
+
+    assert YAML_POLICY_SENTINEL not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("budget_name", "raw_policy"),
+    [
+        ("MAX_YAML_NODES", "{}\n"),
+        ("MAX_YAML_DEPTH", "{}\n"),
+        ("MAX_YAML_ALIASES", "base: &base []\ncopy: *base\n"),
+        (None, "base: &base {}\ncopy:\n  <<: *base\n"),
+    ],
+)
+def test_path_policy_preflights_yaml_before_object_construction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    budget_name: str | None,
+    raw_policy: str,
+) -> None:
+    policy_path = tmp_path / "path-policy.yaml"
+    policy_path.write_text(raw_policy, encoding="utf-8")
+    if budget_name is not None:
+        monkeypatch.setattr(bounded_yaml, budget_name, 0)
+
+    def unexpected_safe_load(_text: str) -> object:
+        raise AssertionError("YAML object construction started before preflight")
+
+    monkeypatch.setattr(path_guard.yaml, "safe_load", unexpected_safe_load)
+
+    with pytest.raises(ValueError, match="^path policy exceeds configured limits$"):
+        load_path_policy(policy_path)
+
+
+def test_path_policy_preserves_bounded_non_merge_anchors(tmp_path: Path) -> None:
+    policy_path = tmp_path / "path-policy.yaml"
+    policy_path.write_text(
+        "shared: &shared []\n"
+        "scan:\n"
+        "  include: *shared\n"
+        "  exclude: *shared\n"
+        "policy:\n"
+        "  allowed_path_patterns: *shared\n"
+        "  forbidden_path_patterns: *shared\n",
+        encoding="utf-8",
+    )
+
+    policy = load_path_policy(policy_path)
+
+    assert policy["shared"] is policy["scan"]["include"]
+    assert policy["shared"] is policy["policy"]["forbidden_path_patterns"]
+
+
+@pytest.mark.parametrize("include", ["../outside", "linked"])
+def test_path_guard_rejects_traversal_and_outward_symlink_include_targets(tmp_path: Path, include: str) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    (repo_root / "linked").symlink_to(outside, target_is_directory=True)
+
+    policy = {
+        "scan": {"include": [include], "exclude": []},
+        "policy": {"allowed_path_patterns": [], "forbidden_path_patterns": []},
+    }
+
+    with pytest.raises(ValueError, match="^path scan target must stay under repo root$"):
+        scan_paths(root=repo_root, policy=policy)
+
+
+def test_path_guard_rejects_external_absolute_include_target(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo_root.mkdir()
+    outside.mkdir()
+    policy = {
+        "scan": {"include": [str(outside)], "exclude": []},
+        "policy": {"allowed_path_patterns": [], "forbidden_path_patterns": []},
+    }
+
+    with pytest.raises(ValueError, match="^path scan target must stay under repo root$"):
+        scan_paths(root=repo_root, policy=policy)
+
+
+def test_path_guard_enforces_regex_execution_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bounded_scan, "ISOLATED_SCAN_TIMEOUT_SECONDS", 0.25)
+    sentinel = "sk-" + ("p" * 24)
+    write(tmp_path / (("a" * 30) + "!"))
+    policy = {
+        "scan": {"include": ["."], "exclude": []},
+        "policy": {
+            "allowed_path_patterns": [],
+            "forbidden_path_patterns": [
+                {
+                    "id": "catastrophic",
+                    "pattern": f"(?# {sentinel})(a+)+$",
+                }
+            ],
+        },
+    }
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="^path scan exceeded execution budget$") as exc_info:
+        scan_paths(root=tmp_path, policy=policy)
+
+    assert time.monotonic() - started < 3
+    assert sentinel not in str(exc_info.value)
+
+
+def test_path_guard_rejects_combined_regex_count_before_scan(tmp_path: Path) -> None:
+    policy = {
+        "scan": {"include": ["."], "exclude": []},
+        "policy": {
+            "allowed_path_patterns": ["safe"] * MAX_PATH_POLICY_REGEX_COUNT,
+            "forbidden_path_patterns": [{"pattern": "blocked"}],
+        },
+    }
+
+    with pytest.raises(ValueError, match="^path policy exceeds configured limits$"):
+        scan_paths(root=tmp_path, policy=policy)
+
+
+@pytest.mark.parametrize(
+    "limit_name",
+    ["MAX_PATH_FINDINGS", "MAX_PATH_AGGREGATE_RESULT_BYTES"],
+)
+def test_path_guard_checks_result_limits_before_finding_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+) -> None:
+    marker = "synthetic-path-result-marker"
+    write(tmp_path / marker)
+    policy = {
+        "scan": {"include": ["."], "exclude": []},
+        "policy": {
+            "allowed_path_patterns": [],
+            "forbidden_path_patterns": [{"id": "blocked", "pattern": marker}],
+        },
+    }
+
+    def run_inline(operation: object, *args: object, **_kwargs: object) -> object:
+        assert callable(operation)
+        return operation(*args)
+
+    def fail_finding_materialization(**_kwargs: object) -> object:
+        raise AssertionError("finding was materialized before its result budget check")
+
+    assert path_guard.MAX_PATH_AGGREGATE_RESULT_BYTES <= (
+        bounded_scan.MAX_ISOLATED_MESSAGE_BYTES // 2
+    )
+    monkeypatch.setattr(path_guard, limit_name, 0)
+    monkeypatch.setattr(path_guard, "PathGuardFinding", fail_finding_materialization)
+    monkeypatch.setattr(path_guard, "run_isolated_scan", run_inline)
+
+    with pytest.raises(ValueError, match="^path scan exceeds configured limits$") as exc_info:
+        scan_paths(root=tmp_path, policy=policy)
+
+    assert marker not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"scan": {"include": [["."]], "exclude": []}, "policy": {}},
+        {
+            "scan": {"include": ["."], "exclude": []},
+            "policy": {"allowed_path_patterns": [], "forbidden_path_patterns": [["blocked"]]},
+        },
+        {
+            "scan": {"include": ["."], "exclude": []},
+            "policy": {
+                "allowed_path_patterns": [],
+                "forbidden_path_patterns": [{"id": ["nested"], "pattern": "blocked"}],
+            },
+        },
+        {"scan": [], "policy": {}},
+        {"scan": {}, "policy": []},
+    ],
+)
+def test_path_guard_rejects_non_string_or_non_object_policy_values_without_echo(
+    tmp_path: Path,
+    policy: dict[str, object],
+) -> None:
+    sentinel = "synthetic-policy-sentinel"
+    policy["marker"] = sentinel
+
+    with pytest.raises(ValueError, match="^path policy is invalid$") as exc_info:
+        scan_paths(root=tmp_path, policy=policy)
+
+    assert sentinel not in str(exc_info.value)

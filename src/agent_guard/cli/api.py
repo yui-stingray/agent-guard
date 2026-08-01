@@ -8,8 +8,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ..api_guard import iter_scan_files as iter_api_scan_files
-from ..api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
+from ..api_guard import load_yaml_policy, scan_urls_with_count
 from ..taxonomy import annotate_finding
 from .common import redact_public_text, resolve_policy_arg, result_payload
 
@@ -40,15 +39,7 @@ def run_api_check(args: argparse.Namespace) -> int:
 
     try:
         policy = load_yaml_policy(policy_path)
-        scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
-        api_scan_files = list(
-            iter_api_scan_files(
-                root,
-                normalize_api_string_list(scan_cfg.get("include", [])),
-                normalize_api_string_list(scan_cfg.get("exclude", [])),
-            )
-        )
-        findings = scan_urls(root=root, policy=policy)
+        findings, scanned_count = scan_urls_with_count(root=root, policy=policy)
     except Exception as exc:
         payload = result_payload(
             scanner="api",
@@ -72,7 +63,7 @@ def run_api_check(args: argparse.Namespace) -> int:
             policy_arg=args.policy,
             root=root,
             findings=[api_finding_payload(finding) for finding in findings],
-            scanned_count=len(api_scan_files),
+            scanned_count=scanned_count,
             scanned_unit="files",
         )
         if args.json:
@@ -90,7 +81,7 @@ def run_api_check(args: argparse.Namespace) -> int:
         policy_arg=args.policy,
         root=root,
         findings=[],
-        scanned_count=len(api_scan_files),
+        scanned_count=scanned_count,
         scanned_unit="files",
     )
     if args.json:
@@ -98,5 +89,4 @@ def run_api_check(args: argparse.Namespace) -> int:
     else:
         print("OK: API surface guard passed")
     return 0
-
 

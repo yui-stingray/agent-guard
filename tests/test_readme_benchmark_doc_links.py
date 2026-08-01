@@ -45,7 +45,7 @@ def test_readme_points_to_evidence_consumer_contracts_doc() -> None:
 
     single_line = " ".join(readme.split())
     assert (
-        "fail-closed missing/invalid/stale checks, public-artifact linting, or "
+        "fail-closed missing/invalid/report-visible drift checks, public-artifact linting, or "
         "strict release gates" in single_line
     )
 

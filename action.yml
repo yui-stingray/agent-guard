@@ -1,6 +1,6 @@
 name: agent-guard static evidence
 author: yui-stingray
-description: Generate deterministic static evidence for agent-touched repositories (alpha).
+description: Generate deterministic static evidence on Linux runners for agent-touched repositories (alpha).
 branding:
   icon: shield
   color: green
@@ -60,7 +60,9 @@ inputs:
     required: false
     default: ""
   evidence-dir:
-    description: Directory where JSON and Markdown evidence files are written, relative to root unless absolute.
+    description: >-
+      Evidence output directory, relative to root unless absolute. Relative paths
+      must not contain parent traversal or symlinked components.
     required: false
     default: ".agent-guard/evidence"
   github-annotations:
@@ -72,6 +74,9 @@ inputs:
     required: false
     default: "recommended"
 outputs:
+  ready:
+    description: True only after fresh public evidence validates and all publication outputs are recorded.
+    value: ${{ steps.evidence.outputs.ready }}
   evidence-dir:
     description: Directory containing generated evidence artifacts.
     value: ${{ steps.evidence.outputs.evidence-dir }}
@@ -85,11 +90,18 @@ outputs:
     description: Generated SARIF evidence report path.
     value: ${{ steps.evidence.outputs.report-sarif }}
   status:
-    description: Captured agent-guard exit status.
+    description: Captured exit status; fatal generation may expose only status 2 without ready or path outputs.
     value: ${{ steps.evidence.outputs.status }}
 runs:
   using: composite
   steps:
+    - name: Validate runner
+      shell: bash
+      run: |
+        if [ "${RUNNER_OS:-}" != "Linux" ]; then
+          echo "::error::agent-guard Action requires a Linux runner"
+          exit 2
+        fi
     - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: ${{ inputs.python-version }}
@@ -101,7 +113,7 @@ runs:
         validate_no_control_chars() {
           input_name="$1"
           input_value="$2"
-          AGENT_GUARD_VALIDATE_VALUE="$input_value" python - "$input_name" <<'PY'
+          AGENT_GUARD_VALIDATE_VALUE="$input_value" python -I - "$input_name" <<'PY'
         import os
         import sys
 
@@ -115,11 +127,11 @@ runs:
 
         validate_no_control_chars "package-spec" "$AGENT_GUARD_PACKAGE_SPEC" || exit 2
 
-        python -m pip install --upgrade pip
+        python -I -m pip install --upgrade pip
         if [ -n "$AGENT_GUARD_PACKAGE_SPEC" ]; then
-          python -m pip install "$AGENT_GUARD_PACKAGE_SPEC"
+          python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"
         else
-          python -m pip install "$GITHUB_ACTION_PATH"
+          python -I -m pip install "$GITHUB_ACTION_PATH"
         fi
     - id: evidence
       name: Generate deterministic evidence
@@ -148,7 +160,7 @@ runs:
         validate_no_control_chars() {
           input_name="$1"
           input_value="$2"
-          AGENT_GUARD_VALIDATE_VALUE="$input_value" python - "$input_name" <<'PY'
+          AGENT_GUARD_VALIDATE_VALUE="$input_value" python -I - "$input_name" <<'PY'
         import os
         import sys
 
@@ -211,15 +223,361 @@ runs:
           esac
         }
 
+        validate_relative_evidence_location() {
+          AGENT_GUARD_ROOT_TO_INSPECT="$root" \
+            AGENT_GUARD_EVIDENCE_INPUT_TO_INSPECT="$AGENT_GUARD_EVIDENCE_DIR" \
+            python -I - >/dev/null 2>&1 <<'PY'
+        import os
+        import stat
+        from pathlib import Path
+
+        try:
+            raw_evidence = os.environ["AGENT_GUARD_EVIDENCE_INPUT_TO_INSPECT"]
+            relative = Path(raw_evidence)
+            if relative.is_absolute():
+                raise SystemExit(0)
+            if relative == Path(".") or ".." in relative.parts:
+                raise SystemExit(1)
+            root = Path(os.environ["AGENT_GUARD_ROOT_TO_INSPECT"]).resolve(strict=True)
+            if not root.is_dir():
+                raise SystemExit(1)
+            lexical = Path(os.path.abspath(root / relative))
+            bounded = lexical.relative_to(root)
+            if not bounded.parts:
+                raise SystemExit(1)
+            current = root
+            for part in bounded.parts:
+                current /= part
+                try:
+                    current_stat = os.lstat(current)
+                except FileNotFoundError:
+                    break
+                if stat.S_ISLNK(current_stat.st_mode):
+                    raise SystemExit(1)
+            resolved = lexical.resolve(strict=False)
+            resolved.relative_to(root)
+            if resolved == root:
+                raise SystemExit(1)
+        except (KeyError, OSError, RuntimeError, ValueError):
+            raise SystemExit(1)
+        PY
+        }
+
+        if ! validate_relative_evidence_location; then
+          echo "::error::relative evidence-dir must stay under root without symlinked ancestors"
+          exit 2
+        fi
+
         evidence_dir="$(policy_path "$AGENT_GUARD_EVIDENCE_DIR")"
         report_json="${evidence_dir%/}/agent-guard-report.json"
         report_markdown="${evidence_dir%/}/agent-guard-report.md"
         report_sarif="${evidence_dir%/}/agent-guard-results.sarif"
-        mkdir -p "$evidence_dir"
+        conformance_json="${evidence_dir%/}/agent-guard-conformance.json"
+        evidence_pack_json="${evidence_dir%/}/agent-guard-evidence-pack.json"
+        surface_inventory_json="${evidence_dir%/}/agent-surface-inventory.json"
         raw_parent="${RUNNER_TEMP:-/tmp}"
-        mkdir -p "$raw_parent"
-        raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX")"
-        trap 'rm -rf "$raw_dir"' EXIT
+        if ! mkdir -p "$raw_parent" 2>/dev/null; then
+          echo "::error::evidence staging setup failed"
+          exit 2
+        fi
+        if ! raw_dir="$(mktemp -d "$raw_parent/agent-guard-raw.XXXXXX" 2>/dev/null)"; then
+          echo "::error::evidence staging setup failed"
+          exit 2
+        fi
+        backup_parent=""
+        backup_evidence_dir=""
+        transaction_parent=""
+        failed_parent=""
+        failed_evidence_dir=""
+        restore_evidence=0
+        public_evidence_published=false
+        evidence_generation_complete=false
+        cleanup_in_progress=false
+        termination_requested=false
+
+        validate_existing_evidence_dir() {
+          validation_status=0
+          AGENT_GUARD_EVIDENCE_TO_INSPECT="$evidence_dir" python -I - >/dev/null 2>&1 <<'PY' || validation_status="$?"
+        import os
+        import stat
+
+        allowed_names = frozenset(
+            {
+                "agent-guard-report.json",
+                "agent-guard-report.md",
+                "agent-guard-results.sarif",
+                "agent-guard-conformance.json",
+                "agent-guard-evidence-pack.json",
+                "agent-surface-inventory.json",
+                "agent-guard-annotations.txt",
+            }
+        )
+        path = os.environ.get("AGENT_GUARD_EVIDENCE_TO_INSPECT")
+        if path is None:
+            raise SystemExit(15)
+        try:
+            path_stat = os.lstat(path)
+        except FileNotFoundError:
+            raise SystemExit(0)
+        except OSError:
+            raise SystemExit(15)
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise SystemExit(10)
+        if not stat.S_ISDIR(path_stat.st_mode):
+            raise SystemExit(11)
+        try:
+            with os.scandir(path) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= len(allowed_names) or entry.name not in allowed_names:
+                        raise SystemExit(12)
+                    if entry.is_symlink():
+                        raise SystemExit(13)
+                    if not entry.is_file(follow_symlinks=False):
+                        raise SystemExit(14)
+        except OSError:
+            raise SystemExit(15)
+        PY
+          case "$validation_status" in
+            0) return 0 ;;
+            10) echo "::error::evidence-dir must not be a symlink" ;;
+            11) echo "::error::evidence-dir must be a directory" ;;
+            12) echo "::error::evidence-dir contains unsupported entries" ;;
+            13) echo "::error::public evidence artifacts must not be symlinks" ;;
+            14) echo "::error::public evidence artifacts must be regular files" ;;
+            *) echo "::error::evidence-dir validation failed" ;;
+          esac
+          return 2
+        }
+
+        resolve_transaction_parent() {
+          AGENT_GUARD_ROOT_TO_INSPECT="$root" \
+            AGENT_GUARD_EVIDENCE_INPUT_TO_INSPECT="$AGENT_GUARD_EVIDENCE_DIR" \
+            AGENT_GUARD_EVIDENCE_TO_INSPECT="$evidence_dir" \
+            python -I - 2>/dev/null <<'PY'
+        import os
+        from pathlib import Path
+
+        try:
+            root = Path(os.environ["AGENT_GUARD_ROOT_TO_INSPECT"]).resolve(strict=True)
+            evidence = Path(os.environ["AGENT_GUARD_EVIDENCE_TO_INSPECT"]).resolve(strict=True)
+            evidence_input = Path(os.environ["AGENT_GUARD_EVIDENCE_INPUT_TO_INSPECT"])
+            if not evidence_input.is_absolute():
+                evidence.relative_to(root)
+                candidate = root.parent
+            else:
+                try:
+                    evidence.relative_to(root)
+                except ValueError:
+                    candidate = evidence.parent
+                else:
+                    candidate = root.parent
+            candidate = candidate.resolve(strict=True)
+            if (
+                candidate == root
+                or not candidate.is_dir()
+                or candidate.stat().st_dev != evidence.stat().st_dev
+            ):
+                raise SystemExit(1)
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                pass
+            else:
+                raise SystemExit(1)
+        except (KeyError, OSError, RuntimeError, ValueError):
+            raise SystemExit(1)
+        print(os.fspath(candidate))
+        PY
+        }
+
+        rename_path() {
+          AGENT_GUARD_RENAME_SOURCE="$1" \
+            AGENT_GUARD_RENAME_DESTINATION="$2" \
+            python -I - >/dev/null 2>&1 <<'PY'
+        import os
+
+        try:
+            os.rename(
+                os.environ["AGENT_GUARD_RENAME_SOURCE"],
+                os.environ["AGENT_GUARD_RENAME_DESTINATION"],
+            )
+        except (KeyError, OSError):
+            raise SystemExit(1)
+        PY
+        }
+
+        # shellcheck disable=SC2329  # Called from the EXIT-trap cleanup path.
+        restore_previous_evidence() {
+          restore_state="$restore_evidence"
+          if [ "$restore_state" = "0" ]; then
+            return 0
+          fi
+          if [ -z "$backup_parent" ] || [ -z "$backup_evidence_dir" ]; then
+            return 1
+          fi
+          if [ "$restore_state" = "2" ]; then
+            if { [ -e "$backup_evidence_dir" ] || [ -L "$backup_evidence_dir" ]; }; then
+              : # The whole-directory staging rename completed before state publication.
+            elif [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
+              restore_evidence=0
+              if ! rm -rf "$backup_parent" 2>/dev/null; then
+                return 2
+              fi
+              backup_parent=""
+              backup_evidence_dir=""
+              return 0
+            else
+              return 1
+            fi
+          elif [ "$restore_state" != "1" ]; then
+            return 1
+          fi
+
+          if [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
+            if [ -z "$failed_parent" ]; then
+              if ! failed_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-failed.XXXXXX" 2>/dev/null)"; then
+                return 1
+              fi
+              failed_evidence_dir="$failed_parent/evidence"
+            fi
+            if ! rename_path "$evidence_dir" "$failed_evidence_dir"; then
+              if ! { { [ -e "$failed_evidence_dir" ] || [ -L "$failed_evidence_dir" ]; } &&
+                [ ! -e "$evidence_dir" ] && [ ! -L "$evidence_dir" ]; }; then
+                return 1
+              fi
+            fi
+          fi
+          if ! rename_path "$backup_evidence_dir" "$evidence_dir"; then
+            if ! { { [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; } &&
+              [ ! -e "$backup_evidence_dir" ] && [ ! -L "$backup_evidence_dir" ]; }; then
+              return 1
+            fi
+          fi
+          restore_evidence=0
+
+          restore_cleanup_failed=false
+          if ! rm -rf "$backup_parent" 2>/dev/null; then
+            restore_cleanup_failed=true
+          else
+            backup_parent=""
+            backup_evidence_dir=""
+          fi
+          if [ -n "$failed_parent" ]; then
+            if ! rm -rf "$failed_parent" 2>/dev/null; then
+              restore_cleanup_failed=true
+            else
+              failed_parent=""
+              failed_evidence_dir=""
+            fi
+          fi
+          if [ "$restore_cleanup_failed" = "true" ]; then
+            return 2
+          fi
+          return 0
+        }
+
+        # shellcheck disable=SC2329  # Registered as an EXIT trap below.
+        cleanup_evidence_run() {
+          exit_status="$?"
+          trap - EXIT
+          cleanup_in_progress=true
+          cleanup_status=0
+          if [ "$evidence_generation_complete" != "true" ]; then
+            if [ "$restore_evidence" != "0" ]; then
+              restore_previous_evidence
+              restore_status="$?"
+              if [ "$restore_status" -eq 1 ]; then
+                cleanup_status=1
+              elif [ "$restore_status" -ne 0 ]; then
+                cleanup_status=2
+              fi
+            elif [ "$public_evidence_published" = "true" ] &&
+              { [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; }; then
+              if ! rm -rf "$evidence_dir" 2>/dev/null; then
+                cleanup_status=2
+              fi
+            fi
+            if [ "$cleanup_status" -eq 1 ]; then
+              echo "::error::evidence restoration failed"
+            elif [ "$cleanup_status" -eq 2 ]; then
+              echo "::error::evidence cleanup failed"
+            fi
+          fi
+          if ! rm -rf "$raw_dir" 2>/dev/null && [ "$cleanup_status" -eq 0 ]; then
+            cleanup_status=2
+            echo "::error::evidence cleanup failed"
+          fi
+          cleanup_in_progress=false
+          trap - HUP INT TERM
+          if [ "$cleanup_status" -ne 0 ] || [ "$termination_requested" = "true" ]; then
+            exit 2
+          fi
+          exit "$exit_status"
+        }
+
+        stage_previous_evidence() {
+          validate_existing_evidence_dir || return 2
+          if [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
+            if ! transaction_parent="$(resolve_transaction_parent)" || [ -z "$transaction_parent" ]; then
+              echo "::error::evidence staging setup failed"
+              return 2
+            fi
+            if ! backup_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-backup.XXXXXX" 2>/dev/null)"; then
+              echo "::error::evidence staging setup failed"
+              return 2
+            fi
+            backup_evidence_dir="$backup_parent/evidence"
+            restore_evidence=2
+            if ! rename_path "$evidence_dir" "$backup_evidence_dir"; then
+              echo "::error::evidence staging setup failed"
+              return 2
+            fi
+            restore_evidence=1
+          fi
+          return 0
+        }
+
+        # shellcheck disable=SC2329  # Registered as a signal trap below.
+        terminate_evidence_run() {
+          if [ "$cleanup_in_progress" = "true" ]; then
+            termination_requested=true
+            return 0
+          fi
+          exit 2
+        }
+
+        commit_evidence_run() {
+          evidence_generation_complete=true
+          cleanup_in_progress=true
+          commit_cleanup_failed=false
+          if [ -n "$backup_parent" ]; then
+            if ! rm -rf "$backup_parent" 2>/dev/null; then
+              commit_cleanup_failed=true
+            else
+              backup_parent=""
+              backup_evidence_dir=""
+              restore_evidence=0
+            fi
+          fi
+          if ! rm -rf "$raw_dir" 2>/dev/null; then
+            commit_cleanup_failed=true
+          fi
+          cleanup_in_progress=false
+          trap - EXIT HUP INT TERM
+          if [ "$commit_cleanup_failed" = "true" ]; then
+            echo "::error::evidence cleanup failed"
+            return 2
+          fi
+          if [ "$termination_requested" = "true" ]; then
+            return 2
+          fi
+          return 0
+        }
+
+        trap cleanup_evidence_run EXIT
+        trap terminate_evidence_run HUP INT TERM
+        stage_previous_evidence || exit 2
+        public_evidence_published=true
 
         path_exists() {
           test -f "$1"
@@ -230,6 +588,15 @@ runs:
           if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then
             status="$code"
           fi
+        }
+
+        validate_raw_result() {
+          code="$1"
+          output_path="$2"
+          if [ ! -f "$output_path" ] || [ -L "$output_path" ]; then
+            return 2
+          fi
+          return "$code"
         }
 
         should_use_mcp_policy() {
@@ -244,6 +611,7 @@ runs:
         workflow_policy_arg="$AGENT_GUARD_WORKFLOW_POLICY"
         digest_policy_arg="$AGENT_GUARD_DIGEST_POLICY"
         default_mcp_policy_arg=".agent-guard/mcp-policy.yaml"
+        # shellcheck disable=SC2034  # Kept resolved with the other policy paths for contract parity.
         context_policy="$(policy_path "$context_policy_arg")"
         path_policy="$(policy_path "$path_policy_arg")"
         content_policy="$(policy_path "$content_policy_arg")"
@@ -259,11 +627,13 @@ runs:
         base_ref="${AGENT_GUARD_BASE_REF:-}"
         surface_delta_base_ref="${AGENT_GUARD_SURFACE_DELTA_BASE_REF:-}"
 
-        agent-guard context check --root "$root" --policy "$context_policy_arg" --json > "$raw_dir/context.json"
+        agent-guard context check --root "$root" --policy "$context_policy_arg" --json 2>/dev/null > "$raw_dir/context.json"
+        validate_raw_result "$?" "$raw_dir/context.json"
         record_status "$?"
 
         if path_exists "$path_policy"; then
-          agent-guard path check --root "$root" --policy "$path_policy_arg" --json > "$raw_dir/path.json"
+          agent-guard path check --root "$root" --policy "$path_policy_arg" --json 2>/dev/null > "$raw_dir/path.json"
+          validate_raw_result "$?" "$raw_dir/path.json"
           record_status "$?"
         fi
 
@@ -273,7 +643,8 @@ runs:
             --policy "$content_policy_arg" \
             --mode registered \
             --scan-dir "$content_scan_dir" \
-            --json > "$raw_dir/content.json"
+            --json 2>/dev/null > "$raw_dir/content.json"
+          validate_raw_result "$?" "$raw_dir/content.json"
           record_status "$?"
         fi
 
@@ -281,18 +652,13 @@ runs:
         if should_use_mcp_policy; then
           mcp_args+=(--policy "$mcp_policy_arg")
         fi
-        agent-guard mcp check "${mcp_args[@]}" --json > "$raw_dir/mcp.json"
-        record_status "$?"
-
-        agent-guard surface inventory \
-          --root "$root" \
-          --context-policy "$context_policy_arg" \
-          --schema-version v2 \
-          --json > "${evidence_dir%/}/agent-surface-inventory.json"
+        agent-guard mcp check "${mcp_args[@]}" --json 2>/dev/null > "$raw_dir/mcp.json"
+        validate_raw_result "$?" "$raw_dir/mcp.json"
         record_status "$?"
 
         if path_exists "$workflow_policy"; then
-          agent-guard workflow check --root "$root" --policy "$workflow_policy_arg" --json > "$raw_dir/workflow.json"
+          agent-guard workflow check --root "$root" --policy "$workflow_policy_arg" --json 2>/dev/null > "$raw_dir/workflow.json"
+          validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
         fi
 
@@ -300,7 +666,8 @@ runs:
         if [ -n "$base_ref" ]; then
           drift_args+=(--base-ref "$base_ref")
         fi
-        agent-guard drift check "${drift_args[@]}" --json > "$raw_dir/drift.json"
+        agent-guard drift check "${drift_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"
+        validate_raw_result "$?" "$raw_dir/drift.json"
         record_status "$?"
 
         report_args=(--root "$root" --context-policy "$context_policy_arg" --evidence-preset recommended)
@@ -328,40 +695,95 @@ runs:
 
         report_args+=(--conformance-profile "$conformance_profile")
 
-        agent-guard report "${report_args[@]}" --format json --output "$report_json"
+        agent-guard report "${report_args[@]}" --format json --output "$report_json" > /dev/null 2>&1
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_json" --format markdown --output "$report_markdown"
+        agent-guard surface inventory \
+          --root "$root" \
+          --context-policy "$context_policy_arg" \
+          --schema-version v2 \
+          --json 2>/dev/null > "$surface_inventory_json"
+        validate_raw_result "$?" "$surface_inventory_json"
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif"
+        agent-guard render-report --root "$root" --input "$report_json" --format markdown --output "$report_markdown" > /dev/null 2>&1
+        record_status "$?"
+
+        agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif" > /dev/null 2>&1
         record_status "$?"
 
         agent-guard conformance check \
           --root "$root" \
           --evidence "$report_json" \
           --profile "$conformance_profile" \
-          --json > "${evidence_dir%/}/agent-guard-conformance.json"
+          --json 2>/dev/null > "$conformance_json"
+        validate_raw_result "$?" "$conformance_json"
         record_status "$?"
 
         agent-guard evidence-pack manifest \
           --root "$root" \
           --report "$report_json" \
           --artifact "$report_json" \
-          --json > "${evidence_dir%/}/agent-guard-evidence-pack.json"
+          --json 2>/dev/null > "$evidence_pack_json"
+        validate_raw_result "$?" "$evidence_pack_json"
         record_status "$?"
 
         if [ "$github_annotations" = "true" ]; then
-          agent-guard render-report --root "$root" --input "$report_json" --format github-annotations
+          agent-guard render-report --root "$root" --input "$report_json" --format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"
+          validate_raw_result "$?" "$raw_dir/annotations.txt"
           record_status "$?"
         fi
 
-        {
-          write_output "evidence-dir" "$evidence_dir"
-          write_output "report-json" "$report_json"
-          write_output "report-markdown" "$report_markdown"
-          write_output "report-sarif" "$report_sarif"
-          write_output "status" "$status"
+        if [ "$status" -ge 2 ]; then
+          if ! write_output "status" "2" 2>/dev/null; then
+            echo "::error::evidence output setup failed"
+          fi
+          echo "::error::evidence generation failed"
+          exit 2
+        fi
+        for required_artifact in \
+          "$report_json" \
+          "$report_markdown" \
+          "$report_sarif" \
+          "$conformance_json" \
+          "$evidence_pack_json" \
+          "$surface_inventory_json"; do
+          if [ ! -f "$required_artifact" ] || [ -L "$required_artifact" ]; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+        done
+
+        annotations_path="${evidence_dir%/}/agent-guard-annotations.txt"
+        if [ "$github_annotations" = "true" ]; then
+          if ! mv "$raw_dir/annotations.txt" "$annotations_path" 2>/dev/null; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+        fi
+        if ! python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" --emit-annotations "$report_json" 2>/dev/null; then
+          echo "::error::evidence validation failed"
+          exit 2
+        fi
+        if [ "$github_annotations" = "true" ]; then
+          if ! rm -f "$annotations_path" 2>/dev/null; then
+            echo "::error::evidence validation failed"
+            exit 2
+          fi
+        fi
+
+        commit_evidence_run || exit 2
+        write_evidence_outputs() {
+          write_output "evidence-dir" "$evidence_dir" || return 1
+          write_output "report-json" "$report_json" || return 1
+          write_output "report-markdown" "$report_markdown" || return 1
+          write_output "report-sarif" "$report_sarif" || return 1
+          write_output "status" "$status" || return 1
+          write_output "ready" "true" || return 1
         }
+        if ! write_evidence_outputs 2>/dev/null; then
+          echo "::error::evidence output setup failed"
+          exit 2
+        fi
 
         exit "$status"
