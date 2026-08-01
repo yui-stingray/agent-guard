@@ -311,20 +311,23 @@ jobs:
           agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" --format json --output "$report_json" > /dev/null 2>&1
           record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json 2>/dev/null > "$surface_inventory_json"
+          validate_raw_result "$?" "$surface_inventory_json"
           record_status "$?"
           agent-guard render-report --root . --input "$report_json" --format markdown --output "$report_markdown" > /dev/null 2>&1
           record_status "$?"
           agent-guard render-report --root . --input "$report_json" --format sarif --output "$report_sarif" > /dev/null 2>&1
           record_status "$?"
           agent-guard conformance check --root . --evidence "$report_json" --profile recommended --json 2>/dev/null > "$conformance_json"
+          validate_raw_result "$?" "$conformance_json"
           record_status "$?"
           agent-guard evidence-pack manifest --root . --report "$report_json" --artifact "$report_json" --json 2>/dev/null > "$evidence_pack_json"
+          validate_raw_result "$?" "$evidence_pack_json"
           record_status "$?"
           if [ "$status" -ge 2 ]; then
             echo "::error::evidence generation failed"
             exit 2
           fi
-          validate_public_evidence() {
+          validate_public_evidence() (
             if [ ! -d "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
               return 1
             fi
@@ -339,7 +342,7 @@ jobs:
                 return 1
               fi
             done
-          }
+          )
           if ! validate_public_evidence; then
             echo "::error::evidence validation failed"
             exit 2

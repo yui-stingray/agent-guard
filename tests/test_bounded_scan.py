@@ -7,11 +7,17 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import subprocess
+import sys
+import threading
 
 import pytest
 
 from agent_guard import bounded_scan
 from agent_guard.bounded_scan import run_isolated_scan
+
+
+_PARENT_THREAD_LOCK = threading.Lock()
 
 
 def _return_value(value: str) -> str:
@@ -26,6 +32,10 @@ def _raise_private_resource_limit_error(_max_address_space_bytes: int) -> None:
     raise OSError("synthetic private resource-limit detail")
 
 
+def _acquire_parent_thread_lock() -> bool:
+    return _PARENT_THREAD_LOCK.acquire(timeout=0.25)
+
+
 def test_isolated_scan_supports_spawn_context() -> None:
     result = run_isolated_scan(
         _return_value,
@@ -36,6 +46,56 @@ def test_isolated_scan_supports_spawn_context() -> None:
     )
 
     assert result == "ok"
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or "fork" not in multiprocessing.get_all_start_methods(),
+    reason="requires the single-threaded POSIX compatibility path",
+)
+def test_default_isolated_scan_supports_top_level_programmatic_call() -> None:
+    script = (
+        "from agent_guard.bounded_scan import run_isolated_scan\n"
+        "from operator import add\n"
+        "print(run_isolated_scan(add, 1, 2, timeout_error='timeout', runtime_error='failed'))\n"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "3\n"
+    assert result.stderr == ""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX start methods")
+def test_default_isolated_scan_does_not_inherit_parent_thread_locks() -> None:
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold_lock() -> None:
+        with _PARENT_THREAD_LOCK:
+            held.set()
+            release.wait(timeout=5)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    assert held.wait(timeout=1)
+    try:
+        result = run_isolated_scan(
+            _acquire_parent_thread_lock,
+            timeout_error="scan timed out",
+            runtime_error="scan failed",
+        )
+    finally:
+        release.set()
+        holder.join(timeout=1)
+
+    assert result is True
+    assert not holder.is_alive()
 
 
 def test_isolated_scan_rejects_oversized_result_with_sanitized_error() -> None:
@@ -50,7 +110,10 @@ def test_isolated_scan_rejects_oversized_result_with_sanitized_error() -> None:
         )
 
 
-@pytest.mark.skipif(os.name != "posix", reason="requires POSIX RLIMIT_AS")
+@pytest.mark.skipif(
+    os.name != "posix" or "fork" not in multiprocessing.get_all_start_methods(),
+    reason="requires POSIX RLIMIT_AS and a fork context for monkeypatch propagation",
+)
 def test_isolated_scan_sanitizes_address_space_ceiling_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -73,6 +136,7 @@ def test_isolated_scan_sanitizes_address_space_ceiling_failure(
             "ok",
             timeout_error="scan timed out",
             runtime_error="scan failed",
+            _context=multiprocessing.get_context("fork"),
         )
 
     assert "synthetic private resource-limit detail" not in str(exc_info.value)

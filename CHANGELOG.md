@@ -6,7 +6,7 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-## 0.3.4 - 2026-07-31
+## 0.3.4 - 2026-08-01
 
 - Bounded workflow shell lexing per command by characters, lexer steps,
   operators, and segments before materialization. Required-command matching now
@@ -30,7 +30,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   Registered and preregistration
   content walks now share a monotonic deadline and charge glob-state work as well
   as directory entries. Errors remain sanitized and this does not broaden
-  agent-guard into a generic secret scanner.
+  agent-guard into a generic secret scanner. Single-threaded POSIX callers retain
+  top-level programmatic API compatibility; callers with active threads use a
+  non-inheriting worker start method and must apply the standard Python
+  `__main__` guard.
 - Made evidence-artifact inventory metadata come from regular Git-index blobs
   so generated or modified worktree artifacts cannot feed back into their own
   report. Inventory and content-diff Git calls disable lazy fetch and ignore

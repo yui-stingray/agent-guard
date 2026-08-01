@@ -1095,6 +1095,22 @@ def venv_python_path(venv_dir: Path, *, platform_name: str = os.name) -> Path:
     return venv_dir / "bin" / "python"
 
 
+def isolated_module_command(
+    python: Path,
+    module: str,
+    *arguments: str,
+) -> list[str]:
+    """Build an isolated module command for installed-wheel smoke checks."""
+
+    return [str(python), "-I", "-m", module, *arguments]
+
+
+def isolated_code_command(python: Path, code: str) -> list[str]:
+    """Build an isolated inline-code command for installed-wheel smoke checks."""
+
+    return [str(python), "-I", "-c", code]
+
+
 def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     """Run a subprocess and return its completed process."""
     result = subprocess.run(command, cwd=cwd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1118,7 +1134,7 @@ def main() -> int:
         venv_dir = temp / "venv"
         venv.EnvBuilder(with_pip=True).create(venv_dir)
         python = venv_python_path(venv_dir)
-        run([str(python), "-m", "pip", "install", "--quiet", str(wheel)], cwd=temp)
+        run(isolated_module_command(python, "pip", "install", "--quiet", str(wheel)), cwd=temp)
         smoke = textwrap.dedent(
             f"""
             import json
@@ -1169,7 +1185,7 @@ def main() -> int:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """
         )
-        run([str(python), "-c", smoke], cwd=temp)
+        run(isolated_code_command(python, smoke), cwd=temp)
 
         repo = temp / "repo"
         repo.mkdir()
@@ -1191,10 +1207,8 @@ def main() -> int:
         )
         (repo / ".env.example").write_text("TOKEN=\n", encoding="utf-8")
         cli = run(
-            [
-                str(python),
-                "-I",
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "path",
                 "check",
@@ -1203,7 +1217,7 @@ def main() -> int:
                 "--policy",
                 str(policy),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         payload = json.loads(cli.stdout)
@@ -1220,15 +1234,14 @@ def main() -> int:
         )
         (repo / "AGENTS.md").write_text(agent_context, encoding="utf-8")
         init_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "init",
                 "--root",
                 str(repo / "init-preview"),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         init_payload = json.loads(init_cli.stdout)
@@ -1237,9 +1250,8 @@ def main() -> int:
         assert not (repo / "init-preview" / ".agent-guard").exists()
 
         context_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "context",
                 "check",
@@ -1248,7 +1260,7 @@ def main() -> int:
                 "--policy",
                 str(context_policy),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         context_payload = json.loads(context_cli.stdout)
@@ -1301,9 +1313,8 @@ def main() -> int:
             encoding="utf-8",
         )
         workflow_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "workflow",
                 "check",
@@ -1312,7 +1323,7 @@ def main() -> int:
                 "--policy",
                 str(workflow_policy),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         workflow_payload = json.loads(workflow_cli.stdout)
@@ -1321,9 +1332,8 @@ def main() -> int:
         assert workflow_payload["finding_count"] == 0
 
         surface_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "surface",
                 "inventory",
@@ -1332,7 +1342,7 @@ def main() -> int:
                 "--context-policy",
                 str(context_policy),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         surface_payload = json.loads(surface_cli.stdout)
@@ -1340,9 +1350,8 @@ def main() -> int:
         assert surface_payload["scanner"] == "surface"
         assert surface_payload["surface_inventory"]["schema_version"] == "agent-guard.agent_surface_inventory.v1"
         surface_v2_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "surface",
                 "inventory",
@@ -1353,7 +1362,7 @@ def main() -> int:
                 "--schema-version",
                 "v2",
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         surface_v2_payload = json.loads(surface_v2_cli.stdout)
@@ -1414,16 +1423,15 @@ def main() -> int:
             encoding="utf-8",
         )
         drift_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "drift",
                 "check",
                 "--root",
                 str(repo),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         drift_payload = json.loads(drift_cli.stdout)
@@ -1431,9 +1439,8 @@ def main() -> int:
         assert drift_payload["scanner"] == "drift"
 
         report_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "report",
                 "--root",
@@ -1445,7 +1452,7 @@ def main() -> int:
                 "--workflow-policy",
                 str(workflow_policy),
                 "--drift-check",
-            ],
+            ),
             cwd=temp,
         )
         assert report_cli.stdout.startswith("# Agent Guard Evidence Report\n")
@@ -1462,9 +1469,8 @@ def main() -> int:
 
         report_output = repo / ".agent-guard" / "evidence" / "agent-guard-report.json"
         report_output_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "report",
                 "--root",
@@ -1480,7 +1486,7 @@ def main() -> int:
                 "json",
                 "--output",
                 str(report_output),
-            ],
+            ),
             cwd=temp,
         )
         assert report_output_cli.stdout == ""
@@ -1504,9 +1510,8 @@ def main() -> int:
 
         sarif_output = repo / ".agent-guard" / "evidence" / "agent-guard-results.sarif"
         sarif_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "report",
                 "--root",
@@ -1522,7 +1527,7 @@ def main() -> int:
                 "sarif",
                 "--output",
                 str(sarif_output),
-            ],
+            ),
             cwd=temp,
         )
         assert sarif_cli.stdout == ""
@@ -1534,15 +1539,13 @@ def main() -> int:
         assert str(temp) not in sarif_output.read_text(encoding="utf-8")
 
         consumer_cli = run(
-            [
-                str(python),
-                "-I",
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.consumer",
                 "--evidence-dir",
                 str(report_output.parent),
                 str(report_output),
-            ],
+            ),
             cwd=temp,
         )
         consumer_summary = json.loads(consumer_cli.stdout)
@@ -1550,9 +1553,8 @@ def main() -> int:
         assert consumer_summary["status"] == "ok"
 
         preset_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "report",
                 "--root",
@@ -1563,7 +1565,7 @@ def main() -> int:
                 "recommended",
                 "--format",
                 "json",
-            ],
+            ),
             cwd=temp,
         )
         preset_payload = json.loads(preset_cli.stdout)
@@ -1604,9 +1606,8 @@ def main() -> int:
             encoding="utf-8",
         )
         conformance_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "conformance",
                 "check",
@@ -1617,7 +1618,7 @@ def main() -> int:
                 "--profile",
                 "minimal",
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         conformance_payload = json.loads(conformance_cli.stdout)
@@ -1625,9 +1626,8 @@ def main() -> int:
         assert conformance_payload["conformance"]["schema_version"] == "agent-guard.conformance.v1"
 
         manifest_cli = run(
-            [
-                str(python),
-                "-m",
+            isolated_module_command(
+                python,
                 "agent_guard.cli",
                 "evidence-pack",
                 "manifest",
@@ -1642,7 +1642,7 @@ def main() -> int:
                 "--agent-policy-audit-event",
                 str(repo / ".agent-guard" / "evidence" / "policy-admission-event.json"),
                 "--json",
-            ],
+            ),
             cwd=temp,
         )
         manifest_payload = json.loads(manifest_cli.stdout)

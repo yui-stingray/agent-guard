@@ -519,6 +519,19 @@ def test_ci_action_smoke_replays_fail_closed_consumer_contract() -> None:
     )
 
 
+def test_ci_checkout_steps_do_not_persist_credentials() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    checkout_steps = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+        if isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout@")
+    ]
+
+    assert checkout_steps
+    assert all(step.get("with", {}).get("persist-credentials") is False for step in checkout_steps)
+
+
 def test_ci_has_focused_windows_cli_contract() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     job = workflow["jobs"]["windows-cli-smoke"]
@@ -922,7 +935,6 @@ def test_generated_init_workflow_uses_isolated_consumer_for_real_violation_bundl
     shutil.copytree(evidence_dir, relocated_evidence)
     lint_env = os.environ.copy()
     lint_env["AGENT_GUARD_BIN"] = f"{sys.executable} -I -m agent_guard.cli"
-    lint_env["AGENT_GUARD_WORK_DIR"] = str(tmp_path / "lint-work")
     lint_env["PYTHON_BIN"] = sys.executable
     relocated_lint = subprocess.run(
         ["sh", str(EVIDENCE_CONTRACT_SCRIPT), "lint-public"],

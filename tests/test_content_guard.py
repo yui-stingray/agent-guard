@@ -274,7 +274,7 @@ def test_registered_mode_rejects_ancestor_swap_after_containment_resolution(
         ValueError,
         match="^content scan target must stay under repo root$",
     ) as exc_info:
-        scan_paths(
+        content_guard._scan_paths_unbounded(
             paths,
             build_rules(load_content_policy(policy_file(tmp_path))),
             repo_root,
@@ -691,6 +691,7 @@ def test_new_mode_can_exclude_untracked_files(tmp_path: Path) -> None:
     assert paths == []
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX filename rules")
 def test_new_mode_preserves_special_filename_bytes(tmp_path: Path) -> None:
     init_repo(tmp_path)
     unstaged = tmp_path / "skills" / "\tunstaged.md"
@@ -2299,3 +2300,18 @@ def test_content_guard_rejects_non_string_glob_without_echo() -> None:
         normalize_patterns([[sentinel]])
 
     assert sentinel not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "/outside/*.md",
+        r"C:\\outside\\*.md",
+        r"\\\\server\\share\\*.md",
+    ],
+)
+def test_content_guard_rejects_absolute_globs_without_echo(pattern: str) -> None:
+    with pytest.raises(ValueError, match="^content policy is invalid$") as exc_info:
+        normalize_patterns([pattern])
+
+    assert pattern not in str(exc_info.value)

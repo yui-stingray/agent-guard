@@ -14,6 +14,7 @@ from typing import Any
 
 REPORT_SCHEMA = "agent-guard.report_evidence.v1.schema.json"
 ERROR_DUPLICATE_JSON_KEYS = "public evidence JSON contains duplicate object keys"
+ERROR_PUBLIC_EVIDENCE_READ = "public evidence could not be read"
 
 
 class DuplicateJSONKeyError(ValueError):
@@ -39,7 +40,11 @@ def load_report_schema() -> dict[str, Any]:
 
 
 def load_payload(path: Path) -> dict[str, Any]:
-    payload = load_json_text(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        raise ValueError(ERROR_PUBLIC_EVIDENCE_READ) from None
+    payload = load_json_text(text)
     if not isinstance(payload, dict):
         raise ValueError("report payload must be a JSON object")
     return payload

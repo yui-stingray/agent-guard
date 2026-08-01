@@ -268,7 +268,8 @@ def is_authorization_field_name(name: object) -> bool:
     normalized = normalized_auth_field_name(name)
     if normalized in AUTH_FIELD_NAMES:
         return True
-    return normalized.endswith(("_token", "_secret"))
+    compact = normalized.replace("_", "")
+    return compact.endswith(("token", "secret"))
 
 
 def has_instruction_like_description(raw: dict[str, object]) -> bool:

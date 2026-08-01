@@ -394,7 +394,15 @@ def test_api_guard_binds_containment_to_opened_file_after_symlink_swap(
         ValueError,
         match="^api scan target must stay under repo root$",
     ) as exc_info:
-        scan_urls(root=repo_root, policy=policy)
+        api_guard._scan_urls_unbounded(
+            repo_root.resolve(),
+            ["src"],
+            [],
+            [],
+            api_guard.normalize_pattern_list(
+                policy["policy"]["forbidden_api_patterns"]
+            ),
+        )
 
     error = str(exc_info.value)
     assert external_marker not in error

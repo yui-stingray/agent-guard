@@ -962,6 +962,74 @@ def test_evidence_consumer_accepts_schema_valid_error_report(tmp_path: Path) -> 
     assert payload["enabled_gate_count"] == 0
 
 
+@pytest.mark.parametrize(
+    ("status", "exit_code", "expected_error"),
+    [
+        ("violation", 2, "$.exit_code must be 1 when status is violation"),
+        ("error", 1, "$.exit_code must be 2 when status is error"),
+    ],
+)
+def test_evidence_consumer_rejects_mismatched_status_exit_code(
+    tmp_path: Path,
+    status: str,
+    exit_code: int,
+    expected_error: str,
+) -> None:
+    if status == "violation":
+        payload, _ = _synthetic_violation_report()
+        payload["exit_code"] = exit_code
+    else:
+        payload = {
+            "schema_version": "agent-guard.result.v1",
+            "tool": {"name": "agent-guard", "version": "0.3.4"},
+            "scanner": "context",
+            "status": "error",
+            "exit_code": exit_code,
+            "policy": {"path": "nonexistent"},
+            "summary": {"finding_count": 0},
+            "finding_count": 0,
+            "findings": [],
+            "command": "report",
+            "report": {
+                "schema_version": "agent-guard.report_evidence.v1",
+                "format": "json",
+                "scope": "context",
+                "sanitized": True,
+            },
+            "error": "policy file not found",
+        }
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report_only = run_consumer(report)
+    bundle = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        str(report),
+    )
+
+    assert report_only.returncode == 1
+    assert expected_error in report_only.stderr
+    assert bundle.returncode == 1
+    assert bundle.stderr == "agent-guard evidence bundle invalid\n"
+    assert str(tmp_path) not in report_only.stderr
+    assert str(tmp_path) not in bundle.stderr
+
+
+def test_packaged_consumer_report_read_failure_does_not_echo_path(tmp_path: Path) -> None:
+    missing = tmp_path / "opaque-sensitive-name.json"
+
+    result = run_packaged_consumer_cli(str(missing))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard evidence invalid: public evidence could not be read\n"
+    assert missing.name not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
 def test_evidence_consumer_fails_closed_on_schema_drift(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
@@ -1112,6 +1180,53 @@ def test_evidence_consumer_rejects_forbidden_raw_evidence_keys(tmp_path: Path) -
     assert result.returncode == 1
     assert "forbidden raw evidence key" in result.stderr
     assert "^sk-.+" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "authorization",
+        "scope",
+        "arguments",
+        "environment",
+        "APIKey",
+        "apiKey",
+        "password",
+        "secret",
+        "authToken",
+        "apiToken",
+        "bearerToken",
+        "idToken",
+        "oauthToken",
+        "sessionToken",
+    ],
+)
+def test_evidence_consumer_rejects_structurally_sensitive_mcp_fields_without_leak(
+    tmp_path: Path,
+    field_name: str,
+) -> None:
+    opaque_value = "opaque-synthetic-credential-value"
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["mcp_config"][field_name] = opaque_value
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report_only = run_consumer(report)
+    bundle = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        str(report),
+    )
+
+    assert report_only.returncode == 1
+    assert "forbidden raw evidence key" in report_only.stderr
+    assert bundle.returncode == 1
+    assert bundle.stderr == "agent-guard evidence bundle invalid\n"
+    for output in (report_only.stderr, bundle.stderr):
+        assert opaque_value not in output
+        assert str(tmp_path) not in output
 
 
 def test_evidence_consumer_allows_benign_token_substrings(tmp_path: Path) -> None:

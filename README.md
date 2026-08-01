@@ -222,6 +222,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: agent-guard
         uses: yui-stingray/agent-guard@v0.3.4
         with:

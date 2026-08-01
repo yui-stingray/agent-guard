@@ -54,6 +54,89 @@ def test_wheel_contract_uses_platform_specific_venv_interpreter() -> None:
     assert wheel_contract.venv_python_path(venv_dir, platform_name="nt") == venv_dir / "Scripts" / "python.exe"
 
 
+def test_wheel_contract_isolated_module_smoke_ignores_pythonpath_shadow(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    venv_dir = tmp_path / "venv"
+    wheel_contract.venv.EnvBuilder(with_pip=False).create(venv_dir)
+    python = wheel_contract.venv_python_path(venv_dir)
+    site_packages_result = subprocess.run(
+        [
+            str(python),
+            "-c",
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    site_packages = Path(site_packages_result.stdout.strip())
+
+    installed_package = site_packages / "agent_guard"
+    installed_package.mkdir()
+    (installed_package / "__init__.py").write_text(
+        "ORIGIN = 'wheel'\n",
+        encoding="utf-8",
+    )
+    (installed_package / "cli.py").write_text("print('wheel-cli')\n", encoding="utf-8")
+    installed_consumer = installed_package / "consumer"
+    installed_consumer.mkdir()
+    (installed_consumer / "__init__.py").write_text("", encoding="utf-8")
+    (installed_consumer / "__main__.py").write_text(
+        "print('wheel-consumer')\n",
+        encoding="utf-8",
+    )
+
+    shadow_root = tmp_path / "shadow"
+    shadow_package = shadow_root / "agent_guard"
+    shadow_package.mkdir(parents=True)
+    (shadow_package / "__init__.py").write_text(
+        "ORIGIN = 'shadow'\n",
+        encoding="utf-8",
+    )
+    for package_dir, module_name in (
+        (shadow_package, "cli.py"),
+        (shadow_package / "consumer", "__main__.py"),
+    ):
+        package_dir.mkdir(exist_ok=True)
+        (package_dir / "__init__.py").write_text("", encoding="utf-8")
+        (package_dir / module_name).write_text(
+            "raise SystemExit('shadow package executed')\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setenv("PYTHONPATH", str(shadow_root))
+    for module, expected_output in (
+        ("agent_guard.cli", "wheel-cli\n"),
+        ("agent_guard.consumer", "wheel-consumer\n"),
+    ):
+        result = subprocess.run(
+            wheel_contract.isolated_module_command(python, module),
+            cwd=tmp_path,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout == expected_output
+
+    inline_result = subprocess.run(
+        wheel_contract.isolated_code_command(
+            python,
+            "import agent_guard; print(agent_guard.ORIGIN)",
+        ),
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert inline_result.returncode == 0
+    assert inline_result.stdout == "wheel\n"
+
+
 def test_wheel_contract_stops_git_producer_at_incremental_output_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -85,18 +168,24 @@ def test_wheel_contract_stops_git_producer_at_incremental_output_limit(
     monkeypatch.setattr(wheel_contract, "GIT_INVENTORY_TIMEOUT_SECONDS", 10.0)
     monkeypatch.setattr(wheel_contract.subprocess, "Popen", launch_producer)
 
-    started = time.monotonic()
-    with pytest.raises(
-        RuntimeError,
-        match="^release source inventory could not be verified$",
-    ):
-        wheel_contract.tracked_release_files()
-    elapsed = time.monotonic() - started
+    try:
+        started = time.monotonic()
+        with pytest.raises(
+            RuntimeError,
+            match="^release source inventory could not be verified$",
+        ):
+            wheel_contract.tracked_release_files()
+        elapsed = time.monotonic() - started
 
-    assert elapsed < 5.0
-    assert len(processes) == 1
-    assert processes[0].poll() is not None
-    assert not completed.exists()
+        assert elapsed < 5.0
+        assert len(processes) == 1
+        assert processes[0].poll() is not None
+        assert not completed.exists()
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=1)
 
 
 def test_wheel_contract_stops_git_producer_at_incremental_path_limit(
@@ -129,15 +218,21 @@ def test_wheel_contract_stops_git_producer_at_incremental_path_limit(
     monkeypatch.setattr(wheel_contract, "GIT_INVENTORY_TIMEOUT_SECONDS", 10.0)
     monkeypatch.setattr(wheel_contract.subprocess, "Popen", launch_producer)
 
-    with pytest.raises(
-        RuntimeError,
-        match="^release source inventory could not be verified$",
-    ):
-        wheel_contract.tracked_release_files()
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="^release source inventory could not be verified$",
+        ):
+            wheel_contract.tracked_release_files()
 
-    assert len(processes) == 1
-    assert processes[0].poll() is not None
-    assert not completed.exists()
+        assert len(processes) == 1
+        assert processes[0].poll() is not None
+        assert not completed.exists()
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=1)
 
 
 def test_wheel_contract_requires_exact_current_distribution_set(

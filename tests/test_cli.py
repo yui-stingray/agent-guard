@@ -214,7 +214,10 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         '--artifact "$report_json" --json 2>/dev/null > "$evidence_pack_json"'
         in workflow
     )
-    assert "validate_public_evidence() {" in workflow
+    assert 'validate_raw_result "$?" "$surface_inventory_json"' in workflow
+    assert 'validate_raw_result "$?" "$conformance_json"' in workflow
+    assert 'validate_raw_result "$?" "$evidence_pack_json"' in workflow
+    assert "validate_public_evidence() (" in workflow
     assert "public_artifact_names=(" in workflow
     assert "if [ \"$status\" -ge 2 ]; then" in workflow
     assert "::error::evidence generation failed" in workflow
@@ -230,7 +233,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         "agent_guard.consumer"
     )
     assert workflow.index("agent_guard.consumer") < workflow.index('rm -f "$annotations_path"')
-    assert workflow.index("validate_public_evidence() {") < workflow.index("printf 'ready=true\\n'")
+    assert workflow.index("validate_public_evidence() (") < workflow.index("printf 'ready=true\\n'")
     assert workflow.index("agent_guard.consumer") < workflow.index("printf 'ready=true\\n'")
     assert workflow.index("printf 'evidence-dir=%s\\n'") < workflow.index("printf 'ready=true\\n'")
     assert workflow.index("evidence_ready=true") < workflow.index("printf 'ready=true\\n'")

@@ -11,7 +11,7 @@ import stat
 import time
 from dataclasses import dataclass
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable, Sequence
 
 import yaml
@@ -380,6 +380,9 @@ def normalize_patterns(raw: object, *, limit: int = MAX_POLICY_GLOB_COUNT) -> li
             continue
         if len(text) > MAX_POLICY_GLOB_LENGTH:
             raise ValueError(ERROR_CONTENT_POLICY_LIMIT)
+        normalized = text.replace("\\", "/")
+        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(text).drive:
+            raise ValueError(ERROR_CONTENT_POLICY_INVALID)
         patterns.append(text)
     return patterns
 

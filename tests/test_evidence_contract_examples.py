@@ -62,11 +62,23 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 
 
 def example_env() -> dict[str, str]:
-    env = os.environ.copy()
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("AGENT_GUARD_")
+    }
     env["PYTHONPATH"] = f"{SRC}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else str(SRC)
     env["PYTHON_BIN"] = sys.executable
     env["AGENT_GUARD_BIN"] = f"{sys.executable} -I -m agent_guard.cli"
     return env
+
+
+def test_example_env_removes_inherited_agent_guard_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_GUARD_EVIDENCE_DIR", "inherited")
+
+    env = example_env()
+
+    assert "AGENT_GUARD_EVIDENCE_DIR" not in env
 
 
 def run_example(
@@ -218,7 +230,8 @@ def run_action_sequence(
         "if mode == 'restore-failure' and args[:1] == ['report']:\n"
         "    raise SystemExit(2)\n"
         "from agent_guard.cli import main\n"
-        "raise SystemExit(main())\n",
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n",
         encoding="utf-8",
     )
     agent_guard.chmod(0o755)

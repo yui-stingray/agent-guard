@@ -8,6 +8,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 import pickle
+import threading
 from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
@@ -104,7 +105,13 @@ def _stop_isolated_process(process: multiprocessing.Process) -> None:
 
 
 def _default_context() -> Any:
-    return multiprocessing.get_context("fork" if os.name == "posix" else "spawn")
+    start_methods = multiprocessing.get_all_start_methods()
+    if os.name == "posix":
+        if threading.active_count() == 1 and "fork" in start_methods:
+            return multiprocessing.get_context("fork")
+        if "forkserver" in start_methods:
+            return multiprocessing.get_context("forkserver")
+    return multiprocessing.get_context("spawn")
 
 
 def run_isolated_scan(

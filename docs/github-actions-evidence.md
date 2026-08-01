@@ -147,6 +147,7 @@ to its base branch, fetch the base ref and pass it explicitly:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: agent-guard
         uses: yui-stingray/agent-guard@v0.3.4
         with:
@@ -178,6 +179,7 @@ Fetch the base ref explicitly before running the action, the same way
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: agent-guard
         uses: yui-stingray/agent-guard@v0.3.4
         with:
@@ -193,6 +195,7 @@ stable merge-base anchor instead of a branch name that can move:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Fetch PR base commit
         run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
       - id: agent-guard
@@ -242,8 +245,9 @@ The generated workflow:
   `agent-guard-results.sarif`, `agent-guard-conformance.json`,
   `agent-guard-evidence-pack.json`, and `agent-surface-inventory.json`, each a
   regular non-symlink file;
-- runs `python -I -m agent_guard.consumer --evidence-dir --emit-annotations`
-  over that complete bundle without importing checkout-provided Python modules,
+- runs `python -I -m agent_guard.consumer --evidence-dir "$evidence_dir"
+  --emit-annotations "$report_json"` over that complete bundle without
+  importing checkout-provided Python modules,
   emits the exact canonical annotation bytes retained by that validation
   invocation, and never reopens the annotation path for publication;
 - records the internal `evidence-dir` step output, sets

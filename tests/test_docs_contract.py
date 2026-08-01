@@ -467,6 +467,17 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     recommended_workflow = yaml.safe_load(recommended_yaml)
     recommended_checkout = recommended_workflow["jobs"]["agent-guard"]["steps"][0]
     assert recommended_checkout["with"]["persist-credentials"] is False
+    action_lines = actions.splitlines()
+    checkout_lines = [
+        index
+        for index, line in enumerate(action_lines)
+        if line.strip() == "- uses: actions/checkout@v7"
+    ]
+    assert checkout_lines
+    assert all(
+        "persist-credentials: false" in "\n".join(action_lines[index : index + 6])
+        for index in checkout_lines
+    )
     recommended_upload = next(
         step
         for step in recommended_workflow["jobs"]["agent-guard"]["steps"]

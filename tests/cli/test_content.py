@@ -344,6 +344,71 @@ def test_content_cli_policy_path_is_root_relative_from_external_cwd(tmp_path: Pa
     assert str(tmp_path) not in result.stdout
 
 
+@pytest.mark.parametrize(
+    "absolute_glob",
+    [
+        "/outside/*.md",
+        r"C:\\outside\\*.md",
+        r"\\\\server\\share\\*.md",
+    ],
+)
+@pytest.mark.parametrize("placement", ["file_globs", "rule_include_globs"])
+def test_content_cli_rejects_absolute_policy_globs_without_echo(
+    tmp_path: Path,
+    absolute_glob: str,
+    placement: str,
+) -> None:
+    policy_payload: dict[str, object] = {
+        "file_globs": ["**/*.md"],
+        "exclude_globs": [],
+        "forbidden_patterns": [],
+    }
+    if placement == "file_globs":
+        policy_payload["file_globs"] = [absolute_glob]
+    else:
+        policy_payload["forbidden_patterns"] = [
+            {
+                "id": "synthetic_rule",
+                "pattern": "synthetic",
+                "include_globs": [absolute_glob],
+            }
+        ]
+    policy = tmp_path / "content-policy.yaml"
+    policy.write_text(
+        yaml.safe_dump(policy_payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    incoming = tmp_path / "incoming"
+    write(incoming / "safe.md", "safe\n")
+
+    result = run_cli(
+        "content",
+        "check",
+        "--repo-root",
+        str(tmp_path),
+        "--policy",
+        str(policy),
+        "--mode",
+        "preregister",
+        "--targets",
+        str(incoming),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="content",
+        status="error",
+        exit_code=2,
+        finding_count=0,
+    )
+    assert payload["error"] == "content policy is invalid"
+    assert absolute_glob not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
 def test_content_cli_new_mode_rejects_staged_worktree_mismatch_without_leak(
     tmp_path: Path,
 ) -> None:
