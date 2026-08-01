@@ -76,6 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           report="${RUNNER_TEMP}\\agent-guard-windows-report.json"
+          set +e
           python -m agent_guard.cli report \
             --root . \
             --context-policy .agent-guard/context-policy.yaml \
@@ -84,7 +85,15 @@ jobs:
             --digest-policy .agent-guard/context-digest-policy.yaml \
             --format json \
             --output "$report"
+          report_status=$?
+          set -e
+          test "$report_status" -le 1
+          test -f "$report"
+          set +e
           python -m agent_guard.consumer "$report"
+          consumer_status=$?
+          set -e
+          test "$consumer_status" = "$report_status"
 
   test:
     name: pytest (py${{ matrix.python-version }})
