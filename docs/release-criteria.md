@@ -75,9 +75,10 @@ Before submitting the Marketplace release form:
 - use `Security` as the primary category and `Code quality` as the secondary
   category; do not select `Code Scanning Ready`, because the Action emits SARIF
   but does not upload it to GitHub code scanning;
-- require the release commit's CI `packaged action smoke` job to pass, so the
-  checked-out composite Action, its public outputs, and the packaged evidence
-  consumer are verified before the release tag can publish to PyPI;
+- require the release commit's versioned `packaged action smoke` matrix and its
+  stable-name aggregate check to pass across every advertised Python version,
+  so the checked-out composite Action, its public outputs, and the packaged
+  evidence consumer are verified before the release tag can publish to PyPI;
 - keep the Action description and release notes explicit that the package is
   alpha and static-only, not a runtime agent, MCP, OAuth, or LLM validator;
 - use exact version tags while the package is `0.x`; do not create a moving

@@ -14,7 +14,9 @@ inputs:
     required: false
     default: "3.12"
   package-spec:
-    description: Optional package spec override. Empty installs the checked-out action package.
+    description: >-
+      Caller-trusted package spec override; installation may execute package-provided code.
+      Empty installs the checked-out action package.
     required: false
     default: ""
   context-policy:
@@ -127,7 +129,6 @@ runs:
 
         validate_no_control_chars "package-spec" "$AGENT_GUARD_PACKAGE_SPEC" || exit 2
 
-        python -I -m pip install --upgrade pip
         if [ -n "$AGENT_GUARD_PACKAGE_SPEC" ]; then
           python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"
         else

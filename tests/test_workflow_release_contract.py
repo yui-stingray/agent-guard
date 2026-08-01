@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -38,6 +39,11 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-guard-evidence-pack.json",
     "agent-surface-inventory.json",
 )
+APPROVED_ACTION_PIP_COMMANDS = (
+    'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"',
+    'python -I -m pip install "$GITHUB_ACTION_PATH"',
+)
+ACTION_PIP_COMMAND_PATTERN = re.compile(r"\bpip(?:3(?:\.\d+)?)?\b", re.IGNORECASE)
 
 
 def action_evidence_script() -> str:
@@ -290,9 +296,48 @@ def normalize_shell_continuations(script: str) -> str:
     return "\n".join(normalized)
 
 
+def action_pip_command_lines(script: str) -> list[str]:
+    return [
+        command
+        for command in normalize_shell_continuations(script).splitlines()
+        if ACTION_PIP_COMMAND_PATTERN.search(command)
+    ]
+
+
 def pyproject_version() -> str:
     with PYPROJECT.open("rb") as fh:
         return tomllib.load(fh)["project"]["version"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -I -m pip install --upgrade pip",
+        "python -I -m pip install -U pip",
+        "python -I -m pip install pip --upgrade",
+        "python -I -m pip install -qU 'pip>=26'",
+        "pip install --upgrade pip",
+        "pip3 install -qU pip",
+        "if true; then python -m pip install --upgrade pip; fi",
+        "env X=1 python -m pip install --upgrade pip",
+        "command python -m pip install --upgrade pip",
+        "result=$(python -m pip install --upgrade pip)",
+        "python -I -m pip install \\\n"
+        "  --upgrade \\\n"
+        "  pip",
+    ],
+)
+def test_action_pip_allowlist_rejects_unapproved_commands(command: str) -> None:
+    normalized = normalize_shell_continuations(command)
+    assert action_pip_command_lines(command) == [normalized]
+    assert normalized not in APPROVED_ACTION_PIP_COMMANDS
+
+
+@pytest.mark.parametrize(
+    "command", APPROVED_ACTION_PIP_COMMANDS
+)
+def test_action_pip_allowlist_accepts_only_packaged_install_commands(command: str) -> None:
+    assert action_pip_command_lines(command) == [command]
 
 
 def test_delivery_bridge_files_are_evidence_first() -> None:
@@ -312,6 +357,10 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert runner_step["shell"] == "bash"
     assert '"${RUNNER_OS:-}" != "Linux"' in runner_step["run"]
     assert action["inputs"]["package-spec"]["default"] == ""
+    assert action["inputs"]["package-spec"]["description"] == (
+        "Caller-trusted package spec override; installation may execute "
+        "package-provided code. Empty installs the checked-out action package."
+    )
     assert action["inputs"]["base-ref"]["default"] == ""
     assert action["inputs"]["surface-delta-base-ref"]["default"] == ""
     assert action["inputs"]["conformance-profile"]["default"] == "recommended"
@@ -328,6 +377,12 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
     assert action["outputs"]["report-sarif"]["value"] == "${{ steps.evidence.outputs.report-sarif }}"
     action_text = ACTION_METADATA.read_text(encoding="utf-8")
+    observed_pip_commands = [
+        command
+        for script in action_run_scripts()
+        for command in action_pip_command_lines(script)
+    ]
+    assert sorted(observed_pip_commands) == sorted(APPROVED_ACTION_PIP_COMMANDS)
     assert 'python -I -m pip install "$GITHUB_ACTION_PATH"' in action_text
     assert 'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"' in action_text
     assert all("${{ inputs." not in script for script in action_run_scripts())
