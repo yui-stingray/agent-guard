@@ -312,6 +312,10 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert runner_step["shell"] == "bash"
     assert '"${RUNNER_OS:-}" != "Linux"' in runner_step["run"]
     assert action["inputs"]["package-spec"]["default"] == ""
+    assert action["inputs"]["package-spec"]["description"] == (
+        "Caller-trusted package spec override; installation may execute "
+        "package-provided code. Empty installs the checked-out action package."
+    )
     assert action["inputs"]["base-ref"]["default"] == ""
     assert action["inputs"]["surface-delta-base-ref"]["default"] == ""
     assert action["inputs"]["conformance-profile"]["default"] == "recommended"
@@ -328,6 +332,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert action["outputs"]["report-json"]["value"] == "${{ steps.evidence.outputs.report-json }}"
     assert action["outputs"]["report-sarif"]["value"] == "${{ steps.evidence.outputs.report-sarif }}"
     action_text = ACTION_METADATA.read_text(encoding="utf-8")
+    assert "pip install --upgrade pip" not in action_text
     assert 'python -I -m pip install "$GITHUB_ACTION_PATH"' in action_text
     assert 'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"' in action_text
     assert all("${{ inputs." not in script for script in action_run_scripts())

@@ -26,9 +26,13 @@ jobs:
       - uses: devops-actions/actionlint@469810fd82c015d3c43815cd2b0e4d02eecc4819  # v0.1.11
 
   action-smoke:
-    name: packaged action smoke
+    name: packaged action smoke (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11.4', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
@@ -36,6 +40,7 @@ jobs:
       - id: agent-guard
         uses: ./
         with:
+          python-version: ${{ matrix.python-version }}
           github-annotations: "false"
       - name: Verify packaged action consumer contract
         env:
@@ -56,6 +61,18 @@ jobs:
             AGENT_GUARD_EVIDENCE_DIR="$EVIDENCE_DIR" \
             AGENT_GUARD_REPORT_JSON="$REPORT_JSON" \
             sh examples/evidence_contracts_ci.sh consume
+
+  action-smoke-status:
+    name: packaged action smoke
+    if: ${{ always() }}
+    needs: action-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every packaged Action smoke job to pass
+        env:
+          ACTION_SMOKE_RESULT: ${{ needs.action-smoke.result }}
+        run: test "$ACTION_SMOKE_RESULT" = "success"
 
   windows-cli-smoke:
     name: Windows CLI contract

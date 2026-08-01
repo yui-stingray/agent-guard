@@ -62,6 +62,9 @@ Why: keep static guard releases auditable while the package is still alpha.
   consumption, including native final-handle reads and outside-junction
   rejection. The packaged Action remains Linux-runner-only, while the shell
   consumer example requires a POSIX host.
+- Removed the packaged Action's unnecessary runtime `pip` self-upgrade, marked
+  the package override as a caller-trusted code-execution boundary, and ran the
+  packaged Action smoke across every advertised Python version.
 - Added a bounded packaged public-bundle consumer mode, replaced the duplicated
   shell validator with that entry point, and made stale-report wording match the
   sanitized report-visible comparison rather than imply whole-tree identity.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -24,6 +25,19 @@ HARD_ERROR_PRECEDENCE = (
 )
 
 
+def advertised_python_versions() -> list[str]:
+    with (ROOT / "pyproject.toml").open("rb") as fh:
+        project = tomllib.load(fh)["project"]
+    minimum = project["requires-python"].removeprefix(">=")
+    minimum_minor = ".".join(minimum.split(".")[:2])
+    supported_minors = []
+    for classifier in project["classifiers"]:
+        match = re.fullmatch(r"Programming Language :: Python :: (\d+\.\d+)", classifier)
+        if match:
+            supported_minors.append(match.group(1))
+    return [minimum if version == minimum_minor else version for version in supported_minors]
+
+
 def test_executable_action_dependencies_are_pinned_to_full_commit_shas() -> None:
     for path in WORKFLOW_FILES:
         text = path.read_text(encoding="utf-8")
@@ -38,15 +52,28 @@ def test_executable_action_dependencies_are_pinned_to_full_commit_shas() -> None
 
 def test_ci_covers_supported_current_python_versions_and_ttfe() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    for version in ("3.11.4", "3.12", "3.13", "3.14"):
+    for version in advertised_python_versions():
         assert f"'{version}'" in workflow
     assert "Replay 15-minute onboarding path" in workflow
     assert "--max-elapsed-ms 900000" in workflow
 
 
 def test_ci_runs_packaged_action_consumer_smoke() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "name: packaged action smoke" in workflow
+    workflow_path = ROOT / ".github" / "workflows" / "ci.yml"
+    workflow = workflow_path.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(workflow)
+    action_smoke = parsed["jobs"]["action-smoke"]
+    assert action_smoke["name"] == "packaged action smoke (py${{ matrix.python-version }})"
+    assert action_smoke["strategy"]["matrix"]["python-version"] == advertised_python_versions()
+    action_step = next(step for step in action_smoke["steps"] if step.get("uses") == "./")
+    assert action_step["with"]["python-version"] == "${{ matrix.python-version }}"
+    action_smoke_status = parsed["jobs"]["action-smoke-status"]
+    assert action_smoke_status["name"] == "packaged action smoke"
+    assert action_smoke_status["needs"] == "action-smoke"
+    assert action_smoke_status["if"] == "${{ always() }}"
+    status_step = action_smoke_status["steps"][0]
+    assert status_step["env"]["ACTION_SMOKE_RESULT"] == "${{ needs.action-smoke.result }}"
+    assert status_step["run"] == 'test "$ACTION_SMOKE_RESULT" = "success"'
     assert "uses: ./" in workflow
     assert 'test "$ACTION_STATUS" = "0"' in workflow
     assert 'sh examples/evidence_contracts_ci.sh consume' in workflow
