@@ -28,6 +28,7 @@ GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
+DEMAND_VALIDATION_DOC = REPO_ROOT / "docs" / "demand-validation.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
@@ -580,19 +581,22 @@ def test_evidence_consumer_docs_describe_directory_transaction_boundary() -> Non
     assert "static evidence consumers" in docs
 
 
-def test_marketplace_readiness_stays_manual_and_static_only() -> None:
+def test_marketplace_readiness_stays_inactive_and_static_only() -> None:
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
     assert "packaged alpha GitHub Action" in readme
     assert "The action generates static evidence only" in readme
     assert "Marketplace publication is not part of the automated release workflows" in release_criteria
+    assert "Manual and automated publication are both out of scope" in release_criteria
+    assert "new explicit maintainer instruction" in release_criteria
+    assert "Demand-gate success does not grant that authorization" in release_criteria
     assert "`agent-guard static evidence`" in release_criteria
     assert "`Security` as the primary category" in release_criteria
     assert "`Code quality` as the secondary" in release_criteria
     assert "do not select `Code Scanning Ready`" in release_criteria
     assert "do not create a moving\n  `v0` alias" in release_criteria
-    assert "explicit maintainer approval" in release_criteria
+    assert "do not open or submit the release form" in release_criteria
 
 
 def test_positioning_doc_keeps_public_scope_narrow() -> None:
@@ -600,17 +604,51 @@ def test_positioning_doc_keeps_public_scope_narrow() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert "Static evidence contracts for AI-agent-maintained repositories." in docs
-    assert "CONTINUE-NARROW" in docs
+    assert "VALIDATE-NARROW" in docs
     assert "Python/PyPI static evidence package" in docs_single_line
     assert "init -> report -> upload evidence" in docs_single_line
-    assert "demand signals" in docs
+    assert "Demand signals" in docs
     assert "rename work" in docs
     assert "does not route" in docs
     assert "run LLM review" in docs
-    assert "validate live OAuth flows" in docs
+    assert "validate live OAuth flows" in docs_single_line
     assert "replace dedicated secret scanners" in docs
     assert "review metadata" in docs
     assert "related independent work" in docs
+
+
+def test_demand_validation_defines_independent_matured_signals_and_stop_rule() -> None:
+    docs = DEMAND_VALIDATION_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
+
+    assert "2026-08-10 through 2026-09-20" in docs
+    assert "2026-09-21" in docs
+    assert "maximum of four hours per week" in docs_single_line
+    assert "Qualified exposure" in docs
+    assert "Deduplicate this denominator by person, organization, and proposal" in docs_single_line
+    assert "default branch" in docs
+    assert "Count at most one activation per organization" in docs
+    assert "exact published package version or immutable release Action pin" in docs_single_line
+    assert "identified default-branch revision" in docs_single_line
+    assert "diagnostic finding status does not count as success" in docs_single_line
+    assert "dated private measurement record" in docs_single_line
+    assert "at least 14 days after activation" in docs
+    assert "no later than 2026-09-06" in docs
+    assert "Count at most one retained result per activation" in docs
+    assert "cannot count toward retention in this validation window" in docs_single_line
+    assert "Deduplicate by person, organization, and topic" in docs
+    assert "not statistical validation or product-market-fit evidence" in docs_single_line
+    assert "unmet or cannot be measured" in docs
+    assert "NO-GO" in docs
+    assert 'Do not post "just checking in" comments' in docs
+    assert "limited to one per person or organization" in docs_single_line
+    assert "Across all proposals in this window" in docs_single_line
+    assert "unless the recipient reinitiates" in docs_single_line
+    assert "Comments, open pull requests, and pull-request-branch CI never count" in docs_single_line
+    assert "Outreach and measurement stop on 2026-09-20" in docs_single_line
+    assert "new period, budget, and hypothesis" in docs_single_line
+    assert "whether manual or automated, is out of scope" in docs_single_line
+    assert "Meeting the continuation gate does not authorize publication" in docs_single_line
 
 
 def test_threat_model_doc_keeps_static_boundary() -> None:
@@ -670,11 +708,16 @@ def test_compatibility_doc_keeps_public_safe_contract_bounded() -> None:
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:
     docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+    docs_single_line = " ".join(docs.split())
 
     assert "Batched Release Cadence" in docs
     assert "weekly" in docs
     assert "P0 fix" in docs
-    assert "Do not cut a patch release for every qualifying change" in docs
+    assert "Do not cut a patch release for every qualifying change" in docs_single_line
+    assert "reproducible severe issue in a published version" in docs
+    assert "Speculative hardening, defense in depth" in docs
+    assert "explicit maintainer approval before release" in docs
+    assert "frozen until a separate explicit maintainer decision" in docs_single_line
     assert "Docs-only changes under `docs/` do not need an immediate release" in docs
     assert "packaged JSON Schema" in docs
     assert "schema/contract stability" in docs

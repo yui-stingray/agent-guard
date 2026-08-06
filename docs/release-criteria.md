@@ -1,14 +1,35 @@
 # Release Criteria
 
-`agent-guard` is still `0.x` alpha. Releases should stay small, batched, and
-evidence driven. The default is to protect schema/contract stability rather
-than publish every isolated change immediately.
+`agent-guard` is still `0.x` alpha. When feature releases are allowed, they
+should stay small, batched, and evidence driven. The default is to protect
+schema/contract stability rather than publish every isolated change immediately.
+
+## Demand-Validation Freeze
+
+Feature releases are frozen until a separate explicit maintainer decision
+lifts the freeze after reviewing [Demand Validation](demand-validation.md).
+During 2026-08-10 through 2026-09-20, a P0 release
+is limited to a reproducible severe issue in a published version: a material
+vulnerability or data exposure, including publication of unsanitized evidence,
+credentials, private data, or local paths; or a regression that blocks an
+existing user. Speculative hardening, defense in depth, routine compatibility
+work, refactoring, and new features are not P0. Every freeze exception requires
+explicit maintainer approval before release. The normal weekly batch cadence
+does not apply while this freeze is in effect.
+
+The 2026-09-21 decision uses the documented activation, retention, and
+external-feedback gates. Meeting them permits a new investment decision; it
+does not itself lift the freeze, authorize a release, or authorize Marketplace
+publication.
 
 ## Batched Release Cadence
 
-Do not cut a patch release for every qualifying change. By default, batch
-reviewed release candidates on a weekly cadence. Cut an earlier patch only when
-a P0 fix needs to reach installed users before the next batch.
+After the demand-validation freeze is explicitly lifted:
+
+Do not cut a patch release for every qualifying change.
+By default, batch reviewed release candidates on a
+weekly cadence. Cut an earlier patch only when a P0 fix needs to reach installed
+users before the next batch.
 
 When cutting an earlier P0 patch, record a one-sentence, public-safe rationale
 in the release-preparation pull request or that release's CHANGELOG entry. Keep
@@ -64,11 +85,13 @@ Before tagging, verify:
 The release workflow remains tag-driven. Do not publish from an unreviewed
 branch.
 
-## GitHub Marketplace Readiness
+## GitHub Marketplace Readiness Record
 
-GitHub Marketplace publication is not part of the automated release workflows.
-It remains a separate manual action that requires explicit maintainer approval.
-Before submitting the Marketplace release form:
+Marketplace publication is not part of the automated release workflows.
+Manual and automated publication are both out of scope and must not be
+performed until a new explicit maintainer instruction authorizes that separate
+action. Demand-gate success does not grant that authorization. The following
+reviewed facts remain a readiness record, not an active submission procedure:
 
 - use the candidate Action name `agent-guard static evidence` and confirm that
   GitHub's final uniqueness validator still accepts it;
@@ -83,8 +106,8 @@ Before submitting the Marketplace release form:
   alpha and static-only, not a runtime agent, MCP, OAuth, or LLM validator;
 - use exact version tags while the package is `0.x`; do not create a moving
   `v0` alias that silently changes an alpha consumer's code;
-- stop at the validated release form until the maintainer separately approves
-  Marketplace publication and any required developer agreement.
+- do not open or submit the release form without that new explicit approval,
+  including approval of any required developer agreement.
 
 ## Release Provenance
 
@@ -104,8 +127,8 @@ level, vulnerability absence, or security/compliance certification.
 ## Non-Goals For Releases
 
 Do not use a release as a reason to expand into LLM review, issue triage,
-model routing, MoA orchestration, broad credential scanning, or a general
+model routing, MoA orchestration, generic secret scanning, or a general
 governance framework. Do not use release pressure to add runtime MCP execution,
-live OAuth validation, MCP tool-poisoning detection, or an MCP security
-validator. Those tools can consume `agent-guard` evidence, but they should
-remain separate layers.
+live OAuth validation, MCP tool-poisoning detection, an MCP security validator,
+or manual or automated GitHub Marketplace publication. Those tools can consume
+`agent-guard` evidence, but they should remain separate layers.
