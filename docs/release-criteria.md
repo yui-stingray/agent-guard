@@ -8,9 +8,9 @@ schema/contract stability rather than publish every isolated change immediately.
 
 Feature releases are frozen until a separate explicit maintainer decision
 lifts the freeze after reviewing [Demand Validation](demand-validation.md).
-During 2026-08-10 through 2026-09-20, a P0 release
-is limited to a reproducible severe issue in a published version: a material
-vulnerability or data exposure, including publication of unsanitized evidence,
+While this freeze remains in effect, a P0 release is limited to a
+reproducible severe issue in a published version: a material vulnerability or
+data exposure, including publication of unsanitized evidence,
 credentials, private data, or local paths; or a regression that blocks an
 existing user. Speculative hardening, defense in depth, routine compatibility
 work, refactoring, and new features are not P0. Every freeze exception requires

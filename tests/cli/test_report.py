@@ -7,7 +7,49 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent_guard.cli.report_builders import build_evidence_coverage, report_scope
 from tests.cli.helpers import ROOT, mcp_policy_text, run_cli, run_cli_from, run_git, write, write_baseline_ready_repo
+
+
+def test_report_scope_preserves_coarse_v1_tokens_with_canonical_gate_coverage() -> None:
+    assert report_scope(
+        path_enabled=True,
+        content_enabled=True,
+        api_enabled=True,
+        mcp_enabled=True,
+        digest_enabled=True,
+        workflow_enabled=True,
+        drift_enabled=True,
+    ) == "context+path+content+api+mcp+digest+workflow+drift"
+
+    ok_report: dict[str, object] = {"status": "ok"}
+    coverage = build_evidence_coverage(
+        context_policy_path=".agent-guard/context-policy.yaml",
+        scanned_files=1,
+        context_finding_count=0,
+        inventory_surface_count=1,
+        path_report=ok_report,
+        content_report=ok_report,
+        api_report=ok_report,
+        mcp_report=ok_report,
+        context_lock_report=ok_report,
+        digest_report=ok_report,
+        workflow_report=ok_report,
+        drift_report=ok_report,
+    )
+    assert [item["gate"] for item in coverage["gates"]] == [
+        "context",
+        "surface_inventory",
+        "path",
+        "content",
+        "api",
+        "mcp_config",
+        "context_lock",
+        "digest",
+        "workflow",
+        "policy_spec_drift",
+    ]
+
 
 def test_report_cli_embeds_sanitized_base_ref_drift(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -73,12 +115,14 @@ def test_report_cli_recommended_preset_expands_adoption_bundle() -> None:
     assert "context_lock" not in payload
     gates = {item["gate"]: item["status"] for item in payload["evidence_coverage"]["gates"]}
     assert gates["context"] == "ok"
+    assert gates["surface_inventory"] == "ok"
     assert gates["path"] == "ok"
     assert gates["content"] == "ok"
     assert gates["mcp_config"] == "ok"
     assert gates["workflow"] == "ok"
     assert gates["policy_spec_drift"] == "ok"
     assert gates["api"] == "missing"
+    assert gates["context_lock"] == "missing"
     assert gates["digest"] == "missing"
 
 def test_report_cli_recommended_preset_defaults_are_root_relative(tmp_path: Path) -> None:

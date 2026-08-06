@@ -37,10 +37,11 @@ requires an external maintainer to adopt `agent-guard` on an owner-external
 repository's default branch and obtain a qualifying successful run from that
 branch. Retention requires the setup to remain on that branch and another
 qualifying run to succeed at least 14 days after activation. On 2026-09-21,
-continue only if there are at least three independent activations, at least two
-retained activations, and at least three deduplicated specific feedback items
-from at least two external people. These are minimum evidence thresholds, not a
-product-market-fit claim. Validation work is capped at four hours per week. The
+continue only if there are at least three qualifying activations, counting at
+most one per organization; at least two retained activations; and at least
+three deduplicated specific feedback items from at least two external people.
+These are minimum evidence thresholds, not a product-market-fit claim.
+Validation work is capped at four hours per week. The
 full protocol, including exclusions, qualified-exposure tracking, contact
 limits, and public-artifact hygiene, is in
 [Demand Validation](demand-validation.md).

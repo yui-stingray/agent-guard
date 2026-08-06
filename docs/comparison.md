@@ -1,8 +1,9 @@
 # Comparison: agent-guard and agent-audit
 
 This is a scoped comparison, not an independent evaluation. The `agent-audit`
-descriptions below are based on its upstream project materials checked on
-2026-08-06; its scope and implementation may change.
+descriptions below are based on its upstream project materials at commit
+[`1009782`](https://github.com/HeadyZhang/agent-audit/tree/100978214b21909e95b5f0f0b1ea328bc73ab519),
+checked on 2026-08-06; its scope and implementation may change.
 
 | Dimension | agent-audit | agent-guard |
 | --- | --- | --- |
@@ -16,6 +17,7 @@ descriptions below are based on its upstream project materials checked on
 | Relationship | Potentially complementary with repository evidence workflows. | May consume or package detection outputs from scanners such as `agent-audit` after repository-specific evaluation. |
 
 External statements were checked on 2026-08-06 against the primary
-[agent-audit repository](https://github.com/HeadyZhang/agent-audit) and
-[Agent Audit paper](https://arxiv.org/abs/2603.22853). `agent-guard`
-measurement details are maintained in [Benchmark Results](benchmark-results.md).
+[agent-audit repository at commit `1009782`](https://github.com/HeadyZhang/agent-audit/tree/100978214b21909e95b5f0f0b1ea328bc73ab519)
+and [Agent Audit paper, arXiv v1](https://arxiv.org/abs/2603.22853v1).
+`agent-guard` measurement details are maintained in
+[Benchmark Results](benchmark-results.md).

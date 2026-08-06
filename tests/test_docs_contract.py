@@ -375,6 +375,10 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "does not require repository-specific digest or context-lock gates" in docs_single_line
     assert "mcp_config` records `mcp_policy_missing" in docs
     assert "`mcp_policy_weakened`" in docs
+    assert "`report.scope` is a compatibility-preserved, coarse scanner summary" in docs
+    assert "the released shorthand names `mcp` and `drift`" in docs_single_line
+    assert "must use `evidence_coverage.gates`" in docs_single_line
+    assert "`mcp_config`, `policy_spec_drift`, `surface_inventory`, and `context_lock`" in docs_single_line
     assert "do not dump raw YAML content" in docs
     assert "raw repository/content/digest hash values" in docs_single_line
     assert "`partialFingerprints` are deterministic hashes of sanitized" in docs_single_line
@@ -617,7 +621,7 @@ def test_positioning_doc_keeps_public_scope_narrow() -> None:
     assert "related independent work" in docs
 
 
-def test_demand_validation_defines_independent_matured_signals_and_stop_rule() -> None:
+def test_demand_validation_defines_qualified_matured_signals_and_stop_rule() -> None:
     docs = DEMAND_VALIDATION_DOC.read_text(encoding="utf-8")
     docs_single_line = " ".join(docs.split())
 
@@ -626,17 +630,37 @@ def test_demand_validation_defines_independent_matured_signals_and_stop_rule() -
     assert "maximum of four hours per week" in docs_single_line
     assert "Qualified exposure" in docs
     assert "Deduplicate this denominator by person, organization, and proposal" in docs_single_line
-    assert "default branch" in docs
+    assert (
+        "repository not owned or controlled by the `agent-guard` project owner. "
+        "Forks, project-owned repositories, and the public demo are excluded."
+        in docs_single_line
+    )
+    assert (
+        "adopts `agent-guard` configuration or workflow on an owner-external "
+        "repository's default branch, and a qualifying CI run or documented "
+        "reproduction succeeds from that branch"
+        in docs_single_line
+    )
     assert "Count at most one activation per organization" in docs
     assert "exact published package version or immutable release Action pin" in docs_single_line
     assert "identified default-branch revision" in docs_single_line
     assert "diagnostic finding status does not count as success" in docs_single_line
     assert "dated private measurement record" in docs_single_line
-    assert "at least 14 days after activation" in docs
+    assert (
+        "at least 14 days after activation, the adopted configuration remains "
+        "on the default branch and a qualifying run after that 14-day point succeeds"
+        in docs_single_line
+    )
     assert "no later than 2026-09-06" in docs
     assert "Count at most one retained result per activation" in docs
     assert "cannot count toward retention in this validation window" in docs_single_line
     assert "Deduplicate by person, organization, and topic" in docs
+    assert "activations are at least 3" in docs
+    assert "retained activations are at least 2" in docs
+    assert (
+        "at least 2 external people have supplied at least 3 specific feedback items"
+        in docs_single_line
+    )
     assert "not statistical validation or product-market-fit evidence" in docs_single_line
     assert "unmet or cannot be measured" in docs
     assert "NO-GO" in docs

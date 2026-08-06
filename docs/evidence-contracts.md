@@ -165,6 +165,12 @@ The JSON report is a compact statement of what `agent-guard` checked:
   to.
 - `evidence_coverage` records which gates were enabled, missing, clean, or
   failing without treating every missing optional gate as a failure.
+- `report.scope` is a compatibility-preserved, coarse scanner summary. It uses
+  the released shorthand names `mcp` and `drift`, always includes `context`,
+  and does not enumerate the implicit `surface_inventory` or `context_lock`
+  sections. Consumers that need canonical gate names or complete enabled,
+  missing, and failing coverage must use `evidence_coverage.gates`, including
+  `mcp_config`, `policy_spec_drift`, `surface_inventory`, and `context_lock`.
 - `mcp_config` records whether committed MCP configuration metadata had
   parse errors or deterministic risk labels. It omits raw args, env values,
   authorization values, scope strings, URLs, secrets, instruction bodies, and
