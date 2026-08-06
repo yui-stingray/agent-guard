@@ -32,6 +32,8 @@ DEMAND_VALIDATION_DOC = REPO_ROOT / "docs" / "demand-validation.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
+ACTION_RELEASE_VERSION = "0.3.4"
+ACTION_RELEASE_COMMIT = "8121c703182f2a1df48223a3ff1eb1778055cd3a"
 
 
 def pyproject_version() -> str:
@@ -43,18 +45,39 @@ def test_readme_status_matches_pyproject_version() -> None:
     assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
 
 
-def test_copyable_action_snippets_match_release_metadata() -> None:
+def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
     docs = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
     )
+    action_reference_lines = [
+        line for line in docs.splitlines() if "yui-stingray/agent-guard@" in line
+    ]
     pins = set(re.findall(r"yui-stingray/agent-guard@([^\s]+)", docs))
     referenced_outputs = set(
         re.findall(r"steps\.agent-guard\.outputs\.([A-Za-z0-9-]+)", docs)
     )
     action = yaml.safe_load(ACTION_METADATA.read_text(encoding="utf-8"))
 
-    assert pins == {f"v{pyproject_version()}"}
+    expected_reference = (
+        f"yui-stingray/agent-guard@{ACTION_RELEASE_COMMIT} "
+        f"# v{ACTION_RELEASE_VERSION}"
+    )
+    assert action_reference_lines
+    assert all(expected_reference in line for line in action_reference_lines)
+    assert pins == {ACTION_RELEASE_COMMIT}
+    assert re.search(r"yui-stingray/agent-guard@v\d", docs) is None
+
+    yaml_blocks = re.findall(r"```yaml\n(.*?)\n```", docs, flags=re.DOTALL)
+    complete_workflows = [
+        yaml.safe_load(block)
+        for block in yaml_blocks
+        if "yui-stingray/agent-guard@" in block and "jobs:" in block
+    ]
+    assert len(complete_workflows) == 3
+    for workflow in complete_workflows:
+        assert isinstance(workflow, dict)
+        assert workflow.get("on", workflow.get(True)) == ["push", "pull_request"]
     assert referenced_outputs
     assert referenced_outputs <= set(action["outputs"])
 
@@ -454,10 +477,16 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "`required_policy_file_missing`" in quickstart
     assert "`policy_spec_drift` findings" in quickstart
     assert "minimal-to-recommended path and monorepo/subdirectory roots" in readme
+    assert "golden path moves directly to `recommended`" in quickstart_single_line
+    assert "evidence-contracts.md#adoption-path-minimal-first-then-recommended" in quickstart
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart
     assert "uses: actions/upload-artifact@v7" in actions
-    assert f"uses: yui-stingray/agent-guard@v{pyproject_version()}" in actions
+    assert (
+        f"uses: yui-stingray/agent-guard@{ACTION_RELEASE_COMMIT} "
+        f"# v{ACTION_RELEASE_VERSION}"
+        in actions
+    )
     assert "Recommended Action Workflow" in actions
     assert "root: services/api" in actions
     assert "Policy and evidence paths are" in actions
@@ -827,4 +856,8 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
     assert "currently unreleased" not in surface_delta_section
     assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
-    assert f"yui-stingray/agent-guard@v{pyproject_version()}" in surface_delta_section
+    assert (
+        f"yui-stingray/agent-guard@{ACTION_RELEASE_COMMIT} "
+        f"# v{ACTION_RELEASE_VERSION}"
+        in surface_delta_section
+    )

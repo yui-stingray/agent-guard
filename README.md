@@ -218,7 +218,7 @@ not execute agents, MCP servers, or an LLM reviewer:
 ```yaml
 permissions:
   contents: read
-
+on: [push, pull_request]
 jobs:
   agent-guard:
     runs-on: ubuntu-latest
@@ -227,7 +227,7 @@ jobs:
         with:
           persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           conformance-profile: recommended
       - name: Upload evidence
