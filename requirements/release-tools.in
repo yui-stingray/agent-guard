@@ -1,0 +1,7 @@
+# Direct, release-only build and verification tools. Keep exact pins in sync with
+# the fully transitive hash lock generated for Python 3.12 Linux runners.
+build==1.5.0
+twine==7.0.0
+packaging==26.3
+PyYAML==6.0.3
+hatchling==1.31.0

@@ -30,6 +30,8 @@ ACTION_METADATA = REPO_ROOT / "action.yml"
 PRE_COMMIT_HOOKS = REPO_ROOT / ".pre-commit-hooks.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+RELEASE_TOOLS_INPUT = REPO_ROOT / "requirements" / "release-tools.in"
+RELEASE_TOOLS_LOCK = REPO_ROOT / "requirements" / "release-tools.txt"
 EVIDENCE_CONTRACT_SCRIPT = REPO_ROOT / "examples" / "evidence_contracts_ci.sh"
 PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-guard-report.json",
@@ -44,6 +46,52 @@ APPROVED_ACTION_PIP_COMMANDS = (
     'python -I -m pip install "$GITHUB_ACTION_PATH"',
 )
 ACTION_PIP_COMMAND_PATTERN = re.compile(r"\bpip(?:3(?:\.\d+)?)?\b", re.IGNORECASE)
+LOCKED_REQUIREMENT_PATTERN = re.compile(
+    r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>[^\s\\]+)(?:\s+\\)?$"
+)
+SHA256_HASH_PATTERN = re.compile(r"^--hash=sha256:[0-9a-f]{64}(?:\s+\\)?$")
+RELEASE_DIRECT_TOOL_VERSIONS = {
+    "build": "1.5.0",
+    "twine": "7.0.0",
+    "packaging": "26.3",
+    "pyyaml": "6.0.3",
+    "hatchling": "1.31.0",
+}
+
+
+def canonical_requirement_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def locked_requirements(path: Path) -> dict[str, tuple[str, list[str]]]:
+    entries: dict[str, tuple[str, list[str]]] = {}
+    current_name: str | None = None
+    current_version: str | None = None
+    current_hashes: list[str] = []
+
+    def add_current_entry() -> None:
+        if current_name is None or current_version is None:
+            return
+        assert current_name not in entries
+        entries[current_name] = (current_version, current_hashes)
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        requirement_match = LOCKED_REQUIREMENT_PATTERN.fullmatch(line)
+        if requirement_match is not None:
+            add_current_entry()
+            current_name = canonical_requirement_name(requirement_match["name"])
+            current_version = requirement_match["version"]
+            current_hashes = []
+        elif SHA256_HASH_PATTERN.fullmatch(line) is not None:
+            assert current_name is not None
+            current_hashes.append(line)
+        elif line == "--only-binary :all:":
+            continue
+        elif line and not line.startswith("#"):
+            pytest.fail(f"release tool lock has an unexpected directive or requirement: {line}")
+    add_current_entry()
+    return entries
 
 
 def action_evidence_script() -> str:
@@ -605,6 +653,94 @@ def test_ci_has_focused_windows_cli_contract() -> None:
     assert 'test "$report_status" -le 1' in commands
     assert 'test -f "$report"' in commands
     assert "consumer_status" not in commands
+
+
+def test_release_tool_lock_pins_and_hashes_the_required_direct_tools() -> None:
+    input_requirements = {
+        canonical_requirement_name(name): version
+        for raw_line in RELEASE_TOOLS_INPUT.read_text(encoding="utf-8").splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+        for name, version in [line.split("==", 1)]
+    }
+    lock_text = RELEASE_TOOLS_LOCK.read_text(encoding="utf-8")
+    lock_entries = locked_requirements(RELEASE_TOOLS_LOCK)
+
+    assert input_requirements == RELEASE_DIRECT_TOOL_VERSIONS
+    assert "--only-binary :all:" in lock_text
+    assert {
+        name: lock_entries[name][0]
+        for name in RELEASE_DIRECT_TOOL_VERSIONS
+    } == RELEASE_DIRECT_TOOL_VERSIONS
+    assert lock_entries
+    assert all(hashes for _version, hashes in lock_entries.values())
+
+
+def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
+    release_workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    ci_workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    ci_release_contract = ci_workflow["jobs"]["release-contract"]
+    release_build = release_workflow["jobs"]["build"]
+
+    assert ci_release_contract["runs-on"] == "ubuntu-latest"
+    ci_setup_python = next(
+        step
+        for step in ci_release_contract["steps"]
+        if str(step.get("uses", "")).startswith("actions/setup-python@")
+    )
+    assert ci_setup_python["with"]["python-version"] == "3.12"
+    release_setup_python = next(
+        step
+        for step in release_build["steps"]
+        if str(step.get("uses", "")).startswith("actions/setup-python@")
+    )
+    assert release_setup_python["with"]["python-version"] == "3.12"
+
+    for job, build_step_name in (
+        (release_build, "Build distributions"),
+        (ci_release_contract, "Build sdist + wheel"),
+    ):
+        setup_python_index = next(
+            index
+            for index, step in enumerate(job["steps"])
+            if str(step.get("uses", "")).startswith("actions/setup-python@")
+        )
+        install_index = next(
+            index
+            for index, step in enumerate(job["steps"])
+            if step.get("name") == "Install locked release build tools"
+        )
+        assert setup_python_index < install_index
+
+        pip_install_commands = [
+            str(step.get("run", ""))
+            for step in job["steps"]
+            if re.search(r"\bpython\s+-m\s+pip\s+install\b", str(step.get("run", "")))
+        ]
+        assert len(pip_install_commands) == 1
+        install_command = pip_install_commands[0]
+        assert "--require-hashes" in install_command
+        assert "--only-binary=:all:" in install_command
+        assert "-r requirements/release-tools.txt" in install_command
+
+        build_step = next(
+            step for step in job["steps"] if step.get("name") == build_step_name
+        )
+        assert str(build_step["run"]).strip() == "python -m build --no-isolation"
+        step_names = [str(step.get("name", "")) for step in job["steps"]]
+        assert step_names.index("Install locked release build tools") < step_names.index(
+            build_step_name
+        )
+        assert step_names.index(build_step_name) < step_names.index(
+            "Verify metadata (twine check)"
+        )
+        assert step_names.index("Verify metadata (twine check)") < step_names.index(
+            "Verify wheel public contract"
+        )
+
+    ci_commands = "\n".join(str(step.get("run", "")) for step in ci_release_contract["steps"])
+    assert "python -m twine check dist/*" in ci_commands
+    assert "python scripts/check_wheel_contract.py" in ci_commands
+    assert "pytest" not in ci_commands
 
 
 def test_release_workflow_attests_built_distributions() -> None:
