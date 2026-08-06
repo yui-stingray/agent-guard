@@ -46,6 +46,8 @@ def test_readme_status_matches_pyproject_version() -> None:
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
+    assert re.fullmatch(r"[0-9a-f]{40}", ACTION_RELEASE_COMMIT)
+
     docs = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
