@@ -726,10 +726,18 @@ def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
             step for step in job["steps"] if step.get("name") == build_step_name
         )
         assert str(build_step["run"]).strip() == "python -m build --no-isolation"
+
+        pip_check_indices = [
+            index
+            for index, step in enumerate(job["steps"])
+            if str(step.get("run", "")).strip() == "python -m pip check"
+        ]
+        assert len(pip_check_indices) == 1
+        pip_check_index = pip_check_indices[0]
+        build_index = job["steps"].index(build_step)
+        assert install_index < pip_check_index < build_index
+
         step_names = [str(step.get("name", "")) for step in job["steps"]]
-        assert step_names.index("Install locked release build tools") < step_names.index(
-            build_step_name
-        )
         assert step_names.index(build_step_name) < step_names.index(
             "Verify metadata (twine check)"
         )
