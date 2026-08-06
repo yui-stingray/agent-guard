@@ -11,8 +11,12 @@ The short description is:
 
 The project deliberately stays below runtime agent platforms. It does not route
 models, run LLM review, triage issues, manage approvals, provide an execution
-UI, execute MCP servers or skill code, validate live OAuth flows, or detect MCP
-tool poisoning. It also does not replace dedicated secret scanners.
+UI, perform runtime MCP execution, execute MCP servers or skill code, validate
+live OAuth flows, or detect MCP tool poisoning. It does not provide a generic
+secret scanner, replace dedicated secret scanners, or automate GitHub
+Marketplace publication. Manual and automated Marketplace publication are both
+out of scope until a new explicit maintainer instruction authorizes that
+separate action.
 Its labels and crosswalks are review metadata, not runtime validation,
 vulnerability proof, SLSA/provenance verification, or compliance attestation.
 Those systems can consume `agent-guard` JSON evidence, but they should not move
@@ -20,18 +24,33 @@ into this package.
 
 ## Current Strategy
 
-The current strategy is **CONTINUE-NARROW**: keep `agent-guard` as a Python/PyPI
+The current strategy is **VALIDATE-NARROW**: keep `agent-guard` as a Python/PyPI
 static evidence package and GitHub Action for repository-local review evidence,
-not as a broader agent security platform. The default adoption path is the
-documented `init -> report -> upload evidence` golden path. Runtime admission
-stays with `agent-policy` and host wrappers.
+not as a broader agent security platform. From 2026-08-10 through 2026-09-20,
+public feature expansion is frozen; work is limited to maintenance and
+self-infrastructure while a six-week demand validation runs. The default
+adoption path remains the documented `init -> report -> upload evidence` golden
+path. Runtime admission stays with `agent-policy` and host wrappers.
+
+Demand signals count only under the predeclared protocol. An activation
+requires an external maintainer to adopt `agent-guard` on an owner-external
+repository's default branch and obtain a qualifying successful run from that
+branch. Retention requires the setup to remain on that branch and another
+qualifying run to succeed at least 14 days after activation. On 2026-09-21,
+continue only if there are at least three qualifying activations, counting at
+most one per organization; at least two retained activations; and at least
+three deduplicated specific feedback items from at least two external people.
+These are minimum evidence thresholds, not a product-market-fit claim.
+Validation work is capped at four hours per week. The
+full protocol, including exclusions, qualified-exposure tracking, contact
+limits, and public-artifact hygiene, is in
+[Demand Validation](demand-validation.md).
 
 Broad external benchmarks, public case studies, rename work, and marketing
-claims should wait for demand signals such as downstream issues, integration
-requests, or maintainers reporting concrete catches from real repositories. If
-public distribution becomes the main goal, use the short description above
-alongside the project name so readers do not confuse this package with runtime
-security products that use similar naming.
+claims remain out of scope during validation. If public distribution becomes the
+main goal after the gate is met, use the short description above alongside the
+project name so readers do not confuse this package with runtime security
+products that use similar naming.
 
 ## Why This Layer
 

@@ -33,6 +33,7 @@ def report_scope(
     workflow_enabled: bool,
     drift_enabled: bool = False,
 ) -> str:
+    """Return the released coarse scope label; canonical coverage lives in evidence_coverage."""
     parts = ["context"]
     if path_enabled:
         parts.append("path")

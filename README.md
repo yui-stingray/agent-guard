@@ -136,7 +136,9 @@ For adoption in an existing repository, start with
 minimal-to-recommended path and monorepo/subdirectory roots, then use
 [`docs/github-actions-evidence.md`](docs/github-actions-evidence.md) for CI
 artifacts and annotations. Release timing is described in
-[`docs/release-criteria.md`](docs/release-criteria.md). Positioning and
+[`docs/release-criteria.md`](docs/release-criteria.md), and the current
+[demand-validation plan](docs/demand-validation.md) records the public-feature
+freeze and continuation gate. Positioning and
 public-facing scope are summarized in [`docs/positioning.md`](docs/positioning.md),
 with a focused [`agent-audit` comparison](docs/comparison.md).
 
