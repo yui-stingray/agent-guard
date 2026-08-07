@@ -85,6 +85,16 @@ Before tagging, verify:
 The release workflow remains tag-driven. Do not publish from an unreviewed
 branch.
 
+After a release is published, use a separate documentation follow-up pull
+request limited to public docs and documentation contract tests. In that pull
+request, resolve the new release tag to its immutable 40-character commit SHA,
+refresh the Action release version and commit constants plus every copyable
+Action example, then rerun the documentation contract tests. The
+release-preparation commit cannot contain its own final SHA. During release
+preparation, examples therefore pin the latest already-published release and
+may differ from the next `pyproject.toml` version. After publication, they
+temporarily lag the newly published release until the follow-up merges.
+
 ## GitHub Marketplace Readiness Record
 
 Marketplace publication is not part of the automated release workflows.

@@ -783,6 +783,44 @@ def test_release_criteria_keep_patch_releases_bounded() -> None:
     assert "security/compliance certification" in docs
 
 
+def test_release_criteria_require_post_release_action_pin_refresh() -> None:
+    docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+    _, readiness_marker, remainder = docs.partition("## Release Readiness")
+    readiness, marketplace_marker, _ = remainder.partition(
+        "## GitHub Marketplace Readiness Record"
+    )
+
+    assert readiness_marker
+    assert marketplace_marker
+    readiness_single_line = " ".join(readiness.split())
+    ordered_steps = (
+        "After a release is published",
+        "separate documentation follow-up pull request",
+        "limited to public docs and documentation contract tests",
+        "resolve the new release tag to its immutable 40-character commit SHA",
+        "refresh the Action release version and commit constants",
+        "every copyable Action example",
+        "rerun the documentation contract tests",
+    )
+    positions = []
+    for step in ordered_steps:
+        assert step in readiness_single_line
+        positions.append(readiness_single_line.index(step))
+    assert positions == sorted(positions)
+    assert "cannot contain its own final SHA" in readiness_single_line
+    assert (
+        "During release preparation, examples therefore pin the latest "
+        "already-published release" in readiness_single_line
+    )
+    assert (
+        "may differ from the next `pyproject.toml` version" in readiness_single_line
+    )
+    assert (
+        "After publication, they temporarily lag the newly published release until "
+        "the follow-up merges" in readiness_single_line
+    )
+
+
 def test_readme_documents_operational_example_policy_coverage() -> None:
     readme = README.read_text(encoding="utf-8")
 
