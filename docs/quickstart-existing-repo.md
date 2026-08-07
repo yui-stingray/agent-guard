@@ -14,9 +14,9 @@ uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --prin
 ```
 
 This pinned `uvx` path is for evaluation and human review without a persistent
-install. The TTFE benchmark still uses the local-wheelhouse golden path below
-so CI proves the current checkout can be built, installed, and replayed before
-release.
+install. The golden path moves directly to `recommended` after review of the
+complete starter bundle. For staged adoption, use the [minimal-first path](evidence-contracts.md#adoption-path-minimal-first-then-recommended).
+The TTFE benchmark retains local-wheelhouse replay and verifies the checkout.
 
 Run these commands from the repository root on the first pass through an
 un-onboarded repository. This four-command golden path creates an isolated
@@ -101,7 +101,7 @@ recommended evidence preset and leaves artifact upload to the caller:
 ```yaml
 permissions:
   contents: read
-
+on: [push, pull_request]
 jobs:
   agent-guard:
     runs-on: ubuntu-latest
@@ -110,7 +110,7 @@ jobs:
         with:
           persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
       - uses: actions/upload-artifact@v7
         if: >-
           always() &&
@@ -136,7 +136,7 @@ that selected root:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           root: services/api
           conformance-profile: recommended

@@ -20,7 +20,7 @@ exposes the generated report paths as action outputs:
 ```yaml
 permissions:
   contents: read
-
+on: [push, pull_request]
 jobs:
   agent-guard:
     runs-on: ubuntu-latest
@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -134,7 +134,7 @@ resolved relative to that root unless they are absolute paths:
 
 ```yaml
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           root: services/api
           conformance-profile: recommended
@@ -149,7 +149,7 @@ to its base branch, fetch the base ref and pass it explicitly:
           fetch-depth: 0
           persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           base-ref: origin/${{ github.base_ref }}
 ```
@@ -181,7 +181,7 @@ Fetch the base ref explicitly before running the action, the same way
           fetch-depth: 0
           persist-credentials: false
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           conformance-profile: recommended
           surface-delta-base-ref: origin/${{ github.base_ref }}
@@ -199,7 +199,7 @@ stable merge-base anchor instead of a branch name that can move:
       - name: Fetch PR base commit
         run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
       - id: agent-guard
-        uses: yui-stingray/agent-guard@v0.3.4
+        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
         with:
           conformance-profile: recommended
           surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
@@ -275,7 +275,7 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@v0.3.4
+  - uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
     id: agent-guard
   - name: Upload SARIF
     if: >-
