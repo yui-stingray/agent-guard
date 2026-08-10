@@ -56,18 +56,44 @@ shows the two layers together.
 
 ## Start with a reviewed bootstrap
 
-Using Python 3.11.4+, install the current alpha, preview the files it proposes,
-and write them only after review. The scanned repository can use any runtime:
+Choose one entry path: inspect the starter plan without changing the selected
+repository, or adopt the reviewed files and generate the first evidence report.
+
+### Preview without target-repository writes
+
+If `uv` is available, preview the current alpha without a persistent install or
+target-repository writes:
+
+```bash
+uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --print
+```
+
+This pinned command may populate caches outside the repository, but it does not
+write the proposed policies or workflow into the selected root. It prints the
+proposed starter bundle; it is not a scan or evidence result.
+
+### Adopt after review
+
+Using Python 3.11.4+, install the pinned alpha, review the same plan, write the
+starter files, and generate the recommended sanitized evidence. The scanned
+repository can use any runtime:
 
 ```bash
 python -m pip install yui-agent-guard==0.3.4
 agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
+# Inspect the generated files before running the first local diagnostic.
+agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
 ```
 
 `init --write` creates starter policies and a pinned GitHub Actions workflow.
-Review and commit those files, then resolve the initial fail-closed findings.
+The report command creates its output directory and writes the public-safe
+evidence artifact. Exit `1` means evidence was generated with findings or
+drift; exit `>=2` means setup, configuration, or execution failed.
+Review and commit the starter policies and generated workflow only after
+resolving findings. Keep reports uncommitted unless curated as sanitized
+samples. Treat adoption as complete only after a successful default-branch run.
 The [existing-repo quickstart](docs/quickstart-existing-repo.md) covers the
 green CI path, Windows PowerShell, and monorepo roots.
 
@@ -142,19 +168,10 @@ freeze and continuation gate. Positioning and
 public-facing scope are summarized in [`docs/positioning.md`](docs/positioning.md),
 with a focused [`agent-audit` comparison](docs/comparison.md).
 
-## Install (Python 3.11.4+)
+## Installation notes
 
-```bash
-pip install yui-agent-guard
-```
-
-To inspect the starter plan without a persistent install or repository writes,
-use `uvx` with the documented version pinned. This is the quickest evaluation path
-when you do not want a tool installed into the target repository environment:
-
-```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --print
-```
+The evaluation and adoption commands above pin the current alpha so the
+reviewed behavior does not change between runs.
 
 Windows PowerShell users can follow the non-activation virtual-environment
 commands in the [existing-repo quickstart](docs/quickstart-existing-repo.md).
@@ -174,23 +191,11 @@ The Python CLI supports the platforms described in
 [`docs/compatibility.md`](docs/compatibility.md); the packaged composite Action
 currently requires a Linux runner.
 
-## Quick start
+## Adoption and CI reference
 
-Start by generating deterministic evidence, not by treating `agent-guard` as a
+The reviewed bootstrap above is the canonical adoption path. Start by
+generating deterministic evidence, not by treating `agent-guard` as a
 standalone regex scanner.
-
-Preview starter policies and the evidence workflow:
-
-```bash
-agent-guard init --root . --print
-agent-guard init --root . --write
-```
-
-Generate a sanitized evidence report:
-
-```bash
-agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
-```
 
 The command names the reviewed repo-local context policy explicitly so the
 policy choice remains visible in review. The recommended preset supplies the
