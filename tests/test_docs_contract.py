@@ -458,6 +458,70 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     actions = GITHUB_ACTIONS_EVIDENCE_DOC.read_text(encoding="utf-8")
     actions_single_line = " ".join(actions.split())
 
+    assert quickstart.index("## 4. Optional Review Commands") < quickstart.index(
+        "## 5. Consume Evidence Safely"
+    ) < quickstart.index("## 6. Reading Exit Codes")
+
+    def fenced_code_blocks(document: str) -> list[list[str]]:
+        blocks: list[list[str]] = []
+        block: list[str] | None = None
+        fence: str | None = None
+
+        for line in document.splitlines():
+            stripped = line.lstrip()
+            if block is None:
+                match = re.match(r"(`{3,}|~{3,})", stripped)
+                if match:
+                    fence = match.group(1)
+                    block = []
+            elif fence is not None and re.fullmatch(
+                rf"{re.escape(fence[0])}{{{len(fence)},}}\s*", stripped
+            ):
+                blocks.append(block)
+                block = None
+                fence = None
+            else:
+                block.append(line)
+
+        return blocks
+
+    consumer_blocks = [
+        block
+        for block in fenced_code_blocks(quickstart)
+        if "sh examples/evidence_contracts_ci.sh consume" in block
+    ]
+    assert len(consumer_blocks) == 1
+    consumer_block = consumer_blocks[0]
+
+    def shell_assignment_value(name: str) -> str:
+        prefix = f"{name}="
+        assignment_lines = [
+            line.lstrip()
+            for line in consumer_block
+            if line.lstrip().startswith(prefix)
+        ]
+        assert len(assignment_lines) == 1
+        assignment = assignment_lines[0]
+        assert assignment.endswith("\\")
+        return assignment.removeprefix(prefix).removesuffix("\\").rstrip()
+
+    consumer_environment = {
+        "root": shell_assignment_value("AGENT_GUARD_ROOT"),
+        "evidence_dir": shell_assignment_value("AGENT_GUARD_EVIDENCE_DIR"),
+        "report_json": shell_assignment_value("AGENT_GUARD_REPORT_JSON"),
+    }
+    assert consumer_environment == {
+        "root": "services/api",
+        "evidence_dir": ".agent-guard/evidence",
+        "report_json": "services/api/.agent-guard/evidence/agent-guard-report.json",
+    }
+    resolved_evidence_dir = (
+        REPO_ROOT / consumer_environment["root"] / consumer_environment["evidence_dir"]
+    ).resolve()
+    assert (REPO_ROOT / consumer_environment["report_json"]).resolve() == (
+        resolved_evidence_dir / "agent-guard-report.json"
+    )
+
     assert "python3 -m venv .venv" in quickstart
     assert ".agent-guard/context-policy.yaml" in quickstart
     assert "agent-guard context inventory --root ." in quickstart

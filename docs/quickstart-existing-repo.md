@@ -180,7 +180,7 @@ The evidence consumer example uses the same root discipline:
 
 ```text
 AGENT_GUARD_ROOT=services/api \
-AGENT_GUARD_EVIDENCE_DIR=services/api/.agent-guard/evidence \
+AGENT_GUARD_EVIDENCE_DIR=.agent-guard/evidence \
 AGENT_GUARD_REPORT_JSON=services/api/.agent-guard/evidence/agent-guard-report.json \
 sh examples/evidence_contracts_ci.sh consume
 ```
@@ -267,7 +267,7 @@ These commands are not required for the four-command first pass because the
 recommended report already contains the same conformance and manifest
 sections.
 
-### Consume Evidence Safely
+## 5. Consume Evidence Safely
 
 Downstream wrappers should read the sanitized report JSON and validate it
 against the packaged `agent-guard.report_evidence.v1` schema before making
