@@ -170,11 +170,50 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
     assert re.search(r"pip install yui-agent-guard(?:\s|$)", consumer_contracts) is None
 
     bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
-    assert bootstrap.index("agent-guard init --root . --print") < bootstrap.index(
-        "agent-guard init --root . --write"
+    trial = bootstrap[
+        bootstrap.index("### Preview without target-repository writes") : bootstrap.index(
+            "### Adopt after review"
+        )
+    ]
+    adoption = bootstrap[bootstrap.index("### Adopt after review") :]
+    trial_single_line = " ".join(trial.split())
+    adoption_single_line = " ".join(adoption.split())
+    preview_command = (
+        f"uvx --python 3.12 --from yui-agent-guard=={version} "
+        "agent-guard init --root . --print"
     )
-    assert "uvx --python 3.12" in readme
-    assert "without a persistent install" in readme
+
+    assert preview_command in trial
+    assert "without a persistent install" in trial
+    assert "target-repository writes" in trial
+    assert "not a scan or evidence result" in trial
+    assert "may populate caches outside the repository" in trial_single_line
+    assert (
+        "does not write the proposed policies or workflow into the selected root"
+        in trial_single_line
+    )
+    assert "agent-guard init --root . --write" not in trial
+    assert "--force" not in bootstrap
+    assert "--skip-existing" not in bootstrap
+    assert f"python -m pip install yui-agent-guard=={version}" in adoption
+    adoption_markers = [
+        "agent-guard init --root . --print",
+        "Review the proposed policies and workflow before the write step",
+        "agent-guard init --root . --write",
+        "Inspect the generated files before running the first local diagnostic",
+        "agent-guard report --root .",
+        "Review and commit the starter policies and generated workflow",
+        "Keep reports uncommitted unless curated as sanitized samples",
+        "successful default-branch run",
+    ]
+    marker_positions = [adoption_single_line.index(marker) for marker in adoption_markers]
+    assert marker_positions == sorted(marker_positions)
+    assert "commit the generated files" not in adoption_single_line
+    assert sum(
+        line.strip() == "agent-guard init --root . --print" for line in readme.splitlines()
+    ) == 1
+    assert sum(line.strip() == preview_command for line in readme.splitlines()) == 1
+    assert "## Adoption and CI reference" in readme
 
 
 def test_readme_opening_states_the_bounded_value_contract() -> None:
