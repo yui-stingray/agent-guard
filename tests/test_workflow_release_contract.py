@@ -830,12 +830,46 @@ def test_release_workflow_attests_built_distributions() -> None:
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
     assert "gh attestation verify" in readme
+    assert "(\nset -euo pipefail\nverify_dir=\"$(mktemp -d" in readme
+    assert "trap 'rm -rf -- \"$verify_dir\"' EXIT" in readme
+    assert 'python - "$verify_dir"' in readme
+    assert (
+        'gh attestation verify "$verify_dir/yui_agent_guard-0.3.4-py3-none-any.whl"'
+        in readme
+    )
+    assert 'gh attestation verify "$verify_dir/yui_agent_guard-0.3.4.tar.gz"' in readme
+    assert "--source-ref refs/tags/v0.3.4\n)\n```" in readme
     assert "https://pypi.org/pypi/yui-agent-guard/" in readme
     assert 'f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel"' in readme
     assert 'f"yui_agent_guard-{version}.tar.gz": "sdist"' in readme
     assert "if not isinstance(release, dict):" in readme
+    assert 'file_info.get("packagetype") != expected[filename]' in readme
     assert 'file_info.get("yanked") is not False' in readme
+    assert 'parsed.scheme != "https"' in readme
     assert 'parsed.hostname != "files.pythonhosted.org"' in readme
+    assert "request_timeout_seconds = 20" in readme
+    assert readme.count("timeout=request_timeout_seconds") == 2
+    assert "final_metadata_url = urlparse(response.geturl())" in readme
+    assert 'final_metadata_url.scheme != "https"' in readme
+    assert 'final_metadata_url.hostname != "pypi.org"' in readme
+    assert "final_artifact_url = urlparse(response.geturl())" in readme
+    assert 'final_artifact_url.scheme != "https"' in readme
+    assert 'final_artifact_url.hostname != "files.pythonhosted.org"' in readme
+    assert 'with (target / filename).open("xb") as destination:' in readme
+    assert "shutil.copyfileobj(response, destination)" in readme
+    metadata_final = readme.index("final_metadata_url = urlparse(response.geturl())")
+    metadata_rejection = readme.index(
+        'raise SystemExit("PyPI release metadata URL is not an expected HTTPS host")'
+    )
+    metadata_parse = readme.index("release = json.load(response)")
+    artifact_final = readme.index("final_artifact_url = urlparse(response.geturl())")
+    artifact_rejection = readme.index(
+        'raise SystemExit("Downloaded artifact URL is not an expected HTTPS host")'
+    )
+    destination_open = readme.index('with (target / filename).open("xb") as destination:')
+    artifact_copy = readme.index("shutil.copyfileobj(response, destination)")
+    assert metadata_final < metadata_rejection < metadata_parse
+    assert artifact_final < artifact_rejection < destination_open < artifact_copy
     assert "target / file_info" not in readme
     assert "target / filename" in readme
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
