@@ -74,13 +74,18 @@ workflow_checks:
           --mcp-policy .agent-guard/mcp-policy.yaml
           --digest-policy .agent-guard/context-digest-policy.yaml
           --format json
-          --output .agent-guard/evidence/agent-guard-evidence-report.json
+          --output .agent-guard/evidence/agent-guard-report.json
       - id: conformance_self
         command: >-
           python -m agent_guard.cli conformance check --root .
-          --evidence .agent-guard/evidence/agent-guard-evidence-report.json
+          --evidence .agent-guard/evidence/agent-guard-report.json
           --profile recommended
       - id: evidence_pack_manifest_self
         command: >-
           python -m agent_guard.cli evidence-pack manifest --root .
-          --report .agent-guard/evidence/agent-guard-evidence-report.json
+          --report .agent-guard/evidence/agent-guard-report.json
+      - id: evidence_bundle_consumer_self
+        command: >-
+          python -I -m agent_guard.consumer
+          --evidence-dir .agent-guard/evidence
+          .agent-guard/evidence/agent-guard-report.json

@@ -6,6 +6,21 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Defined a bounded demand-validation window through 2026-09-20 and froze
+  feature releases pending an explicit maintainer decision after the 2026-09-21
+  review. Marketplace publication remains separately prohibited without
+  explicit authorization.
+- Locked the release build toolchain, pinned copyable GitHub Action examples to
+  the immutable v0.3.4 release commit, and documented the post-release pin
+  refresh contract.
+- Simplified reviewed bootstrap and monorepo onboarding, added explicit Python
+  interpreter checks, and tightened guidance for copying public-safe evidence.
+- Hardened the documented PyPI provenance flow with isolated temporary
+  downloads, request timeouts, exact artifact checks, redirect-final HTTPS host
+  validation, exclusive file creation, and cleanup on success or failure.
+- Aligned self-dogfood CI with the canonical public evidence filenames and
+  required fail-closed bundle validation before artifact upload.
+
 ## 0.3.4 - 2026-08-01
 
 - Preserved top-level standalone compatibility for the public API, content, and
