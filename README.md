@@ -1062,6 +1062,7 @@ verify_dir="$(mktemp -d "${TMPDIR:-/tmp}/agent-guard-dist-verify.XXXXXX")"
 trap 'rm -rf -- "$verify_dir"' EXIT
 python - "$verify_dir" <<'PY'
 import json
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -1069,7 +1070,12 @@ from urllib.parse import urlparse
 
 version = "0.3.4"
 target = Path(sys.argv[1])
-with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
+request_timeout_seconds = 20
+metadata_url = f"https://pypi.org/pypi/yui-agent-guard/{version}/json"
+with urllib.request.urlopen(metadata_url, timeout=request_timeout_seconds) as response:
+    final_metadata_url = urlparse(response.geturl())
+    if final_metadata_url.scheme != "https" or final_metadata_url.hostname != "pypi.org":
+        raise SystemExit("PyPI release metadata URL is not an expected HTTPS host")
     release = json.load(response)
 if not isinstance(release, dict):
     raise SystemExit("PyPI release metadata is malformed")
@@ -1103,7 +1109,17 @@ for file_info in files:
 if set(by_name) != set(expected):
     raise SystemExit("PyPI release does not contain the exact expected artifact set")
 for filename in sorted(expected):
-    urllib.request.urlretrieve(by_name[filename], target / filename)
+    with urllib.request.urlopen(
+        by_name[filename], timeout=request_timeout_seconds
+    ) as response:
+        final_artifact_url = urlparse(response.geturl())
+        if (
+            final_artifact_url.scheme != "https"
+            or final_artifact_url.hostname != "files.pythonhosted.org"
+        ):
+            raise SystemExit("Downloaded artifact URL is not an expected HTTPS host")
+        with (target / filename).open("xb") as destination:
+            shutil.copyfileobj(response, destination)
 PY
 gh attestation verify "$verify_dir/yui_agent_guard-0.3.4-py3-none-any.whl" \
   --repo yui-stingray/agent-guard \
