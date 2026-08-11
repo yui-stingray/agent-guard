@@ -589,6 +589,18 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
         "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
     ]
     assert (
+        "python -m agent_guard.cli conformance check --root . "
+        "--evidence .agent-guard/evidence/agent-guard-report.json "
+        "--profile recommended --json"
+        in normalized_self_dogfood
+    )
+    assert (
+        "python -m agent_guard.cli evidence-pack manifest --root . "
+        "--report .agent-guard/evidence/agent-guard-report.json "
+        "--artifact .agent-guard/evidence/agent-guard-report.json --json"
+        in normalized_self_dogfood
+    )
+    assert (
         "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format markdown --output .agent-guard/evidence/agent-guard-report.md"
         in normalized_self_dogfood
