@@ -25,7 +25,7 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
       - id: agent-guard
@@ -37,7 +37,7 @@ jobs:
           always() &&
           steps.agent-guard.outputs.ready == 'true' &&
           (steps.agent-guard.outputs.status == '0' || steps.agent-guard.outputs.status == '1')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-guard-evidence
           path: |
@@ -103,10 +103,11 @@ repository and the bounded output contract before publishing artifacts.
 The recommended report preset includes static MCP configuration evidence and
 fails on malformed committed MCP config files or deterministic risky MCP
 configuration metadata. Set `conformance-profile: strict` only when the
-repository also wants those v2 surface inventory labels to appear as conformance
-findings. Neither mode executes MCP servers, inspects MCP tool results, or acts
-as a runtime MCP tool-poisoning detector or live OAuth validator. The packaged
-action always generates the recommended evidence preset; use the CLI commands in
+repository wants digest/context-lock evidence, sanitized evidence-pack
+expectations, and v2 MCP risk metadata to be required conformance evidence.
+Neither mode executes MCP servers, inspects MCP tool results, or acts as a
+runtime MCP tool-poisoning detector or live OAuth validator. The packaged action
+always generates the recommended evidence preset; use the CLI commands in
 [`docs/quickstart-existing-repo.md`](quickstart-existing-repo.md) for a
 minimal-first pass before adopting the action. The action expects the reviewed
 repo-local `.agent-guard/mcp-policy.yaml` for recommended evidence. Set
@@ -144,7 +145,7 @@ When a pull request should surface guard policy or workflow changes relative
 to its base branch, fetch the base ref and pass it explicitly:
 
 ```yaml
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -176,7 +177,7 @@ Fetch the base ref explicitly before running the action, the same way
 `base-ref` requires it:
 
 ```yaml
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -192,7 +193,7 @@ For a pull request event, the exact base commit is also available as
 stable merge-base anchor instead of a branch name that can move:
 
 ```yaml
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -282,7 +283,7 @@ steps:
       always() &&
       steps.agent-guard.outputs.ready == 'true' &&
       (steps.agent-guard.outputs.status == '0' || steps.agent-guard.outputs.status == '1')
-    uses: github/codeql-action/upload-sarif@v4
+    uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
     with:
       sarif_file: ${{ steps.agent-guard.outputs.report-sarif }}
       category: agent-guard

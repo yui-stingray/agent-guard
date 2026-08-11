@@ -14,7 +14,7 @@ checked on 2026-08-06; its scope and implementation may change.
 | Published measurement | The authors report benchmark results; read their method and version context in the primary sources. | Current AGB metrics are reported with population, FP/FN counts, known gaps, and scope limits in [Benchmark Results](benchmark-results.md). |
 | Benchmark caveat | This document does not independently validate external results. | The AGB corpus is self-authored, has no independent verification yet, and covers static repository configuration evidence only. |
 | Best fit | A possible fit for scanning agent applications; evaluate it for the repository and version in use. | A possible fit for checking repository agent configuration, evidence contracts, and CI gates. |
-| Relationship | Potentially complementary with repository evidence workflows. | May consume or package detection outputs from scanners such as `agent-audit` after repository-specific evaluation. |
+| Relationship | Potentially complementary with repository evidence workflows. | A downstream workflow may reference a separately reviewed artifact; `agent-guard` does not parse or validate `agent-audit` output. |
 
 External statements were checked on 2026-08-06 against the primary
 [agent-audit repository at commit `1009782`](https://github.com/HeadyZhang/agent-audit/tree/100978214b21909e95b5f0f0b1ea328bc73ab519)

@@ -343,28 +343,38 @@ def write_contract_repo(repo: Path) -> None:
     )
 
 
-def generate_recommended_report(repo: Path, *, expected_status: int = 0) -> Path:
+def generate_recommended_report(
+    repo: Path,
+    *,
+    expected_status: int = 0,
+    agent_policy_audit_event: str = "",
+) -> Path:
     report = repo / ".agent-guard" / "evidence" / "agent-guard-report.json"
+    command = [
+        sys.executable,
+        "-I",
+        "-m",
+        "agent_guard.cli",
+        "report",
+        "--root",
+        ".",
+        "--context-policy",
+        ".agent-guard/context-policy.yaml",
+        "--evidence-preset",
+        "recommended",
+        "--mcp-policy",
+        ".agent-guard/mcp-policy.yaml",
+        "--format",
+        "json",
+        "--output",
+        str(report),
+    ]
+    if agent_policy_audit_event:
+        command.extend(
+            ["--agent-policy-audit-event", agent_policy_audit_event]
+        )
     result = subprocess.run(
-        [
-            sys.executable,
-            "-I",
-            "-m",
-            "agent_guard.cli",
-            "report",
-            "--root",
-            ".",
-            "--context-policy",
-            ".agent-guard/context-policy.yaml",
-            "--evidence-preset",
-            "recommended",
-            "--mcp-policy",
-            ".agent-guard/mcp-policy.yaml",
-            "--format",
-            "json",
-            "--output",
-            str(report),
-        ],
+        command,
         cwd=repo,
         env=example_env(),
         capture_output=True,
@@ -373,6 +383,75 @@ def generate_recommended_report(repo: Path, *, expected_status: int = 0) -> Path
     )
     assert result.returncode == expected_status, result.stdout + result.stderr
     return report
+
+
+def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_contract_repo(repo)
+    event_path = "reviewed/policy-admission-event.json"
+    write(repo / event_path, '{"status":"reviewed"}\n')
+    report = generate_recommended_report(
+        repo,
+        agent_policy_audit_event=event_path,
+    )
+    evidence_dir = report.parent
+    manifest_result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "agent_guard.cli",
+            "evidence-pack",
+            "manifest",
+            "--root",
+            ".",
+            "--report",
+            str(report.relative_to(repo)),
+            "--artifact",
+            str(report.relative_to(repo)),
+            "--agent-policy-audit-event",
+            event_path,
+            "--json",
+        ],
+        cwd=repo,
+        env=example_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert manifest_result.returncode == 0, (
+        manifest_result.stdout + manifest_result.stderr
+    )
+    (evidence_dir / "agent-guard-evidence-pack.json").write_text(
+        manifest_result.stdout,
+        encoding="utf-8",
+    )
+
+    consumer_result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "agent_guard.consumer",
+            "--evidence-dir",
+            str(evidence_dir),
+            str(report),
+        ],
+        cwd=repo,
+        env=example_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert consumer_result.returncode == 0, (
+        consumer_result.stdout + consumer_result.stderr
+    )
+    manifest = json.loads(manifest_result.stdout)["evidence_pack_manifest"]
+    assert {"path": event_path, "role": "agent-policy-audit-event"} in manifest["artifacts"]
 
 
 def test_packaged_consumer_module_entrypoint_accepts_public_sample() -> None:

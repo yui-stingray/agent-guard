@@ -30,10 +30,10 @@ jobs:
   consume-agent-guard-evidence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: python -m pip install yui-agent-guard==0.3.4
@@ -88,7 +88,7 @@ that same report, and rejects unexpected files in `.agent-guard/evidence/`.
         run: sh examples/evidence_contracts_ci.sh lint-public
       - name: Upload public evidence
         if: steps.lint-agent-guard-evidence.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-guard-evidence
           path: |
@@ -150,10 +150,10 @@ jobs:
   strict-agent-guard-release-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: python -m pip install yui-agent-guard==0.3.4
