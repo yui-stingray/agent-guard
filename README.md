@@ -1056,15 +1056,19 @@ To verify the GitHub provenance for a downloaded release artifact, install the
 GitHub CLI and check the tag, repository, and signer workflow explicitly:
 
 ```bash
-mkdir -p dist-verify
-python - <<'PY'
+(
+set -euo pipefail
+verify_dir="$(mktemp -d "${TMPDIR:-/tmp}/agent-guard-dist-verify.XXXXXX")"
+trap 'rm -rf -- "$verify_dir"' EXIT
+python - "$verify_dir" <<'PY'
 import json
+import sys
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
 version = "0.3.4"
-target = Path("dist-verify")
+target = Path(sys.argv[1])
 with urllib.request.urlopen(f"https://pypi.org/pypi/yui-agent-guard/{version}/json") as response:
     release = json.load(response)
 if not isinstance(release, dict):
@@ -1101,14 +1105,15 @@ if set(by_name) != set(expected):
 for filename in sorted(expected):
     urllib.request.urlretrieve(by_name[filename], target / filename)
 PY
-gh attestation verify dist-verify/yui_agent_guard-0.3.4-py3-none-any.whl \
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.4-py3-none-any.whl" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
   --source-ref refs/tags/v0.3.4
-gh attestation verify dist-verify/yui_agent_guard-0.3.4.tar.gz \
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.4.tar.gz" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
   --source-ref refs/tags/v0.3.4
+)
 ```
 
 ## License

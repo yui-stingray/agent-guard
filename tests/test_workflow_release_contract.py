@@ -830,6 +830,10 @@ def test_release_workflow_attests_built_distributions() -> None:
     readme = README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
     assert "gh attestation verify" in readme
+    assert "(\nset -euo pipefail\nverify_dir=\"$(mktemp -d" in readme
+    assert "trap 'rm -rf -- \"$verify_dir\"' EXIT" in readme
+    assert 'python - "$verify_dir"' in readme
+    assert "--source-ref refs/tags/v0.3.4\n)\n```" in readme
     assert "https://pypi.org/pypi/yui-agent-guard/" in readme
     assert 'f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel"' in readme
     assert 'f"yui_agent_guard-{version}.tar.gz": "sdist"' in readme
