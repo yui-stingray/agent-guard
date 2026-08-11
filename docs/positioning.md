@@ -54,12 +54,13 @@ products that use similar naming.
 
 ## Why This Layer
 
-Coding agents increasingly read durable repository instructions such as
-`AGENTS.md`, `CLAUDE.md`, Copilot instructions, Cursor rules, Windsurf rules,
-and similar context files. Maintainers need a local and CI-friendly way to see
-whether those instructions still preserve review boundaries, tool permissions,
-network boundaries, secret handling, destructive-action limits, and local
-verification requirements.
+Under VALIDATE-NARROW, the unvalidated project hypothesis is that maintainers
+of repositories with durable agent instructions such as `AGENTS.md`,
+`CLAUDE.md`, Copilot instructions, Cursor rules, Windsurf rules, and similar
+context files need a local and CI-friendly way to see whether those
+instructions still preserve review boundaries, tool permissions, network
+boundaries, secret handling, destructive-action limits, and local verification
+requirements.
 
 `agent-guard` provides that static layer:
 
@@ -85,6 +86,7 @@ For a new adopter, the intended first experience is the evidence report:
 
 1. run `agent-guard init --root . --print` and review the proposed policies;
 2. write the starter files only after review;
-3. run the GitHub Action or `agent-guard report --evidence-preset recommended`;
-4. upload the JSON and Markdown evidence as CI artifacts;
+3. run the GitHub Action or the exact local `report` and `render-report`
+   commands in the [Existing Repo Quickstart](quickstart-existing-repo.md);
+4. upload the resulting JSON and Markdown evidence as CI artifacts;
 5. treat findings as maintainer evidence, not as an automated merge verdict.

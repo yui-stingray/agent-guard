@@ -12,6 +12,8 @@ from pathlib import Path
 
 import yaml
 
+from agent_guard.init_guard import GITHUB_WORKFLOW
+from agent_guard.profiles import profile_requirements
 from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
 from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
 
@@ -31,6 +33,7 @@ POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 DEMAND_VALIDATION_DOC = REPO_ROOT / "docs" / "demand-validation.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
+COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 ACTION_RELEASE_VERSION = "0.3.4"
 ACTION_RELEASE_COMMIT = "8121c703182f2a1df48223a3ff1eb1778055cd3a"
@@ -50,7 +53,12 @@ def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
 
     docs = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
+        for path in (
+            README,
+            EXISTING_REPO_QUICKSTART,
+            GITHUB_ACTIONS_EVIDENCE_DOC,
+            EVIDENCE_CONSUMER_CONTRACTS_DOC,
+        )
     )
     action_reference_lines = [
         line for line in docs.splitlines() if "yui-stingray/agent-guard@" in line
@@ -82,6 +90,60 @@ def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
         assert workflow.get("on", workflow.get(True)) == ["push", "pull_request"]
     assert referenced_outputs
     assert referenced_outputs <= set(action["outputs"])
+
+
+def test_copyable_workflows_pin_third_party_actions_like_generated_workflow() -> None:
+    public_docs = [README, *sorted((REPO_ROOT / "docs").glob("*.md"))]
+
+    for action_name in ("checkout", "setup-python", "upload-artifact"):
+        generated = re.search(
+            rf"actions/{re.escape(action_name)}@[0-9a-f]{{40}} # v[^\s]+",
+            GITHUB_WORKFLOW,
+        )
+        assert generated is not None
+        expected = generated.group(0)
+        references = [
+            line.strip()
+            for path in public_docs
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if f"uses: actions/{action_name}@" in line
+        ]
+        assert references
+        assert all(expected in line for line in references)
+
+
+def test_copyable_workflows_pin_every_external_action_to_a_commit() -> None:
+    public_docs = [README, *sorted((REPO_ROOT / "docs").glob("*.md"))]
+    references = [
+        match.group(1)
+        for path in public_docs
+        for match in re.finditer(
+            r"^\s*(?:-\s*)?uses:\s*([^\s#]+)",
+            path.read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+    ]
+
+    assert references
+    for reference in references:
+        if reference.startswith("./"):
+            continue
+        assert re.fullmatch(
+            r"[^/@\s]+/[^/@\s]+(?:/[^@\s]+)*@[0-9a-f]{40}",
+            reference,
+        ), reference
+
+
+def test_readme_yaml_examples_parse() -> None:
+    blocks = re.findall(
+        r"```yaml\n(.*?)\n```",
+        README.read_text(encoding="utf-8"),
+        flags=re.DOTALL,
+    )
+
+    assert blocks
+    for block in blocks:
+        yaml.safe_load(block)
 
 
 def test_readme_documents_python_patch_floor() -> None:
@@ -290,13 +352,20 @@ def test_readme_documents_ci_gate_recipe() -> None:
     assert "--evidence-preset recommended" in readme
     assert "--conformance-profile recommended" in readme
     assert "--evidence-pack-manifest" in readme
-    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in readme
+    assert "--agent-policy-audit-event" in readme
+    assert ".agent-guard/evidence/policy-admission-event.json" not in readme
     assert (
         "agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json "
         "--profile recommended --json"
         in readme
     )
     assert "agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json" in readme
+    assert (
+        "agent-guard context lock --root . --policy .agent-guard/context-policy.yaml "
+        "> .agent-guard/context-digest-policy.yaml"
+        in readme
+    )
+    assert "> .agent-guard/context-lock.yaml" not in readme
 
 
 def test_readme_documents_agent_policy_companion_boundary() -> None:
@@ -451,6 +520,57 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     assert "fails closed with a generic error" in docs_single_line
 
 
+def test_optional_agent_policy_event_stays_outside_public_bundle() -> None:
+    documents = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (README, EXISTING_REPO_QUICKSTART, EVIDENCE_CONTRACTS_DOC)
+    )
+    single_line = " ".join(documents.split())
+
+    assert ".agent-guard/evidence/policy-admission-event.json" not in documents
+    assert "outside `.agent-guard/evidence`" in single_line
+    assert "does not verify" in single_line
+    assert "existence or content" in single_line
+    assert "both the `report`" in single_line
+    assert "manifest embedded in the report" in single_line
+
+
+def test_quickstart_strict_prerequisites_match_profile_requirements() -> None:
+    quickstart = " ".join(
+        EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8").split()
+    )
+    recommended = profile_requirements("recommended")
+    strict = profile_requirements("strict")
+
+    assert set(strict["gates"]) - set(recommended["gates"]) == {
+        "context_lock",
+        "digest",
+    }
+    assert strict["report_sections"] == ("evidence_pack_manifest",)
+    assert strict["artifact_roles"] == ("report",)
+    strict_only_surfaces = set(strict["surfaces"]) - set(recommended["surfaces"])
+    strict_only_boundaries = set(strict["boundary_categories"]) - set(
+        recommended["boundary_categories"]
+    )
+    assert strict_only_surfaces == {
+        "documented_guard_command",
+        "evidence_artifact_reference",
+    }
+    assert strict_only_boundaries == {
+        "tool_permission_boundary",
+        "network_boundary",
+        "destructive_action_boundary",
+    }
+    for phrase in (
+        "context-lock and digest gates",
+        "sanitized evidence-pack manifest with the report artifact role",
+        "v2 MCP risk-label requirements",
+    ):
+        assert phrase in quickstart
+    for requirement in sorted(strict_only_surfaces | strict_only_boundaries):
+        assert f"`{requirement}`" in quickstart
+
+
 def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
@@ -523,6 +643,11 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     )
 
     assert "python3 -m venv .venv" in quickstart
+    assert "Use Python 3.11.4+ as the `agent-guard` tool interpreter" in quickstart
+    assert "`python3` must resolve to Python 3.11.4+" in quickstart
+    assert "TTFE benchmark" not in quickstart
+    assert quickstart.count("# Review the proposed starter policies and workflow") == 2
+    assert quickstart.count("# Inspect the generated starter files") == 2
     assert ".agent-guard/context-policy.yaml" in quickstart
     assert "agent-guard context inventory --root ." in quickstart
     assert "agent-guard mcp check --root ." in quickstart
@@ -552,7 +677,8 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
         "--evidence-preset recommended"
         in quickstart_single_line
     )
-    assert "--agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json" in quickstart
+    assert "--agent-policy-audit-event" in quickstart
+    assert ".agent-guard/evidence/policy-admission-event.json" not in quickstart
     assert "agent-guard conformance check --root ." in quickstart
     assert "agent-guard evidence-pack manifest --root ." in quickstart
     assert "LLM reviewer" in quickstart
@@ -586,7 +712,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "evidence-contracts.md#adoption-path-minimal-first-then-recommended" in quickstart
     assert "--conformance-profile strict" in quickstart
     assert "MCP runtime security validator" in quickstart
-    assert "uses: actions/upload-artifact@v7" in actions
+    assert "uses: actions/upload-artifact@" in actions
     assert (
         f"uses: yui-stingray/agent-guard@{ACTION_RELEASE_COMMIT} "
         f"# v{ACTION_RELEASE_VERSION}"
@@ -610,7 +736,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     checkout_lines = [
         index
         for index, line in enumerate(action_lines)
-        if line.strip() == "- uses: actions/checkout@v7"
+        if line.strip().startswith("- uses: actions/checkout@")
     ]
     assert checkout_lines
     assert all(
@@ -753,6 +879,16 @@ def test_positioning_doc_keeps_public_scope_narrow() -> None:
     assert "replace dedicated secret scanners" in docs
     assert "review metadata" in docs
     assert "related independent work" in docs
+    assert "unvalidated project hypothesis" in docs_single_line
+    assert "quickstart-existing-repo.md" in docs
+
+
+def test_comparison_does_not_claim_scanner_output_ingestion() -> None:
+    docs = COMPARISON_DOC.read_text(encoding="utf-8")
+
+    assert "downstream workflow may reference a separately reviewed artifact" in docs
+    assert "does not parse or validate `agent-audit` output" in docs
+    assert "May consume or package detection outputs" not in docs
 
 
 def test_demand_validation_defines_qualified_matured_signals_and_stop_rule() -> None:
@@ -862,6 +998,10 @@ def test_compatibility_doc_keeps_public_safe_contract_bounded() -> None:
     assert "not a generic guarantee that an artifact contains" in docs
     assert "no secrets or PII" in docs
     assert "does not replace dedicated secret scanners" in docs
+    assert "fixed seven-name public bundle" in docs
+    assert "without a new bundle version or explicit" in docs
+    assert "`agent-guard.result.v1` outer envelope" in docs
+    assert "nested `conformance` and `evidence_pack_manifest`" in " ".join(docs.split())
 
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:
@@ -922,6 +1062,23 @@ def test_release_criteria_require_post_release_action_pin_refresh() -> None:
         "After publication, they temporarily lag the newly published release until "
         "the follow-up merges" in readiness_single_line
     )
+
+
+def test_release_readiness_separates_pre_tag_and_published_state() -> None:
+    docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+    pre_tag = docs.split("### Pre-tag checks", 1)[1].split(
+        "### Post-tag and publication checks", 1
+    )[0]
+    post_tag = docs.split("### Post-tag and publication checks", 1)[1].split(
+        "The release workflow remains tag-driven", 1
+    )[0]
+
+    assert "exact candidate version is absent from PyPI" in pre_tag
+    assert "local clean build contains exactly the current wheel and sdist" in pre_tag
+    assert "exact-version PyPI metadata exposes" not in pre_tag
+    assert "release workflow succeeds" in post_tag
+    assert "exact-version PyPI metadata exposes" in post_tag
+    assert "provenance attestations" in post_tag
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:

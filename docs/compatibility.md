@@ -1,9 +1,11 @@
 # Compatibility
 
 `agent-guard` is still in `0.x`, but its public evidence contract is treated as
-a compatibility surface. The project can add new optional fields, new optional
-artifacts, and new schema versions, but the promise is explicit: v1 consumers
-keep working across 0.x releases.
+a compatibility surface. The project can add new optional fields, standalone
+optional artifacts, and new schema versions, but the promise is explicit: v1
+consumers keep working across 0.x releases. New artifacts cannot enter the
+existing fixed seven-name public bundle without a new bundle version or explicit
+opt-in.
 
 This page documents the current emitted artifacts, the schema version each one
 uses, volatile fields consumers must ignore, and the compatibility promise for
@@ -42,6 +44,12 @@ Installed wheels package these JSON Schema resources under
 | Conformance evidence | `agent-guard.conformance.v1` | `agent-guard.conformance.v1.schema.json` | none | Profile, status, required gates/surfaces, counts, and conformance findings. |
 | Evidence pack manifest | `agent-guard.evidence_pack_manifest.v1` | `agent-guard.evidence_pack_manifest.v1.schema.json` | none | Sanitized artifact manifest, gate summary, and optional conformance summary. |
 | Surface delta evidence | `agent-guard.surface_delta.v1` | `agent-guard.surface_delta.v1.schema.json` | none | Sanitized PR base/head agent-surface delta: added/removed/modified surface entries with controlled-vocabulary `changed_fields` names and risk labels; no raw diffs, base ref names, or instruction/description bodies. |
+
+Standalone conformance and evidence-pack files use the
+`agent-guard.result.v1` outer envelope. The listed
+`agent-guard.conformance.v1` and `agent-guard.evidence_pack_manifest.v1`
+schemas apply to their nested `conformance` and `evidence_pack_manifest`
+members, respectively.
 
 These schema file names and `$id` values are frozen by tests. A schema version
 will not change without a new schema identifier and a documented compatibility

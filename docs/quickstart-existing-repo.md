@@ -1,5 +1,8 @@
 # Existing Repo Quickstart
 
+Use Python 3.11.4+ as the `agent-guard` tool interpreter. In the POSIX examples,
+`python3` must resolve to Python 3.11.4+ before it creates `.venv`.
+
 This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
 `AGENTS.md`, `CLAUDE.md`, or a tool-specific rule file.
@@ -16,7 +19,6 @@ uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --prin
 This pinned `uvx` path is for evaluation and human review without a persistent
 install. The golden path moves directly to `recommended` after review of the
 complete starter bundle. For staged adoption, use the [minimal-first path](evidence-contracts.md#adoption-path-minimal-first-then-recommended).
-The TTFE benchmark retains local-wheelhouse replay and verifies the checkout.
 
 Run these commands from the repository root on the first pass through an
 un-onboarded repository. This four-command golden path creates an isolated
@@ -29,7 +31,9 @@ python3 -m venv .venv && \
   . .venv/bin/activate && \
   python -m pip install yui-agent-guard==0.3.4
 agent-guard init --root . --print
+# Review the proposed starter policies and workflow before writing them.
 agent-guard init --root . --write
+# Inspect the generated starter files before running the report.
 agent-guard report \
   --root . \
   --context-policy .agent-guard/context-policy.yaml \
@@ -54,7 +58,9 @@ reviewed write, and sanitized report sequence is:
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.4
 .\.venv\Scripts\agent-guard.exe init --root . --print
+# Review the proposed starter policies and workflow before writing them.
 .\.venv\Scripts\agent-guard.exe init --root . --write
+# Inspect the generated starter files before running the report.
 .\.venv\Scripts\agent-guard.exe report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
 ```
 
@@ -106,12 +112,12 @@ jobs:
   agent-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
       - id: agent-guard
         uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: >-
           always() &&
           steps.agent-guard.outputs.ready == 'true' &&
@@ -248,8 +254,7 @@ automatically; add those options only when the repository has reviewed policy
 files for them.
 
 Run the embedded handoff checks as standalone commands only when a downstream
-consumer needs separate payloads or an `agent-policy` admission event must be
-attached to the evidence-pack manifest:
+consumer needs separate payloads:
 
 ```text
 agent-guard conformance check --root . \
@@ -259,13 +264,22 @@ agent-guard conformance check --root . \
 agent-guard evidence-pack manifest --root . \
   --report .agent-guard/evidence/agent-guard-report.json \
   --artifact .agent-guard/evidence/agent-guard-report.json \
-  --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json \
   --json
 ```
 
 These commands are not required for the four-command first pass because the
 recommended report already contains the same conformance and manifest
 sections.
+
+If a reviewed `agent-policy` admission event already exists, add the same
+`--agent-policy-audit-event path/to/reviewed-policy-admission-event.json` option
+to both the `report` and standalone `evidence-pack manifest` commands, then
+generate both artifacts again. The public bundle consumer requires the
+standalone manifest to match the manifest embedded in the report. Keep the
+event outside `.agent-guard/evidence`; it is not one of the seven allowed public
+bundle files. `agent-guard` records only the sanitized path and does not verify
+the event's existence or content, so pass it only after the producer has written
+it and a maintainer has reviewed it.
 
 ## 5. Consume Evidence Safely
 
@@ -292,9 +306,15 @@ files and deterministic risky MCP configuration metadata. Pass
 `--mcp-policy .agent-guard/mcp-policy.yaml` to `report`; recommended and strict
 evidence require that reviewed repo-local policy. External policy files can be
 used for scanner experiments, but they are reported as `<external-policy>` and
-do not satisfy conformance. Use
-`--conformance-profile strict` only after reviewing v2 surface inventory output
-and deciding that the same labels should also appear as conformance findings.
+do not satisfy conformance. Use `--conformance-profile strict` only after
+satisfying the
+[strict adoption requirements](evidence-contracts.md#adoption-path-minimal-first-then-recommended):
+commit the reviewed digest policy; run clean context-lock and digest gates;
+include a sanitized evidence-pack manifest with the report artifact role; and
+review the additional `documented_guard_command` and
+`evidence_artifact_reference` surfaces, the `tool_permission_boundary`,
+`network_boundary`, and `destructive_action_boundary` categories, and the v2
+MCP risk-label requirements.
 Both modes are static evidence over repository configuration; they do not
 execute MCP servers, inspect MCP tool results, validate live OAuth flows, detect
 MCP tool-poisoning behavior, or act as an MCP runtime security validator.

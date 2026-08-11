@@ -57,12 +57,16 @@ individual change is small.
 
 ## Release Readiness
 
+### Pre-tag checks
+
 Before tagging, verify:
 
+- the exact candidate version is absent from PyPI;
 - full test suite passes on the supported Python versions;
 - self-dogfood `path`, `context`, `context lock`, `digest`, `content`,
   `workflow`, `surface inventory`, `drift`, and `report` gates pass;
-- packaged schemas are present in the wheel;
+- a local clean build contains exactly the current wheel and sdist;
+- packaged schemas are present in the locally built wheel;
 - wheel contract check passes from a clean install, and exact wheel/sdist member
   sets match the sanitized tracked-file inventory, bounded by bytes, path count,
   and deadline, plus fixed package metadata without missing, extra, duplicate,
@@ -73,11 +77,17 @@ Before tagging, verify:
   metadata are preflighted before Python's `tarfile` reader materializes member
   metadata; GNU sparse forms and PAX size overrides are not accepted by this
   regular-file-only release contract;
-- the clean build contains exactly the current wheel and sdist, and
-  exact-version PyPI metadata exposes exactly those two files as non-yanked;
 - GitHub Actions CI is green on the release commit;
 - no generated private evidence, local paths, credentials, or private fixtures
   are tracked.
+
+### Post-tag and publication checks
+
+After pushing the tag, treat the release as complete only when:
+
+- the release workflow succeeds;
+- exact-version PyPI metadata exposes exactly the expected wheel and sdist as
+  non-yanked;
 - the release workflow creates provenance attestations for the built wheel and
   sdist, and verification examples name the expected tag, repository, and
   signer workflow explicitly.

@@ -133,9 +133,34 @@ agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format markdown --output .agent-guard/evidence/agent-guard-report.md
 agent-guard render-report --root . --input .agent-guard/evidence/agent-guard-report.json --format sarif --output .agent-guard/evidence/agent-guard-results.sarif
 agent-guard conformance check --root . --evidence .agent-guard/evidence/agent-guard-report.json --profile recommended --json
-agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --agent-policy-audit-event .agent-guard/evidence/policy-admission-event.json --json
+agent-guard evidence-pack manifest --root . --report .agent-guard/evidence/agent-guard-report.json --artifact .agent-guard/evidence/agent-guard-report.json --json
 python examples/evidence_consumer.py .agent-guard/evidence/agent-guard-report.json
 ```
+
+If a reviewed `agent-policy` admission event already exists, optionally attach
+its repository-relative path outside `.agent-guard/evidence`:
+
+```bash
+agent-guard report --root . \
+  --context-policy .agent-guard/context-policy.yaml \
+  --evidence-preset recommended \
+  --mcp-policy .agent-guard/mcp-policy.yaml \
+  --digest-policy .agent-guard/context-digest-policy.yaml \
+  --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
+  --format json \
+  --output .agent-guard/evidence/agent-guard-report.json
+agent-guard evidence-pack manifest --root . \
+  --report .agent-guard/evidence/agent-guard-report.json \
+  --artifact .agent-guard/evidence/agent-guard-report.json \
+  --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
+  --json
+```
+
+The referenced event must already be produced and reviewed. Pass the identical
+path to both commands: the public bundle consumer requires the standalone
+manifest to match the manifest embedded in the report. `agent-guard` records
+only the sanitized path and does not verify file existence or content. The
+event itself is not part of the fixed seven-file public bundle.
 
 When CI uploads evidence, pin third-party actions to versions or commit SHAs
 according to the repository's normal supply-chain policy, and keep generated
