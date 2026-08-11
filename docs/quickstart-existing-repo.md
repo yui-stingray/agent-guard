@@ -27,6 +27,7 @@ and produces one recommended sanitized report. The report already embeds
 recommended conformance and its evidence-pack manifest:
 
 ```bash
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) else "agent-guard requires Python 3.11.4+")' && \
 python3 -m venv .venv && \
   . .venv/bin/activate && \
   python -m pip install yui-agent-guard==0.3.4

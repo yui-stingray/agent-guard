@@ -645,6 +645,13 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "python3 -m venv .venv" in quickstart
     assert "Use Python 3.11.4+ as the `agent-guard` tool interpreter" in quickstart
     assert "`python3` must resolve to Python 3.11.4+" in quickstart
+    python_version_check = (
+        "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) "
+        'else "agent-guard requires Python 3.11.4+")\''
+    )
+    venv_command = "python3 -m venv .venv"
+    guarded_venv_sequence = f"{python_version_check} && \\\n{venv_command}"
+    assert quickstart.count(guarded_venv_sequence) == quickstart.count(venv_command) > 0
     assert "TTFE benchmark" not in quickstart
     assert quickstart.count("# Review the proposed starter policies and workflow") == 2
     assert quickstart.count("# Inspect the generated starter files") == 2
