@@ -247,31 +247,34 @@ jobs:
             --mcp-policy .agent-guard/mcp-policy.yaml \
             --digest-policy .agent-guard/context-digest-policy.yaml \
             --format json \
-            --output .agent-guard/evidence/agent-guard-evidence-report.json
+            --output .agent-guard/evidence/agent-guard-report.json
           python -m agent_guard.cli render-report \
             --root . \
-            --input .agent-guard/evidence/agent-guard-evidence-report.json \
+            --input .agent-guard/evidence/agent-guard-report.json \
             --format markdown \
-            --output .agent-guard/evidence/agent-guard-evidence-report.md
+            --output .agent-guard/evidence/agent-guard-report.md
           python -m agent_guard.cli render-report \
             --root . \
-            --input .agent-guard/evidence/agent-guard-evidence-report.json \
+            --input .agent-guard/evidence/agent-guard-report.json \
             --format sarif \
             --output .agent-guard/evidence/agent-guard-results.sarif
           python -m agent_guard.cli conformance check \
             --root . \
-            --evidence .agent-guard/evidence/agent-guard-evidence-report.json \
+            --evidence .agent-guard/evidence/agent-guard-report.json \
             --profile recommended \
             --json
           python -m agent_guard.cli evidence-pack manifest \
             --root . \
-            --report .agent-guard/evidence/agent-guard-evidence-report.json \
-            --artifact .agent-guard/evidence/agent-guard-evidence-report.json \
+            --report .agent-guard/evidence/agent-guard-report.json \
+            --artifact .agent-guard/evidence/agent-guard-report.json \
             --json
           python -m agent_guard.cli render-report \
             --root . \
-            --input .agent-guard/evidence/agent-guard-evidence-report.json \
+            --input .agent-guard/evidence/agent-guard-report.json \
             --format github-annotations
+          python -I -m agent_guard.consumer \
+            --evidence-dir .agent-guard/evidence \
+            .agent-guard/evidence/agent-guard-report.json
       - name: Upload self-dogfood evidence report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

@@ -586,11 +586,11 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
         if "python -m agent_guard.cli report " in line
     ]
     assert report_lines == [
-        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-evidence-report.json"
+        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
     ]
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
-        "--format markdown --output .agent-guard/evidence/agent-guard-evidence-report.md"
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
+        "--format markdown --output .agent-guard/evidence/agent-guard-report.md"
         in normalized_self_dogfood
     )
     assert (
@@ -598,14 +598,24 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-evidence-report.json "
+        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format github-annotations"
         in normalized_self_dogfood
+    )
+    consumer_command = (
+        "python -I -m agent_guard.consumer --evidence-dir .agent-guard/evidence "
+        ".agent-guard/evidence/agent-guard-report.json"
+    )
+    assert consumer_command in normalized_self_dogfood
+    assert ".agent-guard/evidence/agent-guard-evidence-report.json" not in normalized_self_dogfood
+    assert ".agent-guard/evidence/agent-guard-evidence-report.md" not in normalized_self_dogfood
+    assert normalized_self_dogfood.index(consumer_command) < normalized_self_dogfood.index(
+        "uses: actions/upload-artifact@"
     )
 
 
