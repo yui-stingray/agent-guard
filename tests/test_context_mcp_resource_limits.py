@@ -304,6 +304,104 @@ def test_context_iterator_stops_at_exactly_one_visited_entry_over_cap(tmp_path: 
         )
 
 
+def test_context_iterator_selects_literal_file_before_unrelated_root_entries(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(b"")
+    first = tmp_path / "unrelated-00000"
+    first.write_bytes(b"")
+    for index in range(1, context_guard.MAX_CONTEXT_SCAN_FILES + 1):
+        os.link(first, tmp_path / f"unrelated-{index:05d}")
+
+    paths = context_guard.iter_context_files(
+        root=tmp_path,
+        policy=_context_policy(["AGENTS.md"]),
+    )
+
+    assert paths == [target]
+
+
+@pytest.mark.parametrize("link_kind", ["dangling", "cycle"])
+def test_context_iterator_rejects_broken_literal_symlink(
+    tmp_path: Path,
+    link_kind: str,
+) -> None:
+    target = tmp_path / "AGENTS.md"
+    try:
+        if link_kind == "dangling":
+            target.symlink_to("missing.md")
+        else:
+            peer = tmp_path / "peer.md"
+            target.symlink_to(peer.name)
+            peer.symlink_to(target.name)
+    except (NotImplementedError, OSError):
+        pytest.skip("symlink creation is unavailable")
+
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_TARGET}$"):
+        context_guard.iter_context_files(
+            root=tmp_path,
+            policy=_context_policy(["AGENTS.md"]),
+        )
+
+
+def test_context_iterator_omits_excluded_broken_literal_symlink(tmp_path: Path) -> None:
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    target = ignored / "AGENTS.md"
+    try:
+        target.symlink_to("missing.md")
+    except (NotImplementedError, OSError):
+        pytest.skip("symlink creation is unavailable")
+
+    paths = context_guard.iter_context_files(
+        root=tmp_path,
+        policy={
+            "scan": {
+                "include": ["ignored/AGENTS.md"],
+                "exclude": ["ignored/**"],
+            }
+        },
+    )
+
+    assert paths == []
+
+
+def test_context_iterator_keeps_traversal_cap_for_mixed_literal_and_glob_selectors(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "AGENTS.md").write_bytes(b"")
+    first = tmp_path / "unrelated-00000"
+    first.write_bytes(b"")
+    for index in range(1, context_guard.MAX_CONTEXT_SCAN_FILES + 1):
+        os.link(first, tmp_path / f"unrelated-{index:05d}")
+
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_LIMIT}$"):
+        context_guard.iter_context_files(
+            root=tmp_path,
+            policy=_context_policy(["AGENTS.md", "**/selected.md"]),
+        )
+
+
+def test_context_iterator_mixes_literal_and_glob_selectors_without_broadening_literals(
+    tmp_path: Path,
+) -> None:
+    root_literal = tmp_path / "AGENTS.md"
+    root_literal.write_bytes(b"")
+    nested_literal = tmp_path / "nested" / "AGENTS.md"
+    nested_literal.parent.mkdir()
+    nested_literal.write_bytes(b"")
+    selected_glob = tmp_path / "nested" / "selected.md"
+    selected_glob.write_bytes(b"")
+
+    paths = context_guard.iter_context_files(
+        root=tmp_path,
+        policy=_context_policy(["AGENTS.md", "**/selected.md"]),
+    )
+
+    assert paths == [root_literal, selected_glob]
+
+
 def test_mcp_iterator_stops_at_exactly_one_config_over_cap(tmp_path: Path) -> None:
     config_dir = tmp_path / ".claude"
     config_dir.mkdir()
@@ -320,13 +418,25 @@ def test_mcp_iterator_stops_at_exactly_one_config_over_cap(tmp_path: Path) -> No
         surface_inventory_mcp.iter_mcp_config_files(tmp_path)
 
 
-def test_context_inventory_rejects_exact_aggregate_plus_one(tmp_path: Path) -> None:
+def test_context_inventory_rejects_exact_aggregate_plus_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(context_guard, "MAX_CONTEXT_FILE_BYTES", 4)
+    monkeypatch.setattr(context_guard, "MAX_CONTEXT_DISTINCT_INPUT_BYTES", 5)
     context_dir = tmp_path / "contexts"
     context_dir.mkdir()
-    file_count = context_guard.MAX_CONTEXT_DISTINCT_INPUT_BYTES // context_guard.MAX_CONTEXT_FILE_BYTES
-    for index in range(file_count):
+    full_file_count, remainder = divmod(
+        context_guard.MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+        context_guard.MAX_CONTEXT_FILE_BYTES,
+    )
+    for index in range(full_file_count):
         (context_dir / f"context-{index:02d}.md").write_bytes(
             b"\0" * context_guard.MAX_CONTEXT_FILE_BYTES
+        )
+    if remainder:
+        (context_dir / f"context-{full_file_count:02d}.md").write_bytes(
+            b"\0" * remainder
         )
 
     inventory = context_guard.collect_context_inventory(
@@ -345,16 +455,27 @@ def test_context_inventory_rejects_exact_aggregate_plus_one(tmp_path: Path) -> N
         )
 
 
-def test_mcp_inventory_rejects_exact_aggregate_plus_one(tmp_path: Path) -> None:
+def test_mcp_inventory_rejects_exact_aggregate_plus_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(surface_inventory_mcp, "MAX_MCP_CONFIG_FILE_BYTES", 17)
+    monkeypatch.setattr(surface_inventory_mcp, "MAX_MCP_DISTINCT_INPUT_BYTES", 18)
     config_dir = tmp_path / ".claude"
-    file_count = (
-        surface_inventory_mcp.MAX_MCP_DISTINCT_INPUT_BYTES
-        // surface_inventory_mcp.MAX_MCP_CONFIG_FILE_BYTES
+    full_file_count, remainder = divmod(
+        surface_inventory_mcp.MAX_MCP_DISTINCT_INPUT_BYTES,
+        surface_inventory_mcp.MAX_MCP_CONFIG_FILE_BYTES,
     )
-    for index in range(file_count):
+    for index in range(full_file_count):
         _write_exact_json(
             config_dir / f"settings-{index:02d}.json",
             surface_inventory_mcp.MAX_MCP_CONFIG_FILE_BYTES,
+        )
+    if remainder:
+        _write_exact_json(
+            config_dir / f"settings-{full_file_count:02d}.json",
+            remainder,
+            payload=b"0",
         )
 
     surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)

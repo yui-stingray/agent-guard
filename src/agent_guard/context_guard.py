@@ -688,6 +688,7 @@ def _context_candidate_matches(
     alias_path: Path,
     resolved_path: Path,
     include: Sequence[GlobPattern],
+    literal_files: Sequence[tuple[Path, Path]],
     literal_directories: Sequence[tuple[Path, Path]],
     work_budget: _ContextGlobWorkBudget,
 ) -> bool:
@@ -702,6 +703,11 @@ def _context_candidate_matches(
             work_budget=work_budget,
         ):
             return True
+    if any(
+        alias_path == alias_file or resolved_path == resolved_file
+        for alias_file, resolved_file in literal_files
+    ):
+        return True
     return any(
         _is_within_relative_path(alias_path, alias_root)
         or _is_within_relative_path(resolved_path, resolved_root)
@@ -713,6 +719,7 @@ def _alias_context_candidate_matches(
     path: Path,
     *,
     include: Sequence[GlobPattern],
+    literal_files: Sequence[tuple[Path, Path]],
     literal_directories: Sequence[tuple[Path, Path]],
     work_budget: _ContextGlobWorkBudget,
 ) -> bool:
@@ -720,6 +727,9 @@ def _alias_context_candidate_matches(
     return any(
         _glob_parts_match(path_parts, pattern, work_budget=work_budget)
         for pattern in include
+    ) or any(
+        path == alias_file
+        for alias_file, _resolved_file in literal_files
     ) or any(
         _is_within_relative_path(path, alias_root)
         for alias_root, _resolved_root in literal_directories
@@ -751,23 +761,47 @@ def _compile_context_selection(
     tuple[GlobPattern, ...],
     tuple[GlobPattern, ...],
     tuple[tuple[Path, Path], ...],
+    tuple[tuple[Path, Path], ...],
 ]:
-    compiled_include = tuple(_compile_glob_pattern(pattern) for pattern in include)
+    compiled_include: list[GlobPattern] = []
+    for pattern in include:
+        compiled_pattern = _compile_glob_pattern(pattern)
+        if has_glob_magic(pattern):
+            compiled_include.append(compiled_pattern)
     compiled_exclude = tuple(_compile_glob_pattern(pattern) for pattern in exclude)
+    selection_work_budget = _ContextGlobWorkBudget()
+    literal_files: list[tuple[Path, Path]] = []
     literal_directories: list[tuple[Path, Path]] = []
     for pattern in include:
         if has_glob_magic(pattern):
             continue
-        if _relative_path_is_opaque(Path(pattern), opaque_directories):
+        literal_path = Path(pattern)
+        if _relative_path_is_opaque(literal_path, opaque_directories):
             continue
-        target = root / pattern
+        if _directory_is_excluded(
+            literal_path,
+            compiled_exclude,
+            work_budget=selection_work_budget,
+        ) or _has_excluded_ancestor(
+            literal_path,
+            compiled_exclude,
+            work_budget=selection_work_budget,
+        ):
+            continue
+        target = root / literal_path
         try:
             resolved_target = target.resolve(strict=True)
             resolved_relative = resolved_target.relative_to(root)
         except ValueError:
             raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
         except (OSError, RuntimeError):
-            continue
+            try:
+                target.lstat()
+            except FileNotFoundError:
+                continue
+            except (OSError, RuntimeError):
+                raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
         try:
             target_stat = target.stat()
         except (OSError, RuntimeError):
@@ -776,8 +810,18 @@ def _compile_context_selection(
             _relative_path_is_opaque(Path(pattern), opaque_directories)
             or _relative_path_is_opaque(resolved_relative, opaque_directories)
         ):
-            literal_directories.append((Path(pattern), resolved_relative))
-    return compiled_include, compiled_exclude, tuple(literal_directories)
+            literal_directories.append((literal_path, resolved_relative))
+        elif stat.S_ISREG(target_stat.st_mode) and not _relative_path_is_opaque(
+            resolved_relative,
+            opaque_directories,
+        ):
+            literal_files.append((literal_path, resolved_relative))
+    return (
+        tuple(compiled_include),
+        compiled_exclude,
+        tuple(literal_files),
+        tuple(literal_directories),
+    )
 
 
 def _context_selector_patterns(
@@ -796,7 +840,12 @@ def _iter_context_files_pruned(
     exclude: Sequence[str],
     opaque_directories: Sequence[str],
 ) -> list[Path]:
-    compiled_include, compiled_exclude, literal_directories = _compile_context_selection(
+    (
+        compiled_include,
+        compiled_exclude,
+        literal_files,
+        literal_directories,
+    ) = _compile_context_selection(
         root=root,
         include=include,
         exclude=exclude,
@@ -806,6 +855,55 @@ def _iter_context_files_pruned(
 
     files: list[Path] = []
     seen_files: set[Path] = set()
+    for alias_relative, _resolved_relative in literal_files:
+        path = root / alias_relative
+        if _relative_path_is_opaque(alias_relative, opaque_directories):
+            continue
+        if _directory_is_excluded(
+            alias_relative,
+            compiled_exclude,
+            work_budget=glob_work_budget,
+        ) or _has_excluded_ancestor(
+            alias_relative,
+            compiled_exclude,
+            work_budget=glob_work_budget,
+        ):
+            continue
+        try:
+            resolved_path = path.resolve(strict=True)
+            resolved_relative = resolved_path.relative_to(root)
+        except ValueError:
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+        except (OSError, RuntimeError):
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+        if _relative_path_is_opaque(resolved_relative, opaque_directories):
+            continue
+        if _is_excluded_compiled(
+            resolved_relative,
+            compiled_exclude,
+            work_budget=glob_work_budget,
+        ) or _has_excluded_ancestor(
+            resolved_relative,
+            compiled_exclude,
+            work_budget=glob_work_budget,
+        ):
+            continue
+        try:
+            path_stat = path.stat()
+        except (OSError, RuntimeError):
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+        if not stat.S_ISREG(path_stat.st_mode):
+            continue
+        _append_context_file(
+            files,
+            seen_files,
+            path=path,
+            resolved_path=resolved_path,
+        )
+
+    if not compiled_include and not literal_directories:
+        return sorted(files)
+
     visited_entries = 0
     pending: list[tuple[Path, frozenset[Path]]] = [(root, frozenset())]
     while pending:
@@ -856,6 +954,7 @@ def _iter_context_files_pruned(
                 if _alias_context_candidate_matches(
                     path=alias_relative,
                     include=compiled_include,
+                    literal_files=literal_files,
                     literal_directories=literal_directories,
                     work_budget=glob_work_budget,
                 ):
@@ -865,6 +964,7 @@ def _iter_context_files_pruned(
                 if _alias_context_candidate_matches(
                     path=alias_relative,
                     include=compiled_include,
+                    literal_files=literal_files,
                     literal_directories=literal_directories,
                     work_budget=glob_work_budget,
                 ):
@@ -879,6 +979,7 @@ def _iter_context_files_pruned(
                     alias_path=alias_relative,
                     resolved_path=resolved_relative,
                     include=compiled_include,
+                    literal_files=literal_files,
                     literal_directories=literal_directories,
                     work_budget=glob_work_budget,
                 ):
@@ -909,6 +1010,7 @@ def _iter_context_files_pruned(
                 alias_path=alias_relative,
                 resolved_path=resolved_relative,
                 include=compiled_include,
+                literal_files=literal_files,
                 literal_directories=literal_directories,
                 work_budget=glob_work_budget,
             ):
@@ -948,6 +1050,7 @@ def _validate_context_snapshot_selection(
     opened: BoundedRepoFile,
     compiled_include: Sequence[GlobPattern],
     compiled_exclude: Sequence[GlobPattern],
+    literal_files: Sequence[tuple[Path, Path]],
     literal_directories: Sequence[tuple[Path, Path]],
     opaque_directories: Sequence[str],
     work_budget: _ContextGlobWorkBudget,
@@ -984,6 +1087,7 @@ def _validate_context_snapshot_selection(
             alias_path=alias_relative,
             resolved_path=resolved_relative,
             include=compiled_include,
+            literal_files=literal_files,
             literal_directories=literal_directories,
             work_budget=work_budget,
         )
@@ -1299,7 +1403,12 @@ def collect_context_inventory(
         opaque_directories=opaque_directories,
     )
     include, exclude = _context_selector_patterns(policy)
-    compiled_include, compiled_exclude, literal_directories = _compile_context_selection(
+    (
+        compiled_include,
+        compiled_exclude,
+        literal_files,
+        literal_directories,
+    ) = _compile_context_selection(
         root=root,
         include=include,
         exclude=exclude,
@@ -1319,6 +1428,7 @@ def collect_context_inventory(
             opened=opened,
             compiled_include=compiled_include,
             compiled_exclude=compiled_exclude,
+            literal_files=literal_files,
             literal_directories=literal_directories,
             opaque_directories=opaque_directories,
             work_budget=selection_work_budget,
@@ -1389,7 +1499,12 @@ def _scan_context_files_unbounded(
     rules = build_rules(policy)
     paths = iter_context_files(root=root, policy=policy)
     include, exclude = _context_selector_patterns(policy)
-    compiled_include, compiled_exclude, literal_directories = _compile_context_selection(
+    (
+        compiled_include,
+        compiled_exclude,
+        literal_files,
+        literal_directories,
+    ) = _compile_context_selection(
         root=root,
         include=include,
         exclude=exclude,
@@ -1415,6 +1530,7 @@ def _scan_context_files_unbounded(
             opened=opened,
             compiled_include=compiled_include,
             compiled_exclude=compiled_exclude,
+            literal_files=literal_files,
             literal_directories=literal_directories,
             opaque_directories=(),
             work_budget=selection_work_budget,
@@ -1454,7 +1570,12 @@ def _scan_context_files_with_inventory_unbounded(
     rules = build_rules(policy)
     paths = iter_context_files(root=root, policy=policy)
     include, exclude = _context_selector_patterns(policy)
-    compiled_include, compiled_exclude, literal_directories = _compile_context_selection(
+    (
+        compiled_include,
+        compiled_exclude,
+        literal_files,
+        literal_directories,
+    ) = _compile_context_selection(
         root=root,
         include=include,
         exclude=exclude,
@@ -1480,6 +1601,7 @@ def _scan_context_files_with_inventory_unbounded(
             opened=opened,
             compiled_include=compiled_include,
             compiled_exclude=compiled_exclude,
+            literal_files=literal_files,
             literal_directories=literal_directories,
             opaque_directories=(),
             work_budget=selection_work_budget,
