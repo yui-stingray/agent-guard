@@ -6,7 +6,9 @@ import hashlib
 import io
 import json
 import os
+import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -400,6 +402,34 @@ def test_distinct_input_budget_rejects_identity_content_change() -> None:
 
     with pytest.raises(bounded_repo_reader.BoundedRepoReadError):
         budget.charge(replacement)
+
+
+def test_windows_cross_handle_metadata_uses_comparable_fields() -> None:
+    descriptor_stat = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o600,
+        st_size=18,
+        st_mtime_ns=2_000,
+        st_ctime_ns=3_000,
+        st_nlink=1,
+    )
+    path_stat = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o444,
+        st_size=18,
+        st_mtime_ns=2_000,
+        st_ctime_ns=4_000,
+        st_nlink=2,
+    )
+
+    assert bounded_repo_reader._windows_cross_handle_metadata(
+        descriptor_stat  # type: ignore[arg-type]
+    ) == bounded_repo_reader._windows_cross_handle_metadata(path_stat)  # type: ignore[arg-type]
+
+    changed_fields = vars(path_stat).copy()
+    changed_fields["st_size"] = 19
+    changed_size = SimpleNamespace(**changed_fields)
+    assert bounded_repo_reader._windows_cross_handle_metadata(
+        descriptor_stat  # type: ignore[arg-type]
+    ) != bounded_repo_reader._windows_cross_handle_metadata(changed_size)  # type: ignore[arg-type]
 
 
 def test_combined_context_operation_charges_policy_and_files_once(tmp_path: Path) -> None:

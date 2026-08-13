@@ -251,6 +251,22 @@ def _stable_metadata(value: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _windows_cross_handle_metadata(value: os.stat_result) -> tuple[int, int, int]:
+    """Return metadata Windows exposes consistently for fd/path comparisons."""
+
+    return (
+        stat.S_IFMT(int(value.st_mode)),
+        int(value.st_size),
+        int(value.st_mtime_ns),
+    )
+
+
+def _cross_handle_metadata(value: os.stat_result) -> tuple[int, ...]:
+    if os.name == "nt":
+        return _windows_cross_handle_metadata(value)
+    return _stable_metadata(value)
+
+
 def _stat_resolved_path(path: Path) -> os.stat_result:
     try:
         path_stat = os.stat(path, follow_symlinks=False)
@@ -349,7 +365,7 @@ def _validate_current_path(
     current_stat = _stat_resolved_path(current_path)
     if not _same_file_identity(file_stat, current_stat):
         raise BoundedRepoReadError from None
-    if _stable_metadata(file_stat) != _stable_metadata(current_stat):
+    if _cross_handle_metadata(file_stat) != _cross_handle_metadata(current_stat):
         raise BoundedRepoReadError from None
 
 
