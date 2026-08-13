@@ -59,11 +59,12 @@ def emit_public_output(text: str, *, error: str) -> None:
             sys.stdout.write(text)
             sys.stdout.flush()
             return
+        sys.stdout.flush()
         written = output.write(data)
         if written is not None and written != len(data):
             raise OSError
         output.flush()
-    except (MemoryError, OSError, UnicodeEncodeError, UnicodeError):
+    except (MemoryError, OSError, UnicodeEncodeError, UnicodeError, ValueError):
         raise ValueError(error) from None
 
 

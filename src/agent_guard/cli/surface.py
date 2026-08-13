@@ -59,10 +59,16 @@ def _emit_surface_inventory_payload(
     plain_text: str,
 ) -> bool:
     if not args.json:
-        emit_public_output(
-            f"{plain_text}\n",
-            error=ERROR_SURFACE_INVENTORY_LIMIT,
-        )
+        try:
+            emit_public_output(
+                bounded_public_line(
+                    plain_text,
+                    error=ERROR_SURFACE_INVENTORY_LIMIT,
+                ),
+                error=ERROR_SURFACE_INVENTORY_LIMIT,
+            )
+        except ValueError:
+            return False
         return True
     try:
         rendered = bounded_public_line(

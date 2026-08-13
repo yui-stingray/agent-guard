@@ -144,12 +144,18 @@ def _open_repo_file_posix(repo_root: Path, relative_path: Path) -> int:
         directory_fd = os.open(repo_root, directory_flags)
         for component in relative_path.parts[:-1]:
             next_fd = os.open(component, directory_flags, dir_fd=directory_fd)
-            os.close(directory_fd)
+            previous_fd = directory_fd
             directory_fd = next_fd
+            os.close(previous_fd)
         file_fd = os.open(relative_path.parts[-1], file_flags, dir_fd=directory_fd)
         if not stat.S_ISREG(os.fstat(file_fd).st_mode):
             raise BoundedRepoReadError
-        return file_fd
+        final_directory_fd = directory_fd
+        directory_fd = None
+        os.close(final_directory_fd)
+        result_fd = file_fd
+        file_fd = None
+        return result_fd
     except BoundedRepoReadError:
         if file_fd is not None:
             os.close(file_fd)
@@ -189,14 +195,17 @@ def _windows_final_handle_path(file_fd: int) -> str:
         if length == 0:
             raise OSError
         if length < capacity:
-            final_path = buffer.value
-            if final_path.startswith("\\\\?\\UNC\\"):
-                return "\\\\" + final_path[8:]
-            if final_path.startswith("\\\\?\\"):
-                return final_path[4:]
-            return final_path
+            return buffer.value
         capacity = length
     raise OSError
+
+
+def _windows_final_path(path: Path) -> str:
+    """Return a path in the same prefix-preserving namespace as handle paths."""
+
+    import nt
+
+    return nt._getfinalpathname(str(path))
 
 
 def _open_repo_file_windows(repo_root: Path, resolved_path: Path) -> int:
@@ -211,7 +220,7 @@ def _open_repo_file_windows(repo_root: Path, resolved_path: Path) -> int:
         if not stat.S_ISREG(os.fstat(file_fd).st_mode):
             raise BoundedRepoReadError
         final_path = os.path.normcase(os.path.normpath(_windows_final_handle_path(file_fd)))
-        normalized_root = os.path.normcase(os.path.normpath(str(repo_root)))
+        normalized_root = os.path.normcase(os.path.normpath(_windows_final_path(repo_root)))
         if os.path.commonpath((normalized_root, final_path)) != normalized_root:
             raise BoundedRepoContainmentError
         return file_fd

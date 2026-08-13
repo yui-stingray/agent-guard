@@ -15,7 +15,11 @@ from ..context_guard import (
     load_context_policy,
     scan_context_files_with_inventory,
 )
-from ..digest_guard import load_digest_policy, scan_digests
+from ..digest_guard import (
+    MAX_DIGEST_DISTINCT_INPUT_BYTES,
+    load_digest_policy,
+    scan_digests,
+)
 from ..drift_guard import build_policy_spec_drift_report
 from ..evidence_pack import (
     build_agent_policy_audit_event_artifacts,
@@ -324,9 +328,12 @@ def run_report(args: argparse.Namespace) -> int:
         context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
+            digest_input_budget = DistinctInputBudget(
+                max_bytes=MAX_DIGEST_DISTINCT_INPUT_BYTES
+            )
             digest_policy = load_digest_policy(
                 resolve_policy_arg(digest_policy_arg, root),
-                _input_budget=context_input_budget,
+                _input_budget=digest_input_budget,
             )
             context_lock_report = build_context_lock_report(
                 root=root,
@@ -338,7 +345,7 @@ def run_report(args: argparse.Namespace) -> int:
             digest_findings, checked_files = scan_digests(
                 root=root,
                 policy=digest_policy,
-                _input_budget=context_input_budget,
+                _input_budget=digest_input_budget,
             )
             digest_report = {
                 "policy": {"path": safe_policy_path(digest_policy_arg, root)},
@@ -421,7 +428,10 @@ def run_report(args: argparse.Namespace) -> int:
                 },
             },
         )
-        emit_report_payload(args, payload)
+        try:
+            emit_report_payload(args, payload)
+        except ValueError:
+            return 2
         return 2
     except Exception as exc:
         payload = result_payload(
@@ -505,7 +515,10 @@ def run_report(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        emit_report_payload(args, payload)
+        try:
+            emit_report_payload(args, payload)
+        except ValueError:
+            return 2
         return 2
 
     path_finding_count = int(path_report["finding_count"]) if path_report else 0
@@ -743,10 +756,13 @@ def run_report(args: argparse.Namespace) -> int:
                 },
             },
         )
-        emit_report_payload(
-            args,
-            sanitize_public_mapping(fallback),
-            _enforce_budget=False,
-        )
+        try:
+            emit_report_payload(
+                args,
+                sanitize_public_mapping(fallback),
+                _enforce_budget=False,
+            )
+        except ValueError:
+            return 2
         return 2
     return exit_code

@@ -336,8 +336,10 @@ def run_context_lock(args: argparse.Namespace) -> int:
             else:
                 plain_text = "\n".join(
                     [
-                        "context-lock: NG "
-                        f"({coverage.get('finding_count', 0)} coverage findings)",
+                        (
+                            "context-lock: NG "
+                            f"({coverage.get('finding_count', 0)} coverage findings)"
+                        ),
                         *[
                             f"- {item.get('severity', 'high')} "
                             f"{item.get('rule_id', '-')} "
