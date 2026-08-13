@@ -11,7 +11,6 @@ from typing import Any
 from ..evidence_pack import validate_agent_policy_audit_event_binding_shape
 from ._schema import require, require_int, require_mapping, require_sequence
 
-
 REVIEWED_MCP_POLICY_PATH = ".agent-guard/mcp-policy.yaml"
 REQUIRED_MCP_RISK_LABELS = frozenset(
     {
@@ -205,6 +204,10 @@ def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
         )
         if role != "agent-policy-audit-event":
             continue
+        require(
+            set(artifact) == {"path", "role", "content_binding"},
+            f"$.evidence_pack_manifest.artifacts[{index}] has invalid fields",
+        )
         try:
             validate_agent_policy_audit_event_binding_shape(artifact.get("content_binding"))
         except ValueError:

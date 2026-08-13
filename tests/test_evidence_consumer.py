@@ -72,8 +72,34 @@ def test_packaged_consumer_rejects_unbound_legacy_audit_event_reference() -> Non
         }
     )
 
-    with pytest.raises(ValueError, match="content_binding is invalid"):
+    with pytest.raises(ValueError, match="content_binding is required"):
         validate_report(payload, load_report_schema())
+
+
+def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_leak(
+    tmp_path: Path,
+) -> None:
+    marker = "synthetic-private-passphrase"
+    event = tmp_path / "event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": binding,
+            "event_body": {"passphrase": marker},
+        }
+    )
+
+    with pytest.raises(ValueError, match="invalid fields") as exc_info:
+        validate_report(payload, load_report_schema())
+
+    assert marker not in str(exc_info.value)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="exercises POSIX final-component no-follow")

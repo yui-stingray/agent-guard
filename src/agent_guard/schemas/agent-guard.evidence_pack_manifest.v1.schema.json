@@ -102,6 +102,17 @@
             "additionalProperties": false
           }
         },
+        "allOf": [
+          {
+            "if": {"properties": {"role": {"const": "agent-policy-audit-event"}}},
+            "then": {
+              "required": ["content_binding"],
+              "propertyNames": {
+                "enum": ["path", "role", "content_binding"]
+              }
+            }
+          }
+        ],
         "additionalProperties": true
       }
     }

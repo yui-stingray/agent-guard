@@ -381,6 +381,39 @@ def validate_agent_policy_audit_event_binding_shape(binding: object) -> dict[str
     return {key: str(value) for key, value in binding.items()} | {"event_profile": profile}
 
 
+def _validate_agent_policy_audit_event_artifact_shape(
+    artifact: object,
+    *,
+    root: Path | None,
+) -> dict[str, object]:
+    if not isinstance(artifact, dict) or set(artifact) != {
+        "path",
+        "role",
+        "content_binding",
+    }:
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if artifact.get("role") != "agent-policy-audit-event":
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    path = artifact.get("path")
+    if not isinstance(path, str):
+        raise TypeError(ERROR_AUDIT_EVENT_INVALID)
+    normalized_path = path.strip()
+    if (
+        not normalized_path
+        or safe_artifact_path(normalized_path, root=root) != normalized_path
+        or sanitize_public_mapping({"path": normalized_path}) != {"path": normalized_path}
+    ):
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    binding = validate_agent_policy_audit_event_binding_shape(
+        artifact.get("content_binding")
+    )
+    return {
+        "path": normalized_path,
+        "role": "agent-policy-audit-event",
+        "content_binding": binding,
+    }
+
+
 def build_agent_policy_audit_event_artifacts(
     paths: list[str],
     *,
@@ -452,7 +485,10 @@ def build_evidence_pack_manifest(
     if agent_policy_audit_event_artifacts is not None:
         if agent_policy_audit_event_paths:
             raise ValueError(ERROR_AUDIT_EVENT_INVALID)
-        artifacts.extend(agent_policy_audit_event_artifacts)
+        artifacts.extend(
+            _validate_agent_policy_audit_event_artifact_shape(artifact, root=root)
+            for artifact in agent_policy_audit_event_artifacts
+        )
     elif agent_policy_audit_event_paths:
         if root is None:
             raise ValueError(ERROR_AUDIT_EVENT_PATH)

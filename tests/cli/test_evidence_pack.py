@@ -15,6 +15,7 @@ from agent_guard.consumer import validate_public_evidence_shape
 from agent_guard.evidence_pack import (
     build_agent_policy_audit_event_artifacts,
     build_agent_policy_audit_event_binding,
+    build_evidence_pack_manifest,
 )
 from tests.cli.helpers import run_cli
 
@@ -293,6 +294,75 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     )
 
     assert changed["digest"] != first["digest"]
+
+
+def test_manifest_rejects_extra_fields_in_prebuilt_audit_event_artifact(
+    tmp_path: Path,
+) -> None:
+    marker = "synthetic-private-passphrase"
+    event = tmp_path / "event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_evidence_pack_manifest(
+            report_payload={},
+            agent_policy_audit_event_artifacts=[
+                {
+                    "path": "reviewed/event.json",
+                    "role": "agent-policy-audit-event",
+                    "content_binding": binding,
+                    "event_body": {"passphrase": marker},
+                }
+            ],
+            root=tmp_path,
+        )
+
+    assert marker not in str(exc_info.value)
+
+
+def test_manifest_rejects_invalid_prebuilt_audit_event_artifact_shape(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    valid_artifact: dict[str, object] = {
+        "path": "reviewed/event.json",
+        "role": "agent-policy-audit-event",
+        "content_binding": binding,
+    }
+    manifest = build_evidence_pack_manifest(
+        report_payload={},
+        agent_policy_audit_event_artifacts=[valid_artifact],
+        root=tmp_path,
+    )
+    assert manifest["artifacts"] == [valid_artifact]
+
+    invalid_artifacts = [
+        valid_artifact | {"role": "report"},
+        valid_artifact | {"path": "../outside/event.json"},
+        valid_artifact | {"content_binding": binding | {"digest": "invalid"}},
+    ]
+    for artifact in invalid_artifacts:
+        with pytest.raises(
+            ValueError,
+            match="^agent-policy audit event is not valid bounded JSON$",
+        ):
+            build_evidence_pack_manifest(
+                report_payload={},
+                agent_policy_audit_event_artifacts=[artifact],
+                root=tmp_path,
+            )
 
 
 @pytest.mark.parametrize(
