@@ -22,6 +22,7 @@ from agent_guard.consumer import (
     load_report_schema,
     select_report_schema,
     validate_agent_policy_audit_event_files,
+    validate_evidence_pack_manifest,
     validate_report,
 )
 from agent_guard.consumer import (
@@ -372,6 +373,53 @@ def test_v1_schema_consumer_fails_closed_on_v2_report(tmp_path: Path) -> None:
         match=r"must equal 'agent-guard\.(?:evidence_pack_manifest|report_evidence)\.v1'",
     ):
         validate_report(payload, load_report_schema())
+
+
+@pytest.mark.parametrize(
+    ("manifest_version", "report_version"),
+    (
+        (
+            "agent-guard.evidence_pack_manifest.v1",
+            "agent-guard.report_evidence.v2",
+        ),
+        (
+            "agent-guard.evidence_pack_manifest.v2",
+            "agent-guard.report_evidence.v1",
+        ),
+    ),
+)
+def test_evidence_pack_manifest_rejects_incompatible_version_pair(
+    tmp_path: Path,
+    manifest_version: str,
+    report_version: str,
+) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    manifest = payload["evidence_pack_manifest"]
+    payload["report"]["schema_version"] = report_version
+    manifest["schema_version"] = manifest_version
+    manifest["report"]["schema_version"] = report_version
+    if manifest_version == "agent-guard.evidence_pack_manifest.v2":
+        event = tmp_path / "synthetic-reviewed-event.json"
+        event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+        manifest["artifacts"].append(
+            {
+                "path": "reviewed/event.json",
+                "role": "agent-policy-audit-event",
+                "content_binding": build_agent_policy_audit_event_binding(
+                    event,
+                    event_profile=AUDIT_EVENT_PROFILE,
+                ),
+            }
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"^\$\.evidence_pack_manifest\.schema_version does not match "
+            r"\$\.report\.schema_version$"
+        ),
+    ):
+        validate_evidence_pack_manifest(manifest, payload)
 
 
 def _prepend_duplicate_json_member(text: str, *, key: str, value: object) -> str:

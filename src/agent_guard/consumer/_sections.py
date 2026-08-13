@@ -177,6 +177,14 @@ def validate_evidence_pack_manifest(manifest: Mapping[str, Any], payload: Mappin
     report = require_mapping(payload.get("report"), "$.report")
     for key in ("schema_version", "format", "scope"):
         require(manifest_report.get(key) == report.get(key), f"$.evidence_pack_manifest.report.{key} must match $.report.{key}")
+    expected_report_version = {
+        "agent-guard.evidence_pack_manifest.v1": "agent-guard.report_evidence.v1",
+        "agent-guard.evidence_pack_manifest.v2": "agent-guard.report_evidence.v2",
+    }[manifest_version]
+    require(
+        report.get("schema_version") == expected_report_version,
+        "$.evidence_pack_manifest.schema_version does not match $.report.schema_version",
+    )
     require(manifest_report.get("status") == payload.get("status"), "$.evidence_pack_manifest.report.status must match $.status")
     require(
         manifest_report.get("finding_count") == payload.get("finding_count"),

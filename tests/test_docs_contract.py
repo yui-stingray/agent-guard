@@ -1011,6 +1011,7 @@ def test_compatibility_doc_keeps_public_safe_contract_bounded() -> None:
     assert "without a new bundle version or explicit" in docs
     assert "`agent-guard.result.v1` outer envelope" in docs
     assert "nested `conformance` and `evidence_pack_manifest`" in " ".join(docs.split())
+    assert "requires at least one bound `agent-policy` audit-event artifact" in docs
 
 
 def test_release_criteria_keep_patch_releases_bounded() -> None:

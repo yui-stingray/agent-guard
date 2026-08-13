@@ -1323,32 +1323,38 @@ def main() -> int:
                 "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
                 "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
                 "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+                "agent-guard.report_evidence.v2.schema.json": "agent-guard.report_evidence.v2",
                 "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
                 "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
+                "agent-guard.evidence_pack_manifest.v2.schema.json": "agent-guard.evidence_pack_manifest.v2",
                 "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
             }}
             schema_dir = resources.files("agent_guard.schemas")
             for filename, schema_version in schema_names.items():
                 schema = json.loads((schema_dir / filename).read_text(encoding="utf-8"))
                 assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-                if filename == "agent-guard.report_evidence.v1.schema.json":
+                if filename in {{
+                    "agent-guard.report_evidence.v1.schema.json",
+                    "agent-guard.report_evidence.v2.schema.json",
+                }}:
                     assert schema["properties"]["report"]["properties"]["schema_version"]["const"] == schema_version
-                    assert "surface_inventory" in schema["allOf"][0]["then"]["required"]
-                    assert "evidence_coverage" in schema["allOf"][0]["then"]["required"]
-                    assert "conformance" in schema["properties"]
-                    assert "evidence_pack_manifest" in schema["properties"]
-                    assert schema["properties"]["conformance"]["properties"]["profile"]["enum"] == [
-                        "minimal",
-                        "recommended",
-                        "strict",
-                    ]
-                    artifact_role = schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
-                    assert "agent-policy-audit-event" in artifact_role["enum"]
-                    surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
-                    assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
-                    assert schema["properties"]["surface_delta"]["properties"]["schema_version"]["const"] == (
-                        "agent-guard.surface_delta.v1"
-                    )
+                    if filename == "agent-guard.report_evidence.v1.schema.json":
+                        assert "surface_inventory" in schema["allOf"][0]["then"]["required"]
+                        assert "evidence_coverage" in schema["allOf"][0]["then"]["required"]
+                        assert "conformance" in schema["properties"]
+                        assert "evidence_pack_manifest" in schema["properties"]
+                        assert schema["properties"]["conformance"]["properties"]["profile"]["enum"] == [
+                            "minimal",
+                            "recommended",
+                            "strict",
+                        ]
+                        artifact_role = schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
+                        assert "agent-policy-audit-event" in artifact_role["enum"]
+                        surface_schema = schema["properties"]["surface_inventory"]["properties"]["schema_version"]
+                        assert "agent-guard.agent_surface_inventory.v2" in surface_schema["enum"]
+                        assert schema["properties"]["surface_delta"]["properties"]["schema_version"]["const"] == (
+                            "agent-guard.surface_delta.v1"
+                        )
                 else:
                     assert schema["properties"]["schema_version"]["const"] == schema_version
             """
@@ -1949,6 +1955,24 @@ def main() -> int:
             bound_report_payload["evidence_pack_manifest"]["schema_version"]
             == "agent-guard.evidence_pack_manifest.v2"
         )
+        bound_consumer_cli = run(
+            isolated_module_command(
+                python,
+                "agent_guard.consumer",
+                "--agent-policy-audit-event",
+                str(audit_event_path),
+                "--agent-policy-audit-event-profile",
+                audit_event_profile,
+                str(report_output),
+            ),
+            cwd=temp,
+        )
+        bound_consumer_summary = json.loads(bound_consumer_cli.stdout)
+        assert bound_consumer_summary["report_schema_version"] == (
+            "agent-guard.report_evidence.v2"
+        )
+        assert audit_event_marker not in bound_consumer_cli.stdout
+        assert str(temp) not in bound_consumer_cli.stdout
         manifest_cli = run(
             isolated_module_command(
                 python,

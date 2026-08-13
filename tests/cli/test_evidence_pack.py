@@ -481,6 +481,40 @@ def test_bound_manifest_rejects_v1_report_without_leak(tmp_path: Path) -> None:
     assert str(event) not in str(exc_info.value)
 
 
+def test_manifest_rejects_v2_report_without_bound_audit_event() -> None:
+    for prebuilt_artifacts in (None, []):
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"^report evidence v2 requires bound agent-policy audit events$"
+            ),
+        ):
+            build_evidence_pack_manifest(
+                report_payload=V2_REPORT_PAYLOAD,
+                agent_policy_audit_event_artifacts=prebuilt_artifacts,
+            )
+
+    manifest = build_evidence_pack_manifest(
+        report_payload={
+            "report": {"schema_version": "agent-guard.report_evidence.v1"},
+        },
+        agent_policy_audit_event_artifacts=[],
+    )
+    assert manifest["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
+
+
+def test_manifest_rejects_profile_with_explicitly_empty_prebuilt_artifacts() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event profile is invalid$",
+    ):
+        build_evidence_pack_manifest(
+            report_payload=V2_REPORT_PAYLOAD,
+            agent_policy_audit_event_artifacts=[],
+            agent_policy_audit_event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+
 @pytest.mark.parametrize(
     "event_profile",
     (

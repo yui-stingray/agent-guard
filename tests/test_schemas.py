@@ -244,9 +244,6 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
         assert not validator.is_valid(value)
         manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
 
-        manifest["artifacts"][0]["review_metadata"] = "synthetic-public-metadata"
-        assert not validator.is_valid(value)
-
         manifest["artifacts"].append(
             {
                 "path": "reviewed/event.json",
@@ -265,6 +262,11 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
         )
         assert validator.is_valid(value)
 
+        manifest["artifacts"][-1]["review_metadata"] = "synthetic-public-metadata"
+        assert not validator.is_valid(value)
+        del manifest["artifacts"][-1]["review_metadata"]
+        assert validator.is_valid(value)
+
         manifest["artifacts"][-1]["event_body"] = {
             "passphrase": "synthetic-private-passphrase"
         }
@@ -278,6 +280,17 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
             },
         }
         assert not validator.is_valid(value)
+
+
+def test_v2_embedded_manifest_artifacts_match_standalone_contract() -> None:
+    standalone = load_schema(
+        "agent-guard.evidence_pack_manifest.v2.schema.json"
+    )
+    report = load_schema("agent-guard.report_evidence.v2.schema.json")
+
+    assert standalone["properties"]["artifacts"] == (
+        report["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]
+    )
 
 
 def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None:

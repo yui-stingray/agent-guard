@@ -41,7 +41,7 @@ Installed wheels package these JSON Schema resources under
 | Context inventory | `agent-guard.context_inventory.v1` | `agent-guard.context_inventory.v1.schema.json` | none | Repository-relative context file metadata and permission-boundary status. |
 | Context lock coverage | `agent-guard.context_lock_coverage.v1` | `agent-guard.context_lock_coverage.v1.schema.json` | none | Hash-free coverage counts, covered context files, and digest coverage findings. |
 | Sanitized report evidence | `agent-guard.report_evidence.v1` | `agent-guard.report_evidence.v1.schema.json` | none | Public-safe report JSON without content-bound audit-event references. Existing v1 consumers remain supported. |
-| Sanitized report evidence | `agent-guard.report_evidence.v2` | `agent-guard.report_evidence.v2.schema.json` | none | Public-safe report JSON whose embedded evidence-pack manifest can bind separately supplied `agent-policy` audit events. |
+| Sanitized report evidence | `agent-guard.report_evidence.v2` | `agent-guard.report_evidence.v2.schema.json` | none | Public-safe report JSON whose embedded evidence-pack manifest requires at least one bound `agent-policy` audit-event artifact. |
 | Conformance evidence | `agent-guard.conformance.v1` | `agent-guard.conformance.v1.schema.json` | none | Profile, status, required gates/surfaces, counts, and conformance findings. |
 | Evidence pack manifest | `agent-guard.evidence_pack_manifest.v1` | `agent-guard.evidence_pack_manifest.v1.schema.json` | none | Sanitized artifact manifest, including legacy path-and-role audit-event references that are not content-bound. |
 | Evidence pack manifest | `agent-guard.evidence_pack_manifest.v2` | `agent-guard.evidence_pack_manifest.v2.schema.json` | none | Sanitized artifact manifest whose audit-event entries require a controlled profile and canonical-content digest. |
@@ -88,8 +88,8 @@ structurally valid legacy metadata, but they are explicitly unbound. A current
 consumer can read that v1 evidence, but fails closed if a caller asks it to
 verify event content against the unbound reference.
 
-V2 requires `content_binding` on every audit-event entry. The binding uses
-canonical JSON, an explicit expected event profile, and a domain-separated
+V2 requires at least one audit-event artifact and `content_binding` on every
+audit-event entry. The binding uses canonical JSON, an explicit expected event profile, and a domain-separated
 SHA-256 digest encoded as lowercase base32 with a controlled `b` prefix. This
 controlled digest is not a raw hexadecimal hash and is the only hash-like value
 admitted on this field. Current consumers fail closed when the separately

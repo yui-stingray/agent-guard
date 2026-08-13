@@ -32,6 +32,9 @@ ERROR_AUDIT_EVENT_PROFILE = "agent-policy audit event profile is invalid"
 ERROR_AUDIT_EVENT_REPORT_VERSION = (
     "bound agent-policy audit events require report evidence v2"
 )
+ERROR_AUDIT_EVENT_BINDING_REQUIRED = (
+    "report evidence v2 requires bound agent-policy audit events"
+)
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
 
@@ -495,6 +498,11 @@ def build_evidence_pack_manifest(
             _validate_agent_policy_audit_event_artifact_shape(artifact, root=root)
             for artifact in agent_policy_audit_event_artifacts
         ]
+        if (
+            not audit_event_artifacts
+            and str(agent_policy_audit_event_profile).strip()
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
     elif agent_policy_audit_event_paths:
         if root is None:
             raise ValueError(ERROR_AUDIT_EVENT_PATH)
@@ -506,13 +514,17 @@ def build_evidence_pack_manifest(
     elif str(agent_policy_audit_event_profile).strip():
         raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
     artifacts.extend(audit_event_artifacts)
+    report_metadata = report_payload.get("report")
+    report_schema_version = (
+        report_metadata.get("schema_version")
+        if isinstance(report_metadata, dict)
+        else ""
+    )
     if audit_event_artifacts:
-        report_metadata = report_payload.get("report")
-        if (
-            not isinstance(report_metadata, dict)
-            or report_metadata.get("schema_version") != REPORT_EVIDENCE_SCHEMA_VERSION_V2
-        ):
+        if report_schema_version != REPORT_EVIDENCE_SCHEMA_VERSION_V2:
             raise ValueError(ERROR_AUDIT_EVENT_REPORT_VERSION)
+    elif report_schema_version == REPORT_EVIDENCE_SCHEMA_VERSION_V2:
+        raise ValueError(ERROR_AUDIT_EVENT_BINDING_REQUIRED)
 
     manifest: dict[str, object] = {
         "schema_version": (
