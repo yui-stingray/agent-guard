@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Corrected `bun x` and direct `bunx` pin inference to evaluate only the package operand
+  (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are
+  consumed only before `x`; version-dependent post-`x` selectors such as
+  `--package` fail closed as unpinned metadata.
 - Made static MCP package pin inference inspect recognized package-manager
   operands and selectors instead of arbitrary command arguments. Full SemVer,
   exact `uvx` requirements, and package-attached full SHA-256 pins remain

@@ -11,7 +11,7 @@ from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qsl, urlparse
 
 
-PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "uvx", "python", "python3", "node", "deno", "docker"}
+PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "bunx", "uvx", "python", "python3", "node", "deno", "docker"}
 DIRECT_PACKAGE_OPERAND_COMMANDS = frozenset({"npx", "uvx"})
 PACKAGE_OPERAND_SUBCOMMANDS = {
     "npm": frozenset({"exec", "x"}),
@@ -24,9 +24,10 @@ PACKAGE_SELECTOR_OPTIONS = {
     "npm": frozenset({"--package"}),
     "pnpm": frozenset({"--package"}),
     "yarn": frozenset({"--package", "-p"}),
-    "bun": frozenset({"--package", "-p"}),
 }
 UVX_PACKAGE_SELECTOR_OPTIONS = frozenset({"--from", "--with", "-w"})
+BUN_GLOBAL_VALUE_OPTIONS = frozenset({"--cwd", "--shell"})
+BUNX_BOOLEAN_OPTIONS = frozenset({"--bun"})
 PACKAGE_OPERAND_BOOLEAN_OPTIONS = {
     "npx": frozenset({"-q", "-y", "--quiet", "--yes"}),
     "npm": frozenset(
@@ -45,7 +46,6 @@ PACKAGE_OPERAND_BOOLEAN_OPTIONS = {
     ),
     "pnpm": frozenset({"-c", "-s", "--shell-mode", "--silent"}),
     "yarn": frozenset({"-q", "--quiet"}),
-    "bun": frozenset({"-b", "--bun", "--verbose"}),
     "uvx": frozenset(
         {
             "--offline",
@@ -61,7 +61,6 @@ PACKAGE_OPERAND_VALUE_OPTIONS = {
     "npm": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"}),
     "pnpm": frozenset({"--allow-build", "--reporter"}),
     "yarn": frozenset(),
-    "bun": frozenset({"--cwd", "--shell"}),
     "uvx": frozenset(
         {
             "--cache-dir",
@@ -420,6 +419,46 @@ def npm_package_operand_args(args: list[str]) -> tuple[list[str], list[str], boo
     return None
 
 
+def bun_package_operand_args(args: list[str]) -> tuple[list[str], list[str], bool] | None:
+    try:
+        boundary = args.index("--")
+    except ValueError:
+        prefix_and_subcommand = args
+    else:
+        prefix_and_subcommand = args[:boundary]
+
+    subcommands = PACKAGE_OPERAND_SUBCOMMANDS["bun"]
+    index = 0
+    while index < len(prefix_and_subcommand):
+        value = prefix_and_subcommand[index]
+        if value.lower() in subcommands:
+            return args[index + 1 :], [], True
+
+        value_option = option_value(
+            prefix_and_subcommand,
+            index,
+            BUN_GLOBAL_VALUE_OPTIONS,
+        )
+        if value_option is not None:
+            option_argument, consumed = value_option
+            if option_argument is None:
+                return None
+            index += consumed
+            continue
+        if value.startswith("-") and any(
+            candidate.lower() in subcommands
+            for candidate in prefix_and_subcommand[index + 1 :]
+        ):
+            subcommand_index = next(
+                candidate
+                for candidate in range(index + 1, len(prefix_and_subcommand))
+                if prefix_and_subcommand[candidate].lower() in subcommands
+            )
+            return args[subcommand_index + 1 :], [], False
+        return None
+    return None
+
+
 def subcommand_package_operand_args(
     command: str,
     args: list[str],
@@ -480,10 +519,44 @@ def subcommand_package_operand_args(
     return None
 
 
+def bunx_package_operands(args: list[str]) -> list[tuple[str, bool]] | None:
+    try:
+        boundary = args.index("--")
+    except ValueError:
+        before_boundary = args
+        after_boundary: list[str] = []
+    else:
+        before_boundary = args[:boundary]
+        after_boundary = args[boundary + 1 :]
+
+    first_positional: str | None = None
+    for value in before_boundary:
+        if value in BUNX_BOOLEAN_OPTIONS:
+            if first_positional is not None:
+                return None
+            continue
+        if value.startswith("-"):
+            return None
+        if first_positional is None:
+            first_positional = value
+
+    if first_positional is not None:
+        return [(first_positional, True)]
+    if after_boundary:
+        if after_boundary[0].startswith("-"):
+            return None
+        return [(after_boundary[0], True)]
+    return []
+
+
 def package_operand_args(command: str, args: list[str]) -> tuple[list[str], list[str], bool] | None:
     normalized_command = command.strip()
+    if normalized_command == "bunx":
+        return args, [], True
     if normalized_command in DIRECT_PACKAGE_OPERAND_COMMANDS:
         return args, [], True
+    if normalized_command == "bun":
+        return bun_package_operand_args(args)
     if normalized_command == "npm":
         return npm_package_operand_args(args)
     subcommands = PACKAGE_OPERAND_SUBCOMMANDS.get(normalized_command)
@@ -503,6 +576,9 @@ def package_operands(
     args: list[str],
     initial_selectors: list[str],
 ) -> list[tuple[str, bool]] | None:
+    if command in {"bun", "bunx"}:
+        return bunx_package_operands(args)
+
     try:
         boundary = args.index("--")
     except ValueError:

@@ -221,12 +221,18 @@ The JSON report is a compact statement of what `agent-guard` checked:
   experiments, but conformance reports display them as `<external-policy>` and
   do not treat them as reviewed repository evidence.
   `version_pinned` is emitted only for recognized package-execution forms. For
-  `npx`, `npm exec`/`npm x`, `pnpm dlx`, `yarn dlx`, and `bun x`, every actual
-  package operand or package selector must use a full SemVer or a
+  `npx`, `npm exec`/`npm x`, `pnpm dlx`, and `yarn dlx`, every actual package
+  operand or package selector must use a full SemVer or a
   package-attached `sha256` value with 64 hexadecimal digits. For `uvx`, every
   selected requirement must use an exact `name[extras]==version` form; a
   positional command must use uv's exact-only `name@version` syntax and is also
   required unless `--from` selects it.
+  For `bun x` and direct `bunx`, only the actual package operand is eligible;
+  `--bun` may precede it, while Bun global `--cwd` and `--shell` are recognized
+  only before `x` on the `bun x` form.
+  Version-dependent post-`x` selectors such as `--package` do not supply a pin,
+  because static configuration evidence does not establish the Bun version
+  that will interpret them.
   Ranges, tags such as `latest`, npm-style major/minor-only versions, short
   digests, editable or requirements-file inputs, and ambiguous or unsupported
   option layouts are conservatively not treated as pinned. This is static command
