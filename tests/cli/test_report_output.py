@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agent_guard import __version__ as AGENT_GUARD_VERSION
 
+from tests.audit_event_helpers import write_audit_event
 from tests.cli.helpers import assert_shared_envelope, create_report_violation_fixture_repo, read_report_fixture, run_cli, write
 
 
@@ -202,7 +203,7 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     output = tmp_path / "evidence" / "agent-guard-report.json"
     event = tmp_path / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
 
     result = run_cli(
         "report",
@@ -255,7 +256,7 @@ def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -
     )
     event = tmp_path / "evidence" / "nested" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
 
     result = run_cli(
         "report",
@@ -313,7 +314,7 @@ def test_report_cli_error_after_valid_audit_event_remains_v1(tmp_path: Path) -> 
     event_marker = "synthetic-reviewed-event-marker"
     event = tmp_path / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text(json.dumps({"marker": event_marker}), encoding="utf-8")
+    write_audit_event(event, context={"marker": event_marker})
 
     result = run_cli(
         "report",

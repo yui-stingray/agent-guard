@@ -26,7 +26,12 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
         (api_path, "def handler():\n    return 'ok'\n"),
         (content_path, "Reviewed documentation.\n"),
         (workflow_path, "name: ci\njobs: {}\n"),
-        (audit_event_path, '{"status":"reviewed"}\n'),
+        (
+            audit_event_path,
+            '{"repo":"example/repo","capability":"read","context":{},'
+            '"decision":{"mode":"auto_allow","reason":"repo_policy",'
+            '"matched_repo":"example/repo"}}\n',
+        ),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text.encode("utf-8"))

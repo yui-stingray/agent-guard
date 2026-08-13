@@ -42,7 +42,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--agent-policy-audit-event-profile",
         default="",
-        help="Expected public profile identifier for every supplied audit event",
+        help="Expected recognized profile agent-policy.audit_event.v1.1 for every supplied event",
     )
     args = parser.parse_args(argv)
     if args.emit_annotations and args.evidence_dir is None:

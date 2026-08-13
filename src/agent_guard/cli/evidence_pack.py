@@ -36,7 +36,7 @@ def add_evidence_pack_parser(top) -> None:
     evidence_pack_manifest.add_argument(
         "--agent-policy-audit-event-profile",
         default="",
-        help="validated public profile identifier for every attached agent-policy audit event",
+        help="recognized profile agent-policy.audit_event.v1.1 for every attached audit event",
     )
     evidence_pack_manifest.add_argument("--json", action="store_true", help="emit JSON")
 
