@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlparse
 
 
 PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "bunx", "uvx", "python", "python3", "node", "deno", "docker"}
+WINDOWS_PACKAGE_MANAGER_SUFFIXES = (".cmd", ".exe", ".bat", ".ps1")
 DIRECT_PACKAGE_OPERAND_COMMANDS = frozenset({"npx", "uvx"})
 PACKAGE_OPERAND_SUBCOMMANDS = {
     "npm": frozenset({"exec", "x"}),
@@ -531,9 +532,9 @@ def bunx_package_operands(args: list[str]) -> list[tuple[str, bool]] | None:
 
     first_positional: str | None = None
     for value in before_boundary:
+        if first_positional is not None:
+            break
         if value in BUNX_BOOLEAN_OPTIONS:
-            if first_positional is not None:
-                return None
             continue
         if value.startswith("-"):
             return None
@@ -549,8 +550,19 @@ def bunx_package_operands(args: list[str]) -> list[tuple[str, bool]] | None:
     return []
 
 
+def normalized_package_manager_command(command: str) -> str:
+    normalized_command = command.strip().casefold()
+    for suffix in WINDOWS_PACKAGE_MANAGER_SUFFIXES:
+        if normalized_command.endswith(suffix):
+            normalized_command = normalized_command[: -len(suffix)]
+            break
+    return normalized_command if normalized_command in PACKAGE_MANAGER_COMMANDS else ""
+
+
 def package_operand_args(command: str, args: list[str]) -> tuple[list[str], list[str], bool] | None:
-    normalized_command = command.strip()
+    normalized_command = normalized_package_manager_command(command)
+    if not normalized_command:
+        return None
     if normalized_command == "bunx":
         return args, [], True
     if normalized_command in DIRECT_PACKAGE_OPERAND_COMMANDS:
@@ -593,6 +605,8 @@ def package_operands(
     uvx_from_selected = False
     index = 0
     while index < len(before_boundary):
+        if first_positional is not None and command != "npm":
+            break
         value = before_boundary[index]
         selector_option = option_value(
             before_boundary,
@@ -665,17 +679,20 @@ def is_immutable_package_operand(command: str, operand: str, *, primary: bool) -
 
 
 def infer_version_pin(command: str, args: list[str]) -> bool | None:
-    package_execution = package_operand_args(command, args)
+    normalized_command = normalized_package_manager_command(command)
+    if not normalized_command:
+        return None
+    package_execution = package_operand_args(normalized_command, args)
     if package_execution is None:
         return None
     operand_args, initial_selectors, valid = package_execution
     if not valid:
         return False
-    operands = package_operands(command, operand_args, initial_selectors)
+    operands = package_operands(normalized_command, operand_args, initial_selectors)
     if not operands:
         return False
     return all(
-        is_immutable_package_operand(command, operand, primary=primary)
+        is_immutable_package_operand(normalized_command, operand, primary=primary)
         for operand, primary in operands
     )
 

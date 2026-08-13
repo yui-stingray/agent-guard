@@ -96,13 +96,14 @@ FULL_SHA256 = "a" * 64
         ("npx", ["--package=pkg@1.2.3", "--package", "unpinned", "tool"], False),
         ("uvx", ["--from=pkg==1.2", "--with=unpinned", "tool"], False),
         ("npx", ["--package=pkg@1.2.3", "--unknown", "tool"], False),
-        ("npx", ["pkg@1.2.3", "--unknown"], False),
+        ("npx", ["pkg@1.2.3", "--unknown"], True),
         ("npm", ["exec", "pkg@1.2.3", "--unknown"], False),
-        ("pnpm", ["dlx", "pkg@1.2.3", "--unknown"], False),
-        ("yarn", ["dlx", "pkg@1.2.3", "--unknown"], False),
-        ("bun", ["x", "pkg@1.2.3", "--unknown"], False),
-        ("bunx", ["pkg@1.2.3", "--unknown"], False),
+        ("pnpm", ["dlx", "pkg@1.2.3", "--unknown"], True),
+        ("yarn", ["dlx", "pkg@1.2.3", "--unknown"], True),
+        ("bun", ["x", "pkg@1.2.3", "--unknown"], True),
+        ("bunx", ["pkg@1.2.3", "--unknown"], True),
         ("uvx", ["pkg==1.2.3", "--unknown"], False),
+        ("uvx", ["pkg@1.2.3", "--stdio"], True),
         ("npx", ["pkg@1.2.3", "--", "--unknown"], True),
         ("npm", ["exec", "pkg@1.2.3", "--", "--unknown"], True),
         ("pnpm", ["dlx", "pkg@1.2.3", "--", "--unknown"], True),
@@ -148,8 +149,10 @@ FULL_SHA256 = "a" * 64
         ("uvx", ["pkg@1.2.3"], True),
         ("uvx", ["pkg@1"], True),
         ("uvx", ["--with", "dep@1.2.3", "pkg@2.3.4"], False),
-        ("NPX.CMD", ["pkg"], None),
-        ("uvx.exe", ["pkg"], None),
+        ("NPX", ["pkg@1.2.3"], True),
+        ("NPX.CMD", ["pkg"], False),
+        ("uvx.exe", ["pkg"], False),
+        ("BUNX.PS1", ["pkg@1.2.3"], True),
         ("npm", ["install", "pkg@1.2.3"], None),
         ("node", ["pkg@1.2.3"], None),
         ("python", ["pkg==1.2.3"], None),
@@ -232,6 +235,7 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
         "bun-unsupported-selector",
         "bunx-unpinned",
         "latest",
+        "mixed-case-manager",
         "npm-exec",
         "npm-prefix",
         "npx",
@@ -242,6 +246,8 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
         "uvx-offline",
         "uvx-package-file",
         "uvx-with-unpinned-main",
+        "windows-npx-launcher",
+        "windows-uvx-launcher",
         "yarn",
     }
     for server_name in unpinned_servers:
@@ -262,13 +268,10 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
 
     assert "latest_package" in by_server["latest"]["risky_patterns"]
     assert by_server["mixed-case-manager"]["command_basename"] == "NPX"
-    assert "package_manager" not in by_server["mixed-case-manager"]
-    assert "version_pinned" not in by_server["mixed-case-manager"]
+    assert by_server["mixed-case-manager"]["package_manager"] == "npx"
     assert by_server["windows-npx-launcher"]["command_basename"] == "NPX.CMD"
-    assert "package_manager" not in by_server["windows-npx-launcher"]
-    assert "version_pinned" not in by_server["windows-npx-launcher"]
+    assert by_server["windows-npx-launcher"]["package_manager"] == "npx"
     assert by_server["windows-uvx-launcher"]["command_basename"] == "uvx.exe"
-    assert "package_manager" not in by_server["windows-uvx-launcher"]
-    assert "version_pinned" not in by_server["windows-uvx-launcher"]
+    assert by_server["windows-uvx-launcher"]["package_manager"] == "uvx"
     assert "version_pinned" not in by_server["unrelated"]
     assert "unpinned_package" not in by_server["unrelated"].get("risky_patterns", [])

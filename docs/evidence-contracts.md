@@ -233,6 +233,11 @@ The JSON report is a compact statement of what `agent-guard` checked:
   Version-dependent post-`x` selectors such as `--package` do not supply a pin,
   because static configuration evidence does not establish the Bun version
   that will interpret them.
+  Once a package or tool operand is selected, its trailing command arguments
+  are excluded from pin inference. Classification recognizes package-manager
+  launcher names case-insensitively and removes one known Windows launcher
+  suffix (`.cmd`, `.exe`, `.bat`, or `.ps1`) while preserving the original
+  public `command_basename`.
   Ranges, tags such as `latest`, npm-style major/minor-only versions, short
   digests, editable or requirements-file inputs, and ambiguous or unsupported
   option layouts are conservatively not treated as pinned. This is static command

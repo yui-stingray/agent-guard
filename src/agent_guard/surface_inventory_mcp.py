@@ -17,7 +17,6 @@ from .surface_inventory_mcp_safety import (
     AUTH_OPTION_RE,
     BROAD_AUTHORIZATION_SCOPE_VALUES,
     MCP_URL_KEYS,
-    PACKAGE_MANAGER_COMMANDS,
     SCOPE_FIELD_NAMES,
     SECRET_SHAPED_VALUE,
     command_basename,
@@ -32,6 +31,7 @@ from .surface_inventory_mcp_safety import (
     is_env_reference,
     is_inline_auth_literal,
     normalized_auth_field_name,
+    normalized_package_manager_command,
     safe_mcp_command_basename,
     safe_mcp_env_var_name,
     safe_mcp_remote_host,
@@ -212,7 +212,7 @@ def collect_mcp_config_surfaces(
             remote_host = safe_mcp_remote_host(extract_remote_host(raw_server))
             transport = infer_transport(raw_server, remote_host, command)
             version_pinned = infer_version_pin(command, args)
-            package_manager = command if command in PACKAGE_MANAGER_COMMANDS else ""
+            package_manager = normalized_package_manager_command(command)
             all_strings = string_values(raw_server)
             metadata_strings = [*all_strings, *args]
             risky_patterns: set[str] = set()
