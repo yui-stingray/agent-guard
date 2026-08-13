@@ -5,7 +5,7 @@ Why: connect context inventory to digest drift checks without emitting raw conte
 
 from __future__ import annotations
 
-import hashlib
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +13,22 @@ from typing import Any
 
 import yaml
 
-from .context_guard import ContextInventory
+from .bounded_repo_reader import (
+    BoundedRepoReceipt,
+    BoundedRepoContainmentError,
+    BoundedRepoFileNotFoundError,
+    BoundedRepoLimitError,
+    BoundedRepoReadError,
+    DistinctInputBudget,
+    read_repo_bound_bytes,
+)
+from .context_guard import (
+    ERROR_CONTEXT_SCAN_LIMIT,
+    ERROR_CONTEXT_SCAN_TARGET,
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    MAX_CONTEXT_FILE_BYTES,
+    ContextInventory,
+)
 from .digest_guard import DigestCheck, normalize_checks
 
 
@@ -40,8 +55,72 @@ class ContextLockCoverageFinding:
         }
 
 
-def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _snapshot_inputs(
+    inventory: ContextInventory,
+) -> dict[str, tuple[BoundedRepoReceipt, str]]:
+    receipts = inventory._input_receipts
+    alias_pairs = inventory._input_aliases
+    aliases = dict(inventory._input_aliases)
+    receipt_paths = [receipt.relative_path for receipt in receipts]
+    if (
+        len(receipts) != len(inventory.context_files)
+        or len(alias_pairs) != len(receipts)
+        or len(aliases) != len(alias_pairs)
+        or len(set(receipt_paths)) != len(receipt_paths)
+        or set(aliases) != set(receipt_paths)
+    ):
+        raise ValueError(ERROR_CONTEXT_SCAN_TARGET)
+    return {
+        receipt.relative_path: (receipt, aliases[receipt.relative_path])
+        for receipt in receipts
+    }
+
+
+def _context_file_receipt(
+    *,
+    root: Path,
+    relative_path: str,
+    input_budget: DistinctInputBudget,
+) -> BoundedRepoReceipt | None:
+    try:
+        opened = read_repo_bound_bytes(
+            root / relative_path,
+            root,
+            max_bytes=MAX_CONTEXT_FILE_BYTES,
+        )
+    except BoundedRepoFileNotFoundError:
+        return None
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_CONTEXT_SCAN_LIMIT) from None
+    except (BoundedRepoContainmentError, BoundedRepoReadError):
+        raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+    try:
+        input_budget.charge(opened)
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_CONTEXT_SCAN_LIMIT) from None
+    except BoundedRepoReadError:
+        raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
+    return opened.receipt()
+
+
+def _receipt_matches_snapshot(
+    current: BoundedRepoReceipt,
+    snapshot: BoundedRepoReceipt,
+) -> bool:
+    return (
+        current.relative_path == snapshot.relative_path
+        and current.identity == snapshot.identity
+        and current.size_bytes == snapshot.size_bytes
+        and current.sha256 == snapshot.sha256
+    )
+
+
+def _context_relative_path(*, root: Path, raw_path: str) -> str:
+    target = Path(os.path.abspath(root / raw_path))
+    try:
+        return target.relative_to(root).as_posix()
+    except ValueError:
+        raise ValueError(f"context file path escapes root: {raw_path}") from None
 
 
 def context_lock_check_id(path: str, used_ids: set[str]) -> str:
@@ -56,8 +135,17 @@ def context_lock_check_id(path: str, used_ids: set[str]) -> str:
     return candidate
 
 
-def build_context_digest_policy(*, root: Path, inventory: ContextInventory) -> dict[str, Any]:
+def build_context_digest_policy(
+    *,
+    root: Path,
+    inventory: ContextInventory,
+    _input_budget: DistinctInputBudget | None = None,
+) -> dict[str, Any]:
     root = root.resolve()
+    input_budget = _input_budget or DistinctInputBudget(
+        max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+    )
+    snapshot_inputs = _snapshot_inputs(inventory)
     used_ids: set[str] = set()
     checks: list[dict[str, str]] = []
 
@@ -65,20 +153,31 @@ def build_context_digest_policy(*, root: Path, inventory: ContextInventory) -> d
         raise ValueError("no agent context files discovered")
 
     for entry in inventory.context_files:
-        target = (root / entry.path).resolve()
-        try:
-            relative_path = target.relative_to(root).as_posix()
-        except ValueError:
-            raise ValueError(f"context file path escapes root: {entry.path}") from None
-
-        if not target.is_file():
+        relative_path = _context_relative_path(root=root, raw_path=entry.path)
+        snapshot_input = snapshot_inputs.get(relative_path)
+        if snapshot_input is None:
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET)
+        reopen_path = snapshot_input[1]
+        current_receipt = _context_file_receipt(
+            root=root,
+            relative_path=reopen_path,
+            input_budget=input_budget,
+        )
+        if current_receipt is None:
             raise FileNotFoundError(f"context file not found: {entry.path}")
+        snapshot_receipt = snapshot_input[0]
+        if not _receipt_matches_snapshot(
+            current_receipt,
+            snapshot_receipt,
+        ):
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET)
+        checked_digest = snapshot_receipt.sha256.hex()
 
         checks.append(
             {
                 "id": context_lock_check_id(relative_path, used_ids),
                 "path": relative_path,
-                "sha256": sha256_file(target),
+                "sha256": checked_digest,
             }
         )
 
@@ -102,8 +201,13 @@ def check_context_digest_coverage(
     root: Path,
     inventory: ContextInventory,
     digest_policy: dict[str, Any],
+    _input_budget: DistinctInputBudget | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
+    input_budget = _input_budget or DistinctInputBudget(
+        max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+    )
+    snapshot_inputs = _snapshot_inputs(inventory)
     if not inventory.context_files:
         raise ValueError("no agent context files discovered")
 
@@ -116,11 +220,10 @@ def check_context_digest_coverage(
     covered: list[dict[str, object]] = []
     covered_count = 0
     for entry in inventory.context_files:
-        target = (root / entry.path).resolve()
-        try:
-            rel_path = target.relative_to(root).as_posix()
-        except ValueError:
-            raise ValueError(f"context file path escapes root: {entry.path}") from None
+        rel_path = _context_relative_path(root=root, raw_path=entry.path)
+        snapshot_input = snapshot_inputs.get(rel_path)
+        if snapshot_input is None:
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET)
 
         checks = checks_by_path.get(rel_path, [])
         full_file_checks = [check for check in checks if check.start_line == 1]
@@ -148,7 +251,13 @@ def check_context_digest_coverage(
                 )
             )
             continue
-        if not target.is_file():
+        reopen_path = snapshot_input[1]
+        current_receipt = _context_file_receipt(
+            root=root,
+            relative_path=reopen_path,
+            input_budget=input_budget,
+        )
+        if current_receipt is None:
             findings.append(
                 ContextLockCoverageFinding(
                     rule_id="context_lock_file_missing",
@@ -160,10 +269,15 @@ def check_context_digest_coverage(
                 )
             )
             continue
-
-        actual_sha256 = sha256_file(target)
+        snapshot_receipt = snapshot_input[0]
+        if not _receipt_matches_snapshot(
+            current_receipt,
+            snapshot_receipt,
+        ):
+            raise ValueError(ERROR_CONTEXT_SCAN_TARGET)
+        checked_digest = snapshot_receipt.sha256.hex()
         matching_check = next(
-            (check for check in full_file_checks if check.expected_sha256 == actual_sha256),
+            (check for check in full_file_checks if check.expected_sha256 == checked_digest),
             None,
         )
         if matching_check is not None:

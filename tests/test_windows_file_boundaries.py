@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from agent_guard import api_guard, content_guard, evidence_pack, workflow_guard
+from agent_guard import (
+    api_guard,
+    bounded_repo_reader,
+    content_guard,
+    evidence_pack,
+    surface_inventory_mcp,
+    workflow_guard,
+)
 from agent_guard.consumer import validate_agent_policy_audit_event_files
 
 
@@ -21,11 +28,15 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
     api_path = repo / "src" / "api.py"
     content_path = repo / "docs" / "note.md"
     workflow_path = repo / ".github" / "workflows" / "ci.yml"
+    bounded_context_path = repo / "context" / "AGENTS.md"
+    bounded_mcp_path = repo / ".mcp.json"
     audit_event_path = repo / "reviewed" / "policy-admission-event.json"
     for path, text in (
         (api_path, "def handler():\n    return 'ok'\n"),
         (content_path, "Reviewed documentation.\n"),
         (workflow_path, "name: ci\njobs: {}\n"),
+        (bounded_context_path, "Require approval before writes.\n"),
+        (bounded_mcp_path, '{"mcpServers":{}}\n'),
         (audit_event_path, '{"status":"reviewed"}\n'),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +51,20 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
         repo,
         max_bytes=1024,
     ) == b"name: ci\njobs: {}\n"
+    context_read = bounded_repo_reader.read_repo_bound_bytes(
+        bounded_context_path,
+        repo,
+        max_bytes=1024,
+    )
+    assert context_read.data == b"Require approval before writes.\n"
+    assert context_read.relative_path == "context/AGENTS.md"
+    mcp_read = bounded_repo_reader.read_repo_bound_bytes(
+        bounded_mcp_path,
+        repo,
+        max_bytes=1024,
+    )
+    assert mcp_read.data == b'{"mcpServers":{}}\n'
+    assert mcp_read.relative_path == ".mcp.json"
     artifacts = evidence_pack.build_agent_policy_audit_event_artifacts(
         ["reviewed/policy-admission-event.json"],
         event_profile=AUDIT_EVENT_PROFILE,
@@ -55,6 +80,16 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
         (audit_event_path,),
         event_profile=AUDIT_EVENT_PROFILE,
     )
+
+
+def test_windows_mcp_wildcard_discovery_is_case_insensitive(tmp_path: Path) -> None:
+    config_path = tmp_path / ".claude" / "Settings-CI.JSON"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text('{"mcpServers":{}}', encoding="utf-8")
+
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
+
+    assert any(item.get("path") == ".claude/Settings-CI.JSON" for item in surfaces)
 
 
 def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> None:
@@ -82,6 +117,8 @@ def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> N
             content_guard._read_scan_text(linked, repo)
         with pytest.raises(ValueError, match="^workflow scan target must stay under repo root$"):
             workflow_guard._read_repo_bound_bytes(linked, repo, max_bytes=1024)
+        with pytest.raises(bounded_repo_reader.BoundedRepoContainmentError):
+            bounded_repo_reader.read_repo_bound_bytes(linked, repo, max_bytes=1024)
         with pytest.raises(
             ValueError,
             match="^agent-policy audit event must be a repository file$",
@@ -100,5 +137,7 @@ def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> N
             content_guard._open_repo_file_windows(resolved_root, linked)
         with pytest.raises(ValueError, match="^workflow scan target must stay under repo root$"):
             workflow_guard._open_repo_file_windows(resolved_root, linked)
+        with pytest.raises(bounded_repo_reader.BoundedRepoContainmentError):
+            bounded_repo_reader._open_repo_file_windows(resolved_root, linked)
     finally:
         junction.rmdir()

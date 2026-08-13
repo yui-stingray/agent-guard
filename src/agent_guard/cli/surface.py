@@ -8,11 +8,22 @@ import argparse
 import json
 from pathlib import Path
 
-from ..context_guard import load_context_policy
+from ..bounded_repo_reader import DistinctInputBudget
+from ..context_guard import MAX_CONTEXT_DISTINCT_INPUT_BYTES, load_context_policy
 from ..public_redaction import sanitize_public_mapping
 from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
-from .common import resolve_policy_arg, result_payload
+from ..surface_inventory_mcp import MAX_MCP_DISTINCT_INPUT_BYTES
+from .common import (
+    bounded_public_json,
+    bounded_public_line,
+    emit_public_output,
+    resolve_policy_arg,
+    result_payload,
+)
+
+
+ERROR_SURFACE_INVENTORY_LIMIT = "surface inventory exceeds configured limits"
 
 
 def add_surface_parser(top) -> None:
@@ -40,15 +51,65 @@ def add_surface_parser(top) -> None:
     surface_delta.add_argument("--json", action="store_true", help="emit JSON")
 
 
+def _emit_surface_inventory_payload(
+    *,
+    args: argparse.Namespace,
+    root: Path,
+    payload: dict[str, object],
+    plain_text: str,
+) -> bool:
+    if not args.json:
+        emit_public_output(
+            f"{plain_text}\n",
+            error=ERROR_SURFACE_INVENTORY_LIMIT,
+        )
+        return True
+    try:
+        rendered = bounded_public_line(
+            bounded_public_json(
+                sanitize_public_mapping(payload),
+                error=ERROR_SURFACE_INVENTORY_LIMIT,
+                sort_keys=True,
+            ),
+            error=ERROR_SURFACE_INVENTORY_LIMIT,
+        )
+        emit_public_output(rendered, error=ERROR_SURFACE_INVENTORY_LIMIT)
+    except ValueError:
+        fallback = result_payload(
+            scanner="surface",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=ERROR_SURFACE_INVENTORY_LIMIT,
+            extra={"command": "inventory"},
+        )
+        emit_public_output(
+            f"{json.dumps(sanitize_public_mapping(fallback), ensure_ascii=False)}\n",
+            error=ERROR_SURFACE_INVENTORY_LIMIT,
+        )
+        return False
+    return True
+
+
 def run_surface_inventory(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = resolve_policy_arg(args.context_policy, root)
     try:
-        policy = load_context_policy(policy_path)
+        context_input_budget = DistinctInputBudget(
+            max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+        )
+        mcp_input_budget = DistinctInputBudget(max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES)
+        policy = load_context_policy(
+            policy_path,
+            _input_budget=context_input_budget,
+        )
         inventory = collect_agent_surface_inventory(
             root=root,
             context_policy=policy,
             schema_version=args.schema_version,
+            _context_input_budget=context_input_budget,
+            _mcp_input_budget=mcp_input_budget,
         )
     except Exception as exc:
         payload = result_payload(
@@ -60,10 +121,12 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
             error=str(exc),
             extra={"command": "inventory"},
         )
-        if args.json:
-            print(json.dumps(sanitize_public_mapping(payload), ensure_ascii=False))
-        else:
-            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        _emit_surface_inventory_payload(
+            args=args,
+            root=root,
+            payload=payload,
+            plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+        )
         return 2
 
     surface_count = int(inventory.get("summary", {}).get("surface_count", 0)) if isinstance(
@@ -81,10 +144,13 @@ def run_surface_inventory(args: argparse.Namespace) -> int:
         summary_extra={"surface_count": surface_count},
         extra={"command": "inventory", "surface_inventory": inventory},
     )
-    if args.json:
-        print(json.dumps(sanitize_public_mapping(payload), ensure_ascii=False, sort_keys=True))
-    else:
-        print(f"surface-inventory: OK ({surface_count} surfaces)")
+    if not _emit_surface_inventory_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=f"surface-inventory: OK ({surface_count} surfaces)",
+    ):
+        return 2
     return 0
 
 

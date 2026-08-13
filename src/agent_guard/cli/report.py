@@ -8,8 +8,13 @@ import argparse
 import sys
 from pathlib import Path
 
+from ..bounded_repo_reader import DistinctInputBudget
 from ..conformance import build_conformance_report
-from ..context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from ..context_guard import (
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    load_context_policy,
+    scan_context_files_with_inventory,
+)
 from ..digest_guard import load_digest_policy, scan_digests
 from ..drift_guard import build_policy_spec_drift_report
 from ..evidence_pack import (
@@ -21,12 +26,18 @@ from ..profiles import PROFILE_NAMES
 from ..report_render import emit_report_output, render_report_output
 from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
+from ..surface_inventory_mcp import (
+    MAX_MCP_DISTINCT_INPUT_BYTES,
+    collect_mcp_config_surfaces,
+)
 from ..taxonomy import annotate_finding
 from ..workflow_guard import load_workflow_policy, scan_workflow_policy
 from .common import (
     RECOMMENDED_EVIDENCE_PRESET,
     REPORT_EVIDENCE_SCHEMA_VERSION,
     REPORT_EVIDENCE_SCHEMA_VERSION_V2,
+    require_public_output_budget,
+    emit_public_output,
     result_payload,
     resolve_policy_arg,
     safe_policy_path,
@@ -45,6 +56,9 @@ from .report_builders import (
     report_scope,
     safe_report_scan_dir,
 )
+
+
+ERROR_REPORT_OUTPUT_LIMIT = "report output exceeds configured limits"
 
 
 def add_report_parser(top) -> None:
@@ -168,8 +182,22 @@ def apply_report_defaults(args: argparse.Namespace) -> None:
         args.surface_inventory_version = "v1"
 
 
-def emit_report_payload(args: argparse.Namespace, payload: dict[str, object]) -> None:
-    emit_report_output(render_report_output(payload, args.format), args.output)
+def emit_report_payload(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+    *,
+    _enforce_budget: bool = True,
+) -> None:
+    rendered = render_report_output(payload, args.format)
+    if _enforce_budget:
+        rendered = require_public_output_budget(
+            rendered,
+            error=ERROR_REPORT_OUTPUT_LIMIT,
+        )
+    if str(args.output).strip():
+        emit_report_output(rendered, args.output)
+    else:
+        emit_public_output(rendered, error=ERROR_REPORT_OUTPUT_LIMIT)
     if not bool(args.stderr_summary):
         return
     sys.stderr.write(
@@ -228,18 +256,45 @@ def run_report(args: argparse.Namespace) -> int:
     )
 
     try:
+        context_input_budget = DistinctInputBudget(
+            max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+        )
+        mcp_input_budget = DistinctInputBudget(max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES)
         audit_event_artifacts = build_agent_policy_audit_event_artifacts(
             audit_event_paths,
             event_profile=audit_event_profile,
             root=root,
         )
-        policy = load_context_policy(policy_path)
-        findings, scanned_files = scan_context_files(root=root, policy=policy)
-        inventory = collect_context_inventory(root=root, policy=policy)
+        policy = load_context_policy(
+            policy_path,
+            _input_budget=context_input_budget,
+        )
+        findings, scanned_files, inventory = scan_context_files_with_inventory(
+            root=root,
+            policy=policy,
+            _input_budget=context_input_budget,
+        )
+        mcp_policy = (
+            None
+            if implicit_recommended_mcp_policy_missing or mcp_policy_abs is None
+            else load_mcp_policy(
+                mcp_policy_abs,
+                _input_budget=mcp_input_budget,
+            )
+        )
+        mcp_surfaces = (
+            collect_mcp_config_surfaces(root, _input_budget=mcp_input_budget)
+            if surface_inventory_version == "v2" or args.mcp_config_check
+            else None
+        )
         surface_inventory = collect_agent_surface_inventory(
             root=root,
             context_policy=policy,
             schema_version=surface_inventory_version,
+            _context_input_budget=context_input_budget,
+            _mcp_input_budget=mcp_input_budget,
+            _context_inventory=inventory,
+            _mcp_surfaces=mcp_surfaces,
         )
         path_report = build_path_report(root=root, policy_arg=path_policy_arg) if path_policy_arg else None
         content_report = (
@@ -248,18 +303,20 @@ def run_report(args: argparse.Namespace) -> int:
             else None
         )
         api_report = build_api_report(root=root, policy_arg=api_policy_arg) if api_policy_arg else None
-        mcp_policy = (
-            None
-            if implicit_recommended_mcp_policy_missing or mcp_policy_abs is None
-            else load_mcp_policy(mcp_policy_abs)
-        )
         mcp_report = (
-            build_missing_mcp_policy_report(root=root, policy_path=mcp_policy_path)
+            build_missing_mcp_policy_report(
+                root=root,
+                policy_path=mcp_policy_path,
+                _input_budget=mcp_input_budget,
+                _surfaces=mcp_surfaces,
+            )
             if implicit_recommended_mcp_policy_missing
             else build_mcp_config_report(
                 root=root,
                 policy=mcp_policy,
                 policy_path=mcp_policy_path,
+                _input_budget=mcp_input_budget,
+                _surfaces=mcp_surfaces,
             )
             if args.mcp_config_check
             else None
@@ -267,14 +324,22 @@ def run_report(args: argparse.Namespace) -> int:
         context_lock_report: dict[str, object] | None = None
         digest_report: dict[str, object] | None = None
         if digest_policy_arg:
-            digest_policy = load_digest_policy(resolve_policy_arg(digest_policy_arg, root))
+            digest_policy = load_digest_policy(
+                resolve_policy_arg(digest_policy_arg, root),
+                _input_budget=context_input_budget,
+            )
             context_lock_report = build_context_lock_report(
                 root=root,
                 inventory=inventory,
                 digest_policy=digest_policy,
                 digest_policy_arg=digest_policy_arg,
+                _input_budget=context_input_budget,
             )
-            digest_findings, checked_files = scan_digests(root=root, policy=digest_policy)
+            digest_findings, checked_files = scan_digests(
+                root=root,
+                policy=digest_policy,
+                _input_budget=context_input_budget,
+            )
             digest_report = {
                 "policy": {"path": safe_policy_path(digest_policy_arg, root)},
                 "status": "ok" if not digest_findings else "violation",
@@ -656,5 +721,32 @@ def run_report(args: argparse.Namespace) -> int:
             )
             payload["evidence_pack_manifest"] = evidence_pack_manifest
     payload = sanitize_public_mapping(payload)
-    emit_report_payload(args, payload)
+    try:
+        emit_report_payload(args, payload)
+    except ValueError as exc:
+        if str(exc) != ERROR_REPORT_OUTPUT_LIMIT:
+            raise
+        fallback = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=ERROR_REPORT_OUTPUT_LIMIT,
+            extra={
+                "command": "report",
+                "report": {
+                    "schema_version": report_schema_version,
+                    "format": args.format,
+                    "scope": scope,
+                    "sanitized": True,
+                },
+            },
+        )
+        emit_report_payload(
+            args,
+            sanitize_public_mapping(fallback),
+            _enforce_budget=False,
+        )
+        return 2
     return exit_code

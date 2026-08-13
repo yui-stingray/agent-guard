@@ -8,8 +8,72 @@ import argparse
 import json
 from pathlib import Path
 
-from ..digest_guard import load_digest_policy, scan_digests
-from .common import redact_public_text, resolve_policy_arg, result_payload
+from ..bounded_repo_reader import DistinctInputBudget
+from ..digest_guard import (
+    ERROR_DIGEST_SCAN_LIMIT,
+    MAX_DIGEST_DISTINCT_INPUT_BYTES,
+    load_digest_policy,
+    scan_digests,
+)
+from .common import (
+    bounded_public_json,
+    emit_public_output,
+    bounded_public_line,
+    redact_public_text,
+    require_public_output_budget,
+    resolve_policy_arg,
+    result_payload,
+)
+
+
+def _emit_digest_payload(
+    *,
+    args: argparse.Namespace,
+    root: Path,
+    payload: dict[str, object],
+    plain_text: str,
+) -> bool:
+    try:
+        raw_output = (
+            bounded_public_json(
+                payload,
+                error=ERROR_DIGEST_SCAN_LIMIT,
+            )
+            if args.json
+            else require_public_output_budget(
+                plain_text,
+                error=ERROR_DIGEST_SCAN_LIMIT,
+            )
+        )
+        rendered = bounded_public_line(
+            raw_output,
+            error=ERROR_DIGEST_SCAN_LIMIT,
+        )
+    except ValueError:
+        fallback = result_payload(
+            scanner="digest",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=ERROR_DIGEST_SCAN_LIMIT,
+        )
+        rendered = (
+            json.dumps(fallback, ensure_ascii=False)
+            if args.json
+            else f"ERROR: {ERROR_DIGEST_SCAN_LIMIT}"
+        )
+        emit_public_output(f"{rendered}\n", error=ERROR_DIGEST_SCAN_LIMIT)
+        return False
+    try:
+        emit_public_output(rendered, error=ERROR_DIGEST_SCAN_LIMIT)
+    except ValueError:
+        emit_public_output(
+            f"ERROR: {ERROR_DIGEST_SCAN_LIMIT}\n",
+            error=ERROR_DIGEST_SCAN_LIMIT,
+        )
+        return False
+    return True
 
 
 def add_digest_parser(top) -> None:
@@ -26,8 +90,13 @@ def run_digest_check(args: argparse.Namespace) -> int:
     policy_path = resolve_policy_arg(args.policy, root)
 
     try:
-        policy = load_digest_policy(policy_path)
-        findings, checked_files = scan_digests(root=root, policy=policy)
+        input_budget = DistinctInputBudget(max_bytes=MAX_DIGEST_DISTINCT_INPUT_BYTES)
+        policy = load_digest_policy(policy_path, _input_budget=input_budget)
+        findings, checked_files = scan_digests(
+            root=root,
+            policy=policy,
+            _input_budget=input_budget,
+        )
     except Exception as exc:
         payload = result_payload(
             scanner="digest",
@@ -37,10 +106,12 @@ def run_digest_check(args: argparse.Namespace) -> int:
             root=root,
             error=str(exc),
         )
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
-        else:
-            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        _emit_digest_payload(
+            args=args,
+            root=root,
+            payload=payload,
+            plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+        )
         return 2
 
     exit_code = 0 if not findings else 1
@@ -55,17 +126,21 @@ def run_digest_check(args: argparse.Namespace) -> int:
         scanned_unit="files",
         extra={"checked_files": checked_files},
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    elif findings:
-        print(f"digest-guard: NG ({len(findings)} findings)")
-        for item in findings:
-            print(
-                f"- {item.check_id} {redact_public_text(item.path)} "
-                f"{redact_public_text(item.message)}"
-            )
+    if findings:
+        plain_lines = [f"digest-guard: NG ({len(findings)} findings)"]
+        plain_lines.extend(
+            f"- {redact_public_text(item.check_id)} {redact_public_text(item.path)} "
+            f"{redact_public_text(item.message)}"
+            for item in findings
+        )
+        plain_text = "\n".join(plain_lines)
     else:
-        print(f"digest-guard: OK ({checked_files} files checked)")
-
-    return 0 if not findings else 1
-
+        plain_text = f"digest-guard: OK ({checked_files} files checked)"
+    if not _emit_digest_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=plain_text,
+    ):
+        return 2
+    return exit_code

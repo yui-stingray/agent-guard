@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from importlib import metadata
 from pathlib import Path
 from typing import Iterable
 
 from .. import __version__ as PACKAGE_VERSION
+from ..bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
 from ..public_redaction import (
     redact_public_text,
     sanitize_public_mapping,
@@ -24,6 +26,9 @@ REPORT_EVIDENCE_SCHEMA_VERSION_V2 = "agent-guard.report_evidence.v2"
 TOOL_NAME = "agent-guard"
 RECOMMENDED_EVIDENCE_PRESET = "recommended"
 URL_LIKE_POLICY_ARG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+# Reuse the scanner result ceiling so final public serialization cannot exceed
+# the bounded worker contract after envelope/rendering overhead is added.
+MAX_PUBLIC_OUTPUT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 
 
 def tool_version() -> str:
@@ -33,6 +38,56 @@ def tool_version() -> str:
         return metadata.version("yui-agent-guard")
     except metadata.PackageNotFoundError:
         return "0.0.0+local"
+
+
+def require_public_output_budget(text: str, *, error: str) -> str:
+    try:
+        if len(text.encode("utf-8")) > MAX_PUBLIC_OUTPUT_BYTES:
+            raise ValueError(error)
+    except (MemoryError, OverflowError, UnicodeEncodeError):
+        raise ValueError(error) from None
+    return text
+
+
+def emit_public_output(text: str, *, error: str) -> None:
+    """Write exact UTF-8 bytes without platform newline translation."""
+
+    try:
+        data = text.encode("utf-8")
+        output = getattr(sys.stdout, "buffer", None)
+        if output is None:
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            return
+        written = output.write(data)
+        if written is not None and written != len(data):
+            raise OSError
+        output.flush()
+    except (MemoryError, OSError, UnicodeEncodeError, UnicodeError):
+        raise ValueError(error) from None
+
+
+def bounded_public_line(text: str, *, error: str) -> str:
+    """Return one line only when its emitted terminator also fits the budget."""
+
+    return require_public_output_budget(f"{text}\n", error=error)
+
+
+def bounded_public_json(
+    payload: dict[str, object],
+    *,
+    error: str,
+    sort_keys: bool = False,
+) -> str:
+    try:
+        rendered = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=sort_keys,
+        )
+    except (MemoryError, OverflowError, RecursionError):
+        raise ValueError(error) from None
+    return require_public_output_budget(rendered, error=error)
 
 
 def safe_policy_path(raw_policy: str, root: Path) -> str:
