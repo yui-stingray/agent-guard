@@ -47,7 +47,7 @@ MAX_API_FINDINGS = 10_000
 MAX_API_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 API_FINDING_RESULT_OVERHEAD_BYTES = 256
 
-URL_PATTERN = re.compile(r"https://[^\s\"'`<>()]+")
+URL_PATTERN = re.compile(r"https?://[^\s\"'`<>()]+", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -382,7 +382,35 @@ def _read_repo_text(path: Path, repo_root: Path) -> tuple[str | None, str]:
 
 
 def normalize_url(raw_url: str) -> str:
-    return raw_url.rstrip(".,);]")
+    normalized = raw_url.rstrip(".,);]")
+    scheme, separator, remainder = normalized.partition("://")
+    if not separator:
+        return normalized
+    authority_end = min(
+        (index for delimiter in "/?#" if (index := remainder.find(delimiter)) >= 0),
+        default=len(remainder),
+    )
+    authority = remainder[:authority_end]
+    suffix = remainder[authority_end:]
+    userinfo, at_sign, host_port = authority.rpartition("@")
+    if not at_sign:
+        userinfo = ""
+        host_port = authority
+
+    if host_port.startswith("[") and "]" in host_port:
+        closing = host_port.index("]")
+        normalized_host_port = host_port[: closing + 1].lower() + host_port[closing + 1 :]
+    elif host_port.count(":") == 1:
+        host, colon, port = host_port.partition(":")
+        normalized_host_port = f"{host.lower()}{colon}{port}"
+    else:
+        normalized_host_port = host_port.lower()
+    normalized_authority = (
+        f"{userinfo}{at_sign}{normalized_host_port}"
+        if at_sign
+        else normalized_host_port
+    )
+    return f"{scheme.lower()}{separator}{normalized_authority}{suffix}"
 
 
 def _finding_result_size_bytes(*values: str) -> int:
@@ -415,13 +443,22 @@ def _scan_urls_unbounded(
                 urls_scanned += 1
                 if urls_scanned > MAX_API_URLS:
                     raise ValueError(ERROR_API_SCAN_LIMIT)
-                url = normalize_url(match.group(0))
+                url = match.group(0).rstrip(".,);]")
+                canonical_url = normalize_url(url)
+                policy_candidates = (url, canonical_url)
 
-                if any(pattern.search(url) for pattern in allowed_patterns):
+                if any(
+                    pattern.search(candidate)
+                    for pattern in allowed_patterns
+                    for candidate in policy_candidates
+                ):
                     continue
 
                 for forbidden in forbidden_patterns:
-                    if forbidden.search(url):
+                    if any(
+                        forbidden.search(candidate)
+                        for candidate in policy_candidates
+                    ):
                         if len(findings) >= MAX_API_FINDINGS:
                             raise ValueError(ERROR_API_SCAN_LIMIT)
                         finding_result_bytes = _finding_result_size_bytes(
