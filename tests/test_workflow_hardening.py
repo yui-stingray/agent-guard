@@ -318,9 +318,12 @@ def test_github_release_uses_least_privilege_prepare_and_publish_jobs(tmp_path: 
 
     def run_tag_step(output_name: str, **overrides: str) -> subprocess.CompletedProcess[str]:
         output_path = tmp_path / output_name
+        isolated_home = tmp_path / "home"
+        isolated_home.mkdir(exist_ok=True)
         environment = {
             "GITHUB_EVENT_NAME": "workflow_run",
             "GITHUB_OUTPUT": str(output_path),
+            "HOME": str(isolated_home),
             "INPUT_TAG": "",
             "PATH": os.environ["PATH"],
             "UPSTREAM_EVENT": "push",

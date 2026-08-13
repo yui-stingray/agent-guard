@@ -273,14 +273,15 @@ recommended report already contains the same conformance and manifest
 sections.
 
 If a reviewed `agent-policy` admission event already exists, add the same
-`--agent-policy-audit-event path/to/reviewed-policy-admission-event.json` option
+`--agent-policy-audit-event path/to/reviewed-policy-admission-event.json` and
+`--agent-policy-audit-event-profile agent-policy.audit_event.v1.1` options
 to both the `report` and standalone `evidence-pack manifest` commands, then
-generate both artifacts again. The public bundle consumer requires the
-standalone manifest to match the manifest embedded in the report. Keep the
-event outside `.agent-guard/evidence`; it is not one of the seven allowed public
-bundle files. `agent-guard` records only the sanitized path and does not verify
-the event's existence or content, so pass it only after the producer has written
-it and a maintainer has reviewed it.
+generate both artifacts again. The event must be a repo-local regular JSON
+file. The public bundle consumer requires the standalone manifest to match the
+manifest embedded in the report, then requires the event and expected profile
+again to verify its canonical-content binding. Keep the event outside
+`.agent-guard/evidence`; it is not one of the seven allowed public bundle files,
+and its body is never copied into public evidence.
 
 ## 5. Consume Evidence Safely
 

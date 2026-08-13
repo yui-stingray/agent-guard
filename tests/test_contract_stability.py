@@ -156,6 +156,8 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Isolated repository-controlled context-policy regular-expression matching behind the existing bounded scanner worker and added fixed pattern-count and pattern-length limits. Timeout and limit failures remain deterministic, sanitized configuration errors; no raw pattern or context text is emitted.",
+            "- Content-bound optional `agent-policy` audit-event references with a canonical-JSON, profile-bound, public-safe digest. Producers now require a reviewed repo-local event file and explicit profile, while consumers require the separately supplied event and reject missing, malformed, or replaced content. The event body remains outside the fixed seven-file public bundle.",
             "- Defined a bounded demand-validation window through 2026-09-20 and froze feature releases pending an explicit maintainer decision after the 2026-09-21 review. Marketplace publication remains separately prohibited without explicit authorization.",
             "- Locked the release build toolchain, pinned copyable GitHub Action examples to the immutable v0.3.4 release commit, and documented the post-release pin refresh contract.",
             "- Simplified reviewed bootstrap and monorepo onboarding, added explicit Python interpreter checks, and tightened guidance for copying public-safe evidence.",

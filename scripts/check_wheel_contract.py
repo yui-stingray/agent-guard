@@ -5,6 +5,7 @@ Why: editable installs can hide packaging mistakes; releases must prove the whee
 
 from __future__ import annotations
 
+import base64
 from email.parser import BytesParser
 from email.policy import compat32
 import hashlib
@@ -1904,6 +1905,18 @@ def main() -> int:
         assert conformance_payload["status"] == "ok"
         assert conformance_payload["conformance"]["schema_version"] == "agent-guard.conformance.v1"
 
+        audit_event_profile = "agent-policy.audit_event.v1.1"
+        audit_event_marker = "reviewed-wheel-contract-event"
+        audit_event_path = report_output.parent / "policy-admission-event.json"
+        audit_event_payload = {
+            "schema_version": audit_event_profile,
+            "status": "reviewed",
+            "marker": audit_event_marker,
+        }
+        audit_event_path.write_text(
+            json.dumps(audit_event_payload, sort_keys=True),
+            encoding="utf-8",
+        )
         manifest_cli = run(
             isolated_module_command(
                 python,
@@ -1919,7 +1932,9 @@ def main() -> int:
                 "--artifact",
                 r"C:\Users\alice\secret\agent-guard-report.json",
                 "--agent-policy-audit-event",
-                str(repo / ".agent-guard" / "evidence" / "policy-admission-event.json"),
+                str(audit_event_path),
+                "--agent-policy-audit-event-profile",
+                audit_event_profile,
                 "--json",
             ),
             cwd=temp,
@@ -1927,13 +1942,45 @@ def main() -> int:
         manifest_payload = json.loads(manifest_cli.stdout)
         assert manifest_payload["status"] == "ok"
         assert manifest_payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
-        assert manifest_payload["evidence_pack_manifest"]["artifacts"] == [
+        manifest_artifacts = manifest_payload["evidence_pack_manifest"]["artifacts"]
+        assert manifest_artifacts[:2] == [
             {"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"},
             {"path": "agent-guard-report.json", "role": "report"},
-            {"path": ".agent-guard/evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
         ]
+        audit_artifact = manifest_artifacts[2]
+        assert audit_artifact["path"] == ".agent-guard/evidence/policy-admission-event.json"
+        assert audit_artifact["role"] == "agent-policy-audit-event"
+        binding = audit_artifact["content_binding"]
+        canonical_event = json.dumps(
+            audit_event_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        digest_domain = (
+            b"agent-guard.agent_policy_audit_event_binding.v1\0"
+            + audit_event_profile.encode("ascii")
+            + b"\0"
+            + canonical_event
+        )
+        expected_digest = (
+            "b"
+            + base64.b32encode(hashlib.sha256(digest_domain).digest())
+            .decode("ascii")
+            .rstrip("=")
+            .lower()
+        )
+        assert binding == {
+            "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
+            "event_profile": audit_event_profile,
+            "canonicalization": "canonical-json-v1",
+            "digest_algorithm": "sha256",
+            "digest_encoding": "base32-lower-no-padding",
+            "digest": expected_digest,
+        }
         assert r"C:\Users\alice" not in manifest_cli.stdout
         assert str(temp) not in manifest_cli.stdout
+        assert audit_event_marker not in manifest_cli.stdout
 
     print(f"wheel contract OK: {wheel.name}")
     return 0

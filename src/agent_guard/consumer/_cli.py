@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import sys
 
+from ._bindings import validate_agent_policy_audit_event_files
 from ._bundle import _validate_evidence_bundle
 from ._report import validate_report
 from ._schema import load_payload, load_report_schema
@@ -31,6 +32,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the canonical annotation bytes buffered while validating the bundle",
     )
+    parser.add_argument(
+        "--agent-policy-audit-event",
+        action="append",
+        default=[],
+        type=Path,
+        help="Audit-event file to verify against a bound manifest entry; repeat in manifest order",
+    )
+    parser.add_argument(
+        "--agent-policy-audit-event-profile",
+        default="",
+        help="Expected public profile identifier for every supplied audit event",
+    )
     args = parser.parse_args(argv)
     if args.emit_annotations and args.evidence_dir is None:
         parser.error("--emit-annotations requires --evidence-dir")
@@ -39,9 +52,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    event_paths = tuple(args.agent_policy_audit_event or ())
+    event_profile = str(args.agent_policy_audit_event_profile).strip()
     if args.evidence_dir is not None:
         try:
-            summary, annotation_bytes = _validate_evidence_bundle(args.evidence_dir, args.report)
+            summary, annotation_bytes = _validate_evidence_bundle(
+                args.evidence_dir,
+                args.report,
+                agent_policy_audit_event_paths=event_paths,
+                agent_policy_audit_event_profile=event_profile,
+            )
         except Exception:
             print(BUNDLE_VALIDATION_ERROR, file=sys.stderr)
             return 1
@@ -58,7 +78,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        summary = validate_report(load_payload(args.report), load_report_schema())
+        report = load_payload(args.report)
+        summary = validate_report(report, load_report_schema())
+        validate_agent_policy_audit_event_files(
+            report,
+            event_paths,
+            event_profile=event_profile,
+        )
     except Exception as exc:
         print(f"agent-guard evidence invalid: {exc}", file=sys.stderr)
         return 1

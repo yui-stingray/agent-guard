@@ -23,6 +23,7 @@ SRC = REPO_ROOT / "src"
 SCRIPT = REPO_ROOT / "examples" / "evidence_contracts_ci.sh"
 SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 ACTION_METADATA = REPO_ROOT / "action.yml"
+AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
 
 PUBLIC_ARTIFACT_NAMES = (
     "agent-guard-report.json",
@@ -371,7 +372,12 @@ def generate_recommended_report(
     ]
     if agent_policy_audit_event:
         command.extend(
-            ["--agent-policy-audit-event", agent_policy_audit_event]
+            [
+                "--agent-policy-audit-event",
+                agent_policy_audit_event,
+                "--agent-policy-audit-event-profile",
+                AUDIT_EVENT_PROFILE,
+            ]
         )
     result = subprocess.run(
         command,
@@ -414,6 +420,8 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
             str(report.relative_to(repo)),
             "--agent-policy-audit-event",
             event_path,
+            "--agent-policy-audit-event-profile",
+            AUDIT_EVENT_PROFILE,
             "--json",
         ],
         cwd=repo,
@@ -430,7 +438,7 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
         encoding="utf-8",
     )
 
-    consumer_result = subprocess.run(
+    missing_event_result = subprocess.run(
         [
             sys.executable,
             "-I",
@@ -446,12 +454,88 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
         text=True,
         check=False,
     )
+    consumer_result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "agent_guard.consumer",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--agent-policy-audit-event",
+            event_path,
+            "--agent-policy-audit-event-profile",
+            AUDIT_EVENT_PROFILE,
+            str(report),
+        ],
+        cwd=repo,
+        env=example_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
+    assert missing_event_result.returncode == 1
+    assert missing_event_result.stderr.strip() == "agent-guard evidence bundle invalid"
     assert consumer_result.returncode == 0, (
         consumer_result.stdout + consumer_result.stderr
     )
     manifest = json.loads(manifest_result.stdout)["evidence_pack_manifest"]
-    assert {"path": event_path, "role": "agent-policy-audit-event"} in manifest["artifacts"]
+    event_artifact = next(
+        item for item in manifest["artifacts"] if item["role"] == "agent-policy-audit-event"
+    )
+    assert event_artifact["path"] == event_path
+    assert event_artifact["content_binding"]["event_profile"] == AUDIT_EVENT_PROFILE
+
+    wrong_profile_result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "agent_guard.consumer",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--agent-policy-audit-event",
+            event_path,
+            "--agent-policy-audit-event-profile",
+            "agent-policy.audit_event.v1",
+            str(report),
+        ],
+        cwd=repo,
+        env=example_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert wrong_profile_result.returncode == 1
+    assert wrong_profile_result.stdout == ""
+    assert wrong_profile_result.stderr.strip() == "agent-guard evidence bundle invalid"
+
+    write(repo / event_path, '{"status":"replaced"}\n')
+    replaced_result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-m",
+            "agent_guard.consumer",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--agent-policy-audit-event",
+            event_path,
+            "--agent-policy-audit-event-profile",
+            AUDIT_EVENT_PROFILE,
+            str(report),
+        ],
+        cwd=repo,
+        env=example_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert replaced_result.returncode == 1
+    assert replaced_result.stdout == ""
+    assert replaced_result.stderr.strip() == "agent-guard evidence bundle invalid"
+    assert "replaced" not in replaced_result.stderr
 
 
 def test_packaged_consumer_module_entrypoint_accepts_public_sample() -> None:

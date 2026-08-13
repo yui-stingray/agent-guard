@@ -59,11 +59,12 @@ Public-safe is a bounded sanitization contract over declared controlled fields
 and controlled patterns. It is not a generic guarantee that an artifact contains
 no secrets or PII, and it does not replace dedicated secret scanners.
 
-API, content, and path policies also have fail-closed resource ceilings. The
-current implementation accepts policy files up to 256 KiB and at most 64
-policy-controlled regular expressions per scanner, bounds include lists and
-filesystem walks, rejects repository-scoped include targets that resolve
-outside the repository root, and limits each isolated matching run to five
+API, content, context, and path policies also have fail-closed resource
+ceilings. The current implementation accepts policy files up to 256 KiB and at
+most 64 policy-controlled regular expressions per scanner, limits each pattern
+to 4 KiB, bounds include lists and filesystem walks, rejects repository-scoped
+include targets that resolve outside the repository root, and limits each
+isolated matching run to five
 seconds after worker startup. Registered and preregistration content target
 walks also share a monotonic five-second enumeration deadline and charge
 directory entries plus pattern/path glob-state work against the fixed traversal
@@ -77,6 +78,21 @@ ceiling is a sanitized configuration/runtime error
 with exit `2`; raw patterns, paths, or file contents are not included in the
 error. These ceilings are implementation safety limits, not evidence-schema
 fields or a promise of generic content/credential scanning.
+
+Optional `agent-policy` audit-event entries are an additive v1 manifest field:
+the existing required `path` and `role` fields retain their meaning, while new
+producer output adds `content_binding`. The binding uses canonical JSON, an
+explicit expected event profile, and a domain-separated SHA-256 digest encoded
+as lowercase base32 with a controlled `b` prefix. This controlled digest is not
+a raw hexadecimal hash and is the only hash-like value admitted on this field.
+Current packaged consumers fail closed when an audit-event role lacks the
+binding or when the separately supplied event does not match. Older v1
+consumers may ignore the optional field, so callers that require content
+binding must use a consumer version that documents this contract. The event
+profile identifies the caller-selected contract but does not itself validate
+the event against an `agent-policy` JSON Schema; that remains producer-owned.
+The event body remains outside the fixed public bundle. Replacing both a
+trusted manifest and its event is outside this binding's threat model.
 
 Workflow inputs use the same fail-closed approach. Workflow policies are capped
 at 256 KiB, individual policy strings at 4 KiB, and workflow files at 1 MiB.

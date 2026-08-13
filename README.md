@@ -350,13 +350,15 @@ Add `--digest-policy .agent-guard/context-digest-policy.yaml` to the `report`
 command only after that policy is reviewed and committed.
 
 **Optional reviewed audit event.** To record a companion `agent-policy` audit
-event, add the same
-`--agent-policy-audit-event <reviewed-audit-event-path>` option to both the
+event, add the same `--agent-policy-audit-event <reviewed-audit-event-path>` and
+`--agent-policy-audit-event-profile <reviewed-profile>` options to both the
 `report` command and the standalone `evidence-pack manifest` command. Generate
-both artifacts again after the producer has written the event and a maintainer
-has reviewed it. The public bundle consumer requires the standalone manifest to
-match the manifest embedded in the report. `agent-guard` records only the path
-and does not validate the file's existence or content. Keep the event outside
+both artifacts again after the producer has written the repo-local JSON event
+and a maintainer has reviewed it. The manifest records only a sanitized
+repository-relative path and a profile-bound canonical-content digest, not the
+event body. The public bundle consumer requires the standalone manifest to
+match the manifest embedded in the report and requires the event path and
+profile again to verify the binding. Keep the event outside
 `.agent-guard/evidence`: the seven-file public bundle allow-list rejects it.
 
 The following optional PR review command is available in `0.3.0`:
@@ -603,7 +605,10 @@ MCP 2026-07-28 protocol/runtime/OAuth changes do not justify runtime execution o
 validation. No changelog item directly invalidates the current static committed-config labels, so
 this update does not change their taxonomy or code. With `--evidence-pack-manifest`,
 it embeds a public-safe artifact handoff manifest for pull request review. Add
-`--agent-policy-audit-event <path>` to include a sanitized artifact reference to a companion `agent-policy` audit event without reading or embedding the event body.
+`--agent-policy-audit-event <path>` and
+`--agent-policy-audit-event-profile <profile>` to bind a reviewed repo-local
+companion `agent-policy` audit event without embedding its body. Consumers must
+receive that event separately and verify it with the same expected profile.
 
 Read `recommended` as the reviewed static evidence baseline, not as the full
 pin-integrity profile. The recommended preset can emit digest and context-lock
@@ -1006,7 +1011,7 @@ agent-guard context inventory --root <repo> --policy <yaml> [--json]
 agent-guard context lock --root <repo> --policy <yaml> [--check --digest-policy <yaml>] [--json]
 agent-guard mcp check --root <repo> [--policy <yaml>] [--json]
 agent-guard surface inventory --root <repo> --context-policy <yaml> [--schema-version <v1|v2>] [--json]
-agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path>] [--format <markdown|json|github-annotations|sarif>] [--output <path>] [--stderr-summary]
+agent-guard report --root <repo> --context-policy <yaml> [--evidence-preset recommended] [--path-policy <yaml>] [--content-policy <yaml>] [--content-scan-dir <dir>] [--api-policy <yaml>] [--mcp-config-check] [--mcp-policy <yaml>] [--digest-policy <yaml>] [--workflow-policy <yaml>] [--drift-check] [--drift-base-ref <ref>] [--agent-policy-audit-event <path> --agent-policy-audit-event-profile <profile>] [--format <markdown|json|github-annotations|sarif>] [--output <path>] [--stderr-summary]
 agent-guard render-report --root <repo> --input <agent-guard-report.json> [--format <markdown|json|github-annotations|sarif>] [--output <path>]
 agent-guard path check --root <repo> --policy <yaml> [--json]
 agent-guard digest check --root <repo> --policy <yaml> [--json]

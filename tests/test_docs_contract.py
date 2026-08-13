@@ -529,8 +529,10 @@ def test_optional_agent_policy_event_stays_outside_public_bundle() -> None:
 
     assert ".agent-guard/evidence/policy-admission-event.json" not in documents
     assert "outside `.agent-guard/evidence`" in single_line
-    assert "does not verify" in single_line
-    assert "existence or content" in single_line
+    assert "profile-bound" in single_line
+    assert "reads and canonicalizes" in single_line
+    assert "never embeds the event body" in single_line
+    assert "requires the event separately" in single_line
     assert "both the `report`" in single_line
     assert "manifest embedded in the report" in single_line
 

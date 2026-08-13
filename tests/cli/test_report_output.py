@@ -200,6 +200,9 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
         f"Run pytest before reporting completion. {content_marker}\n",
     )
     output = tmp_path / "evidence" / "agent-guard-report.json"
+    event = tmp_path / "evidence" / "policy-admission-event.json"
+    event.parent.mkdir(parents=True)
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
 
     result = run_cli(
         "report",
@@ -211,7 +214,9 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
         "json",
         "--evidence-pack-manifest",
         "--agent-policy-audit-event",
-        str(tmp_path / "evidence" / "policy-admission-event.json"),
+        str(event),
+        "--agent-policy-audit-event-profile",
+        "agent-policy.audit_event.v1.1",
         "--output",
         str(output),
     )
@@ -225,15 +230,74 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
     assert payload["report"]["format"] == "json"
     assert payload["report"]["sanitized"] is True
-    assert payload["evidence_pack_manifest"]["artifacts"] == [
-        {"path": "evidence/agent-guard-report.json", "role": "report"},
-        {"path": "evidence/policy-admission-event.json", "role": "agent-policy-audit-event"},
-    ]
+    artifacts = payload["evidence_pack_manifest"]["artifacts"]
+    assert artifacts[0] == {"path": "evidence/agent-guard-report.json", "role": "report"}
+    assert artifacts[1]["path"] == "evidence/policy-admission-event.json"
+    assert artifacts[1]["role"] == "agent-policy-audit-event"
+    assert artifacts[1]["content_binding"]["event_profile"] == "agent-policy.audit_event.v1.1"
     serialized = json.dumps(payload, ensure_ascii=False)
     assert str(tmp_path) not in serialized
     assert content_marker not in serialized
     assert "snippet" not in serialized
     assert "matched_text" not in serialized
+
+
+def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(
+        tmp_path / "AGENTS.md",
+        "Require approval before shell writes.\n"
+        "Run pytest before reporting completion.\n",
+    )
+    event = tmp_path / "evidence" / "nested" / "policy-admission-event.json"
+    event.parent.mkdir(parents=True)
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--agent-policy-audit-event",
+        event.relative_to(tmp_path).as_posix(),
+        "--agent-policy-audit-event-profile",
+        "agent-policy.audit_event.v1.1",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    artifact = payload["evidence_pack_manifest"]["artifacts"][0]
+    assert artifact["path"] == "evidence/nested/policy-admission-event.json"
+    assert artifact["role"] == "agent-policy-audit-event"
+    assert artifact["content_binding"]["event_profile"] == "agent-policy.audit_event.v1.1"
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_rejects_audit_event_profile_without_path(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--agent-policy-audit-event-profile",
+        "agent-policy.audit_event.v1.1",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "agent-policy audit event profile is invalid"
+    assert payload["report"]["sanitized"] is True
+    assert str(tmp_path) not in result.stdout
 
 
 def test_report_cli_stderr_summary_ok_after_output_write_is_sanitized(tmp_path: Path) -> None:

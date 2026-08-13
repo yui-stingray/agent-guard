@@ -5,6 +5,7 @@ Why: let downstream wrappers import the consumer instead of copying example code
 
 from __future__ import annotations
 
+from ._bindings import validate_agent_policy_audit_event_files
 from ._bundle import (
     ALLOWED_EVIDENCE_ARTIFACT_NAMES,
     validate_evidence_bundle,
@@ -64,6 +65,7 @@ __all__ = [
     "require_sequence",
     "schema_condition_matches",
     "validate_against_schema",
+    "validate_agent_policy_audit_event_files",
     "validate_conformance",
     "validate_evidence_bundle",
     "validate_evidence_pack_manifest",
