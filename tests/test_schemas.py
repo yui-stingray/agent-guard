@@ -22,10 +22,12 @@ EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-
 EXPECTED_SCHEMAS = {
     "agent-guard.conformance.v1.schema.json": "agent-guard.conformance.v1",
     "agent-guard.evidence_pack_manifest.v1.schema.json": "agent-guard.evidence_pack_manifest.v1",
+    "agent-guard.evidence_pack_manifest.v2.schema.json": "agent-guard.evidence_pack_manifest.v2",
     "agent-guard.result.v1.schema.json": "agent-guard.result.v1",
     "agent-guard.context_inventory.v1.schema.json": "agent-guard.context_inventory.v1",
     "agent-guard.context_lock_coverage.v1.schema.json": "agent-guard.context_lock_coverage.v1",
     "agent-guard.report_evidence.v1.schema.json": "agent-guard.report_evidence.v1",
+    "agent-guard.report_evidence.v2.schema.json": "agent-guard.report_evidence.v2",
     "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
 }
 
@@ -133,7 +135,7 @@ def test_schema_versions_are_pinned() -> None:
     for name, schema_version in EXPECTED_SCHEMAS.items():
         schema = load_schema(name)
         properties = schema["properties"]
-        if name == "agent-guard.report_evidence.v1.schema.json":
+        if name.startswith("agent-guard.report_evidence."):
             assert properties["schema_version"]["const"] == "agent-guard.result.v1"
             assert properties["report"]["properties"]["schema_version"]["const"] == schema_version
         else:
@@ -188,9 +190,29 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
         schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
     )
     assert artifact_role["enum"] == ["report", "agent-policy-audit-event"]
+    artifact = schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]
+    assert "content_binding" not in artifact["properties"]
 
 
-def test_evidence_schemas_reject_extra_audit_fields_but_allow_report_metadata() -> None:
+def test_v1_evidence_schemas_accept_released_unbound_audit_event_references() -> None:
+    for schema_name in (
+        "agent-guard.evidence_pack_manifest.v1.schema.json",
+        "agent-guard.report_evidence.v1.schema.json",
+    ):
+        report = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+        value = report["evidence_pack_manifest"] if "manifest" in schema_name else report
+        manifest = value if "manifest" in schema_name else value["evidence_pack_manifest"]
+        manifest["artifacts"].append(
+            {
+                "path": "reviewed/event.json",
+                "role": "agent-policy-audit-event",
+            }
+        )
+
+        assert Draft202012Validator(load_schema(schema_name)).is_valid(value)
+
+
+def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
     binding = {
         "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
         "event_profile": "agent-policy.audit_event.v1.1",
@@ -200,26 +222,75 @@ def test_evidence_schemas_reject_extra_audit_fields_but_allow_report_metadata() 
         "digest": "b" + ("a" * 52),
     }
     for schema_name in (
-        "agent-guard.evidence_pack_manifest.v1.schema.json",
-        "agent-guard.report_evidence.v1.schema.json",
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
+        "agent-guard.report_evidence.v2.schema.json",
     ):
         report = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+        report["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+        report["evidence_pack_manifest"]["schema_version"] = (
+            "agent-guard.evidence_pack_manifest.v2"
+        )
         value = report["evidence_pack_manifest"] if "manifest" in schema_name else report
         manifest = value if "manifest" in schema_name else value["evidence_pack_manifest"]
         validator = Draft202012Validator(load_schema(schema_name))
 
-        manifest["artifacts"][0]["review_metadata"] = "synthetic-public-metadata"
-        assert validator.is_valid(value)
+        assert not validator.is_valid(value)
+        if schema_name == "agent-guard.report_evidence.v2.schema.json":
+            without_manifest = dict(value)
+            without_manifest.pop("evidence_pack_manifest")
+            assert not validator.is_valid(without_manifest)
+
+        manifest["report"]["schema_version"] = "agent-guard.report_evidence.v1"
+        assert not validator.is_valid(value)
+        manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+
+        manifest["artifacts"].append(
+            {
+                "path": "reviewed/event.json",
+                "role": "agent-policy-audit-event",
+            }
+        )
+        assert not validator.is_valid(value)
+        manifest["artifacts"].pop()
 
         manifest["artifacts"].append(
             {
                 "path": "reviewed/event.json",
                 "role": "agent-policy-audit-event",
                 "content_binding": binding,
-                "event_body": {"passphrase": "synthetic-private-passphrase"},
             }
         )
+        assert validator.is_valid(value)
+
+        manifest["artifacts"][-1]["review_metadata"] = "synthetic-public-metadata"
         assert not validator.is_valid(value)
+        del manifest["artifacts"][-1]["review_metadata"]
+        assert validator.is_valid(value)
+
+        manifest["artifacts"][-1]["event_body"] = {
+            "passphrase": "synthetic-private-passphrase"
+        }
+        assert not validator.is_valid(value)
+
+        manifest["artifacts"][-1] = {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": binding | {
+                "schema_version": "agent-guard.agent_policy_audit_event_binding.v2"
+            },
+        }
+        assert not validator.is_valid(value)
+
+
+def test_v2_embedded_manifest_artifacts_match_standalone_contract() -> None:
+    standalone = load_schema(
+        "agent-guard.evidence_pack_manifest.v2.schema.json"
+    )
+    report = load_schema("agent-guard.report_evidence.v2.schema.json")
+
+    assert standalone["properties"]["artifacts"] == (
+        report["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]
+    )
 
 
 def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None:

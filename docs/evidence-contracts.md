@@ -18,16 +18,16 @@ Installed wheels package these JSON Schema resources under
   discovered agent context files.
 - `agent-guard.context_lock_coverage.v1.schema.json`: hash-free evidence that
   discovered agent context files are pinned by digest policy.
-- `agent-guard.report_evidence.v1.schema.json`: the sanitized report payload
-  used by Markdown, JSON, and GitHub annotation output. Successful and
-  violation reports include agent surface inventory and evidence coverage.
+- `agent-guard.report_evidence.v1.schema.json` (event-free) and
+  `agent-guard.report_evidence.v2.schema.json` (bound audit event): sanitized
+  report payloads with agent surface inventory and evidence coverage.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
   `recommended`, and `strict` adoption levels. The `recommended` profile
   requires the first-class `mcp_config` gate; the `strict` profile can also fail
   on deterministic malformed MCP config or risk metadata emitted by the v2
   surface inventory.
-- `agent-guard.evidence_pack_manifest.v1.schema.json`: a sanitized manifest of
-  report artifacts and evidence counts for pull request review.
+- `agent-guard.evidence_pack_manifest.v1.schema.json` (legacy unbound) and
+  `agent-guard.evidence_pack_manifest.v2.schema.json` (bound): sanitized manifests.
 
 Installed wheels also include `agent-guard.surface_delta.v1.schema.json`. The
 schema covers sanitized PR base/head agent surface delta evidence emitted by
@@ -112,8 +112,8 @@ Move to recommended evidence after the starter files are reviewed:
    require those repository-specific gates unless supplied.
 4. Pair the static report with a runtime admission event from `agent-policy`
    when the repository uses an agent hook or wrapper before side effects. Pass
-   that event only as an artifact reference; `agent-guard` does not read or
-   embed the event body.
+   that event only as an artifact reference; `agent-guard` reads and
+   canonicalizes it locally, but does not embed or publish the event body.
 5. Review the evidence as a maintainer aid, not as a model-generated verdict.
 
 Example commands for a new repository. Review the `init --print` plan before
@@ -165,7 +165,8 @@ python examples/evidence_consumer.py \
 
 The referenced event must already be produced, reviewed, and stored as a
 repo-local regular JSON file. Pass the identical path and explicit expected
-profile to both producers. The manifest records a sanitized repository-relative
+profile to both producers. Events select v2; event-free reports stay v1. The
+manifest records a sanitized repository-relative
 path and a profile-bound digest. `agent-guard` reads and canonicalizes the
 bounded event JSON locally to compute that binding, but never embeds the event
 body. The consumer requires the event separately and fails closed when the
@@ -229,9 +230,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
   evidence-pack expectations part of conformance.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
-  `agent-policy-audit-event`. Audit-event entries include a controlled binding
-  profile and public-safe canonical-content digest; consumers verify the event
-  supplied outside the public bundle.
+  `agent-policy-audit-event`. V2 entries include a controlled binding profile
+  and public-safe canonical-content digest for the separately supplied event;
+  legacy v1 references remain readable but cannot satisfy content verification.
 - `context_lock` records whether discovered context files are covered by digest
   policy, without emitting hash values.
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize

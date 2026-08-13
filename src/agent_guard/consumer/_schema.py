@@ -12,9 +12,26 @@ from pathlib import Path
 from typing import Any
 
 
+REPORT_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
+REPORT_SCHEMA_VERSION_V2 = "agent-guard.report_evidence.v2"
 REPORT_SCHEMA = "agent-guard.report_evidence.v1.schema.json"
+REPORT_SCHEMA_V2 = "agent-guard.report_evidence.v2.schema.json"
+EVIDENCE_PACK_SCHEMA_VERSION = "agent-guard.evidence_pack_manifest.v1"
+EVIDENCE_PACK_SCHEMA_VERSION_V2 = "agent-guard.evidence_pack_manifest.v2"
+EVIDENCE_PACK_SCHEMA = "agent-guard.evidence_pack_manifest.v1.schema.json"
+EVIDENCE_PACK_SCHEMA_V2 = "agent-guard.evidence_pack_manifest.v2.schema.json"
+_REPORT_SCHEMAS = {
+    REPORT_SCHEMA_VERSION: REPORT_SCHEMA,
+    REPORT_SCHEMA_VERSION_V2: REPORT_SCHEMA_V2,
+}
+_EVIDENCE_PACK_SCHEMAS = {
+    EVIDENCE_PACK_SCHEMA_VERSION: EVIDENCE_PACK_SCHEMA,
+    EVIDENCE_PACK_SCHEMA_VERSION_V2: EVIDENCE_PACK_SCHEMA_V2,
+}
 ERROR_DUPLICATE_JSON_KEYS = "public evidence JSON contains duplicate object keys"
 ERROR_PUBLIC_EVIDENCE_READ = "public evidence could not be read"
+ERROR_REPORT_SCHEMA_UNSUPPORTED = "report evidence schema version is not supported"
+ERROR_EVIDENCE_PACK_SCHEMA_UNSUPPORTED = "evidence-pack schema version is not supported"
 
 
 class DuplicateJSONKeyError(ValueError):
@@ -34,9 +51,48 @@ def load_json_text(text: str) -> Any:
     return json.loads(text, object_pairs_hook=_object_without_duplicate_keys)
 
 
-def load_report_schema() -> dict[str, Any]:
-    schema_path = resources.files("agent_guard.schemas").joinpath(REPORT_SCHEMA)
-    return json.loads(schema_path.read_text(encoding="utf-8"))
+def _load_packaged_schema(name: str) -> dict[str, Any]:
+    schema_path = resources.files("agent_guard.schemas").joinpath(name)
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    require(isinstance(schema, dict), "packaged schema must be an object")
+    return schema
+
+
+def load_report_schema(
+    schema_version: str = REPORT_SCHEMA_VERSION,
+) -> dict[str, Any]:
+    """Load one of the explicitly supported report schemas; default remains v1."""
+
+    if not isinstance(schema_version, str) or schema_version not in _REPORT_SCHEMAS:
+        raise ValueError(ERROR_REPORT_SCHEMA_UNSUPPORTED)
+    return _load_packaged_schema(_REPORT_SCHEMAS[schema_version])
+
+
+def select_report_schema(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Select a packaged report schema from the payload's bounded version marker."""
+
+    report = payload.get("report")
+    if not isinstance(report, Mapping) or "schema_version" not in report:
+        return load_report_schema()
+    version = report.get("schema_version")
+    if not isinstance(version, str):
+        raise ValueError(ERROR_REPORT_SCHEMA_UNSUPPORTED)
+    return load_report_schema(version)
+
+
+def load_evidence_pack_schema(schema_version: str) -> dict[str, Any]:
+    """Load one of the explicitly supported evidence-pack manifest schemas."""
+
+    if not isinstance(schema_version, str) or schema_version not in _EVIDENCE_PACK_SCHEMAS:
+        raise ValueError(ERROR_EVIDENCE_PACK_SCHEMA_UNSUPPORTED)
+    return _load_packaged_schema(_EVIDENCE_PACK_SCHEMAS[schema_version])
+
+
+def select_evidence_pack_schema(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    version = manifest.get("schema_version")
+    if not isinstance(version, str):
+        raise ValueError(ERROR_EVIDENCE_PACK_SCHEMA_UNSUPPORTED)
+    return load_evidence_pack_schema(version)
 
 
 def load_payload(path: Path) -> dict[str, Any]:

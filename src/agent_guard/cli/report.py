@@ -26,6 +26,7 @@ from ..workflow_guard import load_workflow_policy, scan_workflow_policy
 from .common import (
     RECOMMENDED_EVIDENCE_PRESET,
     REPORT_EVIDENCE_SCHEMA_VERSION,
+    REPORT_EVIDENCE_SCHEMA_VERSION_V2,
     result_payload,
     resolve_policy_arg,
     safe_policy_path,
@@ -207,6 +208,11 @@ def run_report(args: argparse.Namespace) -> int:
     workflow_policy_arg = str(args.workflow_policy).strip()
     audit_event_paths = list(args.agent_policy_audit_event or [])
     audit_event_profile = str(args.agent_policy_audit_event_profile).strip()
+    report_schema_version = (
+        REPORT_EVIDENCE_SCHEMA_VERSION_V2
+        if audit_event_paths
+        else REPORT_EVIDENCE_SCHEMA_VERSION
+    )
     if audit_event_paths:
         args.evidence_pack_manifest = True
     safe_context_policy_path = safe_policy_path(args.context_policy, root)
@@ -585,7 +591,7 @@ def run_report(args: argparse.Namespace) -> int:
         extra={
             "command": "report",
             "report": {
-                "schema_version": REPORT_EVIDENCE_SCHEMA_VERSION,
+                "schema_version": report_schema_version,
                 "format": args.format,
                 "scope": report_scope(
                     path_enabled=path_report is not None,

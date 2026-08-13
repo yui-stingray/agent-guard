@@ -20,6 +20,7 @@ from ..public_redaction import (
 
 RESULT_SCHEMA_VERSION = "agent-guard.result.v1"
 REPORT_EVIDENCE_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
+REPORT_EVIDENCE_SCHEMA_VERSION_V2 = "agent-guard.report_evidence.v2"
 TOOL_NAME = "agent-guard"
 RECOMMENDED_EVIDENCE_PRESET = "recommended"
 URL_LIKE_POLICY_ARG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")

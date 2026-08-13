@@ -13,7 +13,7 @@ import sys
 from ._bindings import validate_agent_policy_audit_event_files
 from ._bundle import _validate_evidence_bundle
 from ._report import validate_report
-from ._schema import load_payload, load_report_schema
+from ._schema import load_payload, select_report_schema
 
 
 BUNDLE_VALIDATION_ERROR = "agent-guard evidence bundle invalid"
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         report = load_payload(args.report)
-        summary = validate_report(report, load_report_schema())
+        summary = validate_report(report, select_report_schema(report))
         validate_agent_policy_audit_event_files(
             report,
             event_paths,

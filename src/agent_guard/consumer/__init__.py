@@ -22,7 +22,11 @@ from ._redaction import (
 )
 from ._report import validate_report
 from ._schema import (
+    EVIDENCE_PACK_SCHEMA,
+    EVIDENCE_PACK_SCHEMA_V2,
     REPORT_SCHEMA,
+    REPORT_SCHEMA_V2,
+    load_evidence_pack_schema,
     load_payload,
     load_report_schema,
     require,
@@ -30,6 +34,8 @@ from ._schema import (
     require_mapping,
     require_sequence,
     schema_condition_matches,
+    select_evidence_pack_schema,
+    select_report_schema,
     validate_against_schema,
     value_has_json_type,
 )
@@ -46,15 +52,19 @@ from ._sections import (
 
 __all__ = [
     "ALLOWED_EVIDENCE_ARTIFACT_NAMES",
+    "EVIDENCE_PACK_SCHEMA",
+    "EVIDENCE_PACK_SCHEMA_V2",
     "FORBIDDEN_PUBLIC_KEYS",
     "LOCAL_PATH_RE",
     "MCP_POLICY_CONFORMANCE_RULES",
     "RAW_URL_RE",
     "REPORT_SCHEMA",
+    "REPORT_SCHEMA_V2",
     "REQUIRED_MCP_RISK_LABELS",
     "REVIEWED_MCP_POLICY_PATH",
     "SECRET_VALUE_RE",
     "SHA256_VALUE_RE",
+    "load_evidence_pack_schema",
     "load_payload",
     "load_report_schema",
     "main",
@@ -64,6 +74,8 @@ __all__ = [
     "require_mapping",
     "require_sequence",
     "schema_condition_matches",
+    "select_evidence_pack_schema",
+    "select_report_schema",
     "validate_against_schema",
     "validate_agent_policy_audit_event_files",
     "validate_conformance",
