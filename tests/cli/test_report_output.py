@@ -227,9 +227,12 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert_shared_envelope(payload, scanner="context", status="ok", exit_code=0, finding_count=0)
     assert payload["command"] == "report"
-    assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
+    assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v2"
     assert payload["report"]["format"] == "json"
     assert payload["report"]["sanitized"] is True
+    assert payload["evidence_pack_manifest"]["schema_version"] == (
+        "agent-guard.evidence_pack_manifest.v2"
+    )
     artifacts = payload["evidence_pack_manifest"]["artifacts"]
     assert artifacts[0] == {"path": "evidence/agent-guard-report.json", "role": "report"}
     assert artifacts[1]["path"] == "evidence/policy-admission-event.json"
@@ -270,6 +273,10 @@ def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
+    assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v2"
+    assert payload["evidence_pack_manifest"]["schema_version"] == (
+        "agent-guard.evidence_pack_manifest.v2"
+    )
     artifact = payload["evidence_pack_manifest"]["artifacts"][0]
     assert artifact["path"] == "evidence/nested/policy-admission-event.json"
     assert artifact["role"] == "agent-policy-audit-event"
@@ -297,6 +304,37 @@ def test_report_cli_rejects_audit_event_profile_without_path(tmp_path: Path) -> 
     payload = json.loads(result.stdout)
     assert payload["error"] == "agent-policy audit event profile is invalid"
     assert payload["report"]["sanitized"] is True
+    assert str(tmp_path) not in result.stdout
+
+
+def test_report_cli_error_after_valid_audit_event_remains_v1(tmp_path: Path) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("patterns: [\n", encoding="utf-8")
+    event_marker = "synthetic-reviewed-event-marker"
+    event = tmp_path / "evidence" / "policy-admission-event.json"
+    event.parent.mkdir(parents=True)
+    event.write_text(json.dumps({"marker": event_marker}), encoding="utf-8")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--agent-policy-audit-event",
+        str(event),
+        "--agent-policy-audit-event-profile",
+        "agent-policy.audit_event.v1.1",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert payload["report"]["schema_version"] == "agent-guard.report_evidence.v1"
+    assert "evidence_pack_manifest" not in payload
+    assert event_marker not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 

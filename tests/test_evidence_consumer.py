@@ -20,6 +20,7 @@ from agent_guard.consumer import (
     RAW_URL_RE,
     load_payload,
     load_report_schema,
+    select_report_schema,
     validate_agent_policy_audit_event_files,
     validate_report,
 )
@@ -35,6 +36,25 @@ SRC = REPO_ROOT / "src"
 SCRIPT = REPO_ROOT / "examples" / "evidence_consumer.py"
 SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+
+
+def _bound_v2_report(event: Path) -> dict[str, object]:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest = payload["evidence_pack_manifest"]
+    manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+    return payload
 
 
 def run_consumer(path: Path) -> subprocess.CompletedProcess[str]:
@@ -63,7 +83,9 @@ def run_packaged_consumer_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_packaged_consumer_rejects_unbound_legacy_audit_event_reference() -> None:
+def test_packaged_consumer_accepts_legacy_unbound_audit_event_reference(
+    tmp_path: Path,
+) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_pack_manifest"]["artifacts"].append(
         {
@@ -72,8 +94,53 @@ def test_packaged_consumer_rejects_unbound_legacy_audit_event_reference() -> Non
         }
     )
 
-    with pytest.raises(ValueError, match="content_binding is required"):
-        validate_report(payload, load_report_schema())
+    summary = validate_report(payload, load_report_schema())
+    validate_agent_policy_audit_event_files(payload, (), event_profile="")
+
+    assert summary["report_schema_version"] == "agent-guard.report_evidence.v1"
+
+    event = tmp_path / "synthetic-legacy-event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert str(event) not in str(exc_info.value)
+    assert AUDIT_EVENT_PROFILE not in str(exc_info.value)
+
+
+def test_v1_content_binding_field_never_counts_as_bound(tmp_path: Path) -> None:
+    event = tmp_path / "synthetic-v1-event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+
+    validate_report(payload, load_report_schema())
+    validate_agent_policy_audit_event_files(payload, (), event_profile="")
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(
+            payload,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
 
 
 def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_leak(
@@ -87,6 +154,13 @@ def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_lea
         event_profile=AUDIT_EVENT_PROFILE,
     )
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    payload["evidence_pack_manifest"]["schema_version"] = (
+        "agent-guard.evidence_pack_manifest.v2"
+    )
+    payload["evidence_pack_manifest"]["report"]["schema_version"] = (
+        "agent-guard.report_evidence.v2"
+    )
     payload["evidence_pack_manifest"]["artifacts"].append(
         {
             "path": "reviewed/event.json",
@@ -97,7 +171,7 @@ def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_lea
     )
 
     with pytest.raises(ValueError, match="invalid fields") as exc_info:
-        validate_report(payload, load_report_schema())
+        validate_report(payload, select_report_schema(payload))
 
     assert marker not in str(exc_info.value)
 
@@ -110,18 +184,7 @@ def test_packaged_consumer_rejects_final_audit_event_symlink_without_leak(
     external = tmp_path / "external.json"
     external_marker = "synthetic-consumer-external-marker"
     event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
-    binding = build_agent_policy_audit_event_binding(
-        event,
-        event_profile=AUDIT_EVENT_PROFILE,
-    )
-    report = json.loads(SAMPLE.read_text(encoding="utf-8"))
-    report["evidence_pack_manifest"]["artifacts"].append(
-        {
-            "path": "reviewed/event.json",
-            "role": "agent-policy-audit-event",
-            "content_binding": binding,
-        }
-    )
+    report = _bound_v2_report(event)
     external.write_text(json.dumps({"marker": external_marker}), encoding="utf-8")
     event.unlink()
     event.symlink_to(external)
@@ -145,18 +208,7 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
 ) -> None:
     event = tmp_path / "event.json"
     event.write_text('{"sequence":9007199254740992.0}\n', encoding="utf-8")
-    binding = build_agent_policy_audit_event_binding(
-        event,
-        event_profile=AUDIT_EVENT_PROFILE,
-    )
-    report = json.loads(SAMPLE.read_text(encoding="utf-8"))
-    report["evidence_pack_manifest"]["artifacts"].append(
-        {
-            "path": "reviewed/event.json",
-            "role": "agent-policy-audit-event",
-            "content_binding": binding,
-        }
-    )
+    report = _bound_v2_report(event)
 
     event.write_text('{"sequence":9007199254740993.0}\n', encoding="utf-8")
 
@@ -169,6 +221,157 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
             (event,),
             event_profile=AUDIT_EVENT_PROFILE,
         )
+
+
+def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> None:
+    event = tmp_path / "synthetic-reviewed-event.json"
+    event.write_text('{"status":"reviewed","sequence":7}\n', encoding="utf-8")
+    payload = _bound_v2_report(event)
+
+    summary = validate_report(payload, select_report_schema(payload))
+    validate_agent_policy_audit_event_files(
+        payload,
+        (event,),
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+
+    assert summary["report_schema_version"] == "agent-guard.report_evidence.v2"
+    report_path = tmp_path / "synthetic-report.json"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+    result = run_packaged_consumer_cli(
+        "--agent-policy-audit-event",
+        str(event),
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        str(report_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["report_schema_version"] == (
+        "agent-guard.report_evidence.v2"
+    )
+
+
+def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
+    event_marker = "synthetic-event-body-marker"
+    event = tmp_path / "synthetic-sensitive-event-name.json"
+    event.write_text(json.dumps({"marker": event_marker}), encoding="utf-8")
+    payload = _bound_v2_report(event)
+    mismatched_profile = "agent-policy.audit_event.v1.2"
+
+    failures: list[ValueError] = []
+    for paths, profile in (
+        ((), ""),
+        ((event,), mismatched_profile),
+    ):
+        with pytest.raises(
+            ValueError,
+            match=r"^agent-policy audit event binding is invalid$",
+        ) as exc_info:
+            validate_agent_policy_audit_event_files(
+                payload,
+                paths,
+                event_profile=profile,
+            )
+        failures.append(exc_info.value)
+
+    event.write_text('{"marker":', encoding="utf-8")
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+    failures.append(exc_info.value)
+
+    for failure in failures:
+        rendered = str(failure)
+        assert event_marker not in rendered
+        assert str(event) not in rendered
+        assert mismatched_profile not in rendered
+
+
+def test_current_consumer_rejects_mixed_unbound_v2_entries_without_leak(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "synthetic-reviewed-event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    payload = _bound_v2_report(event)
+    marker = "synthetic-private-unbound-path.json"
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": marker,
+            "role": "agent-policy-audit-event",
+        }
+    )
+
+    with pytest.raises(ValueError, match="content_binding is required") as exc_info:
+        validate_report(payload, select_report_schema(payload))
+
+    assert marker not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+
+def test_current_consumer_rejects_v2_without_bound_audit_event() -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    payload["evidence_pack_manifest"]["schema_version"] = (
+        "agent-guard.evidence_pack_manifest.v2"
+    )
+    payload["evidence_pack_manifest"]["report"]["schema_version"] = (
+        "agent-guard.report_evidence.v2"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"^\$\.evidence_pack_manifest\.artifacts must include a bound audit event$",
+    ):
+        validate_report(payload, select_report_schema(payload))
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(payload, (), event_profile="")
+
+    payload.pop("evidence_pack_manifest")
+    with pytest.raises(
+        ValueError,
+        match=r"^\$\.evidence_pack_manifest is required$",
+    ):
+        validate_report(payload, select_report_schema(payload))
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(payload, (), event_profile="")
+
+
+def test_report_schema_loader_is_bounded_and_v1_default_is_preserved() -> None:
+    v1_schema = load_report_schema()
+    v2_schema = load_report_schema("agent-guard.report_evidence.v2")
+
+    assert v1_schema["$id"].endswith("agent-guard.report_evidence.v1.schema.json")
+    assert v2_schema["$id"].endswith("agent-guard.report_evidence.v2.schema.json")
+    with pytest.raises(
+        ValueError,
+        match=r"^report evidence schema version is not supported$",
+    ):
+        load_report_schema("synthetic-untrusted.schema.json")
+
+
+def test_v1_schema_consumer_fails_closed_on_v2_report(tmp_path: Path) -> None:
+    event = tmp_path / "synthetic-reviewed-event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    payload = _bound_v2_report(event)
+
+    with pytest.raises(
+        ValueError,
+        match=r"must equal 'agent-guard\.(?:evidence_pack_manifest|report_evidence)\.v1'",
+    ):
+        validate_report(payload, load_report_schema())
 
 
 def _prepend_duplicate_json_member(text: str, *, key: str, value: object) -> str:
@@ -461,6 +664,41 @@ def test_packaged_consumer_cli_accepts_fixture_bundle(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout)["status"] == "ok"
+
+
+def test_packaged_consumer_accepts_bound_v2_standalone_manifest_bundle(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    event = tmp_path / "synthetic-reviewed-event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    payload = _bound_v2_report(event)
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    envelope = _canonical_standalone_envelopes(payload)[
+        "agent-guard-evidence-pack.json"
+    ]
+    (evidence_dir / "agent-guard-evidence-pack.json").write_text(
+        json.dumps(envelope),
+        encoding="utf-8",
+    )
+
+    result = run_packaged_consumer_cli(
+        "--evidence-dir",
+        str(evidence_dir),
+        "--agent-policy-audit-event",
+        str(event),
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        str(report),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["report_schema_version"] == (
+        "agent-guard.report_evidence.v2"
+    )
+    assert event.name not in result.stdout + result.stderr
 
 
 def test_bundle_directory_enumeration_stops_at_configured_cap(
@@ -1144,14 +1382,14 @@ def test_packaged_consumer_report_read_failure_does_not_echo_path(tmp_path: Path
 
 def test_evidence_consumer_fails_closed_on_schema_drift(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
-    payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    payload["report"]["schema_version"] = "agent-guard.report_evidence.v3"
     report = tmp_path / "report.json"
     report.write_text(json.dumps(payload), encoding="utf-8")
 
     result = run_consumer(report)
 
     assert result.returncode == 1
-    assert "$.report.schema_version must equal" in result.stderr
+    assert "report evidence schema version is not supported" in result.stderr
 
 
 def test_evidence_consumer_rejects_invalid_conformance_profile(tmp_path: Path) -> None:

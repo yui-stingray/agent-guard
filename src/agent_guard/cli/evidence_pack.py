@@ -8,7 +8,15 @@ import argparse
 import json
 from pathlib import Path
 
-from ..evidence_pack import build_evidence_pack_manifest
+from ..consumer import (
+    select_report_schema,
+    validate_agent_policy_audit_event_files,
+    validate_report,
+)
+from ..evidence_pack import (
+    build_agent_policy_audit_event_artifacts,
+    build_evidence_pack_manifest,
+)
 from .common import load_json_file, result_payload
 
 
@@ -38,10 +46,36 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
     report_path = Path(args.report).resolve()
     try:
         payload = load_json_file(report_path)
+        audit_event_paths = list(args.agent_policy_audit_event or [])
+        audit_event_artifacts = None
+        if audit_event_paths:
+            audit_event_artifacts = build_agent_policy_audit_event_artifacts(
+                audit_event_paths,
+                event_profile=str(args.agent_policy_audit_event_profile),
+                root=root,
+            )
+        report_metadata = payload.get("report")
+        is_v2_report = (
+            isinstance(report_metadata, dict)
+            and report_metadata.get("schema_version")
+            == "agent-guard.report_evidence.v2"
+        )
+        if audit_event_paths or is_v2_report:
+            validate_report(payload, select_report_schema(payload))
+        if is_v2_report:
+            verification_paths = tuple(
+                path if path.is_absolute() else root / path
+                for path in (Path(raw_path) for raw_path in audit_event_paths)
+            )
+            validate_agent_policy_audit_event_files(
+                payload,
+                verification_paths,
+                event_profile=str(args.agent_policy_audit_event_profile),
+            )
         manifest = build_evidence_pack_manifest(
             report_payload=payload,
             artifact_paths=list(args.artifact or []),
-            agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
+            agent_policy_audit_event_artifacts=audit_event_artifacts,
             agent_policy_audit_event_profile=str(args.agent_policy_audit_event_profile),
             root=root,
         )

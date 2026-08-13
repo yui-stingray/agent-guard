@@ -1917,6 +1917,38 @@ def main() -> int:
             json.dumps(audit_event_payload, sort_keys=True),
             encoding="utf-8",
         )
+        bound_report_cli = run(
+            isolated_module_command(
+                python,
+                "agent_guard.cli",
+                "report",
+                "--root",
+                str(repo),
+                "--context-policy",
+                str(context_policy),
+                "--digest-policy",
+                str(digest_policy),
+                "--workflow-policy",
+                str(workflow_policy),
+                "--drift-check",
+                "--agent-policy-audit-event",
+                str(audit_event_path),
+                "--agent-policy-audit-event-profile",
+                audit_event_profile,
+                "--format",
+                "json",
+                "--output",
+                str(report_output),
+            ),
+            cwd=temp,
+        )
+        assert bound_report_cli.stdout == ""
+        bound_report_payload = json.loads(report_output.read_text(encoding="utf-8"))
+        assert bound_report_payload["report"]["schema_version"] == "agent-guard.report_evidence.v2"
+        assert (
+            bound_report_payload["evidence_pack_manifest"]["schema_version"]
+            == "agent-guard.evidence_pack_manifest.v2"
+        )
         manifest_cli = run(
             isolated_module_command(
                 python,
@@ -1941,7 +1973,7 @@ def main() -> int:
         )
         manifest_payload = json.loads(manifest_cli.stdout)
         assert manifest_payload["status"] == "ok"
-        assert manifest_payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
+        assert manifest_payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v2"
         manifest_artifacts = manifest_payload["evidence_pack_manifest"]["artifacts"]
         assert manifest_artifacts[:2] == [
             {"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"},

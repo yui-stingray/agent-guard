@@ -40,16 +40,18 @@ Installed wheels package these JSON Schema resources under
 | Shared result envelope | `agent-guard.result.v1` | `agent-guard.result.v1.schema.json` | none | `schema_version`, `tool`, `scanner`, `status`, `exit_code`, `policy`, `summary`, `finding_count`, `findings`, and optional `error`. |
 | Context inventory | `agent-guard.context_inventory.v1` | `agent-guard.context_inventory.v1.schema.json` | none | Repository-relative context file metadata and permission-boundary status. |
 | Context lock coverage | `agent-guard.context_lock_coverage.v1` | `agent-guard.context_lock_coverage.v1.schema.json` | none | Hash-free coverage counts, covered context files, and digest coverage findings. |
-| Sanitized report evidence | `agent-guard.report_evidence.v1` | `agent-guard.report_evidence.v1.schema.json` | none | Public-safe report JSON, including the embedded `report.schema_version` contract marker. |
+| Sanitized report evidence | `agent-guard.report_evidence.v1` | `agent-guard.report_evidence.v1.schema.json` | none | Public-safe report JSON without content-bound audit-event references. Existing v1 consumers remain supported. |
+| Sanitized report evidence | `agent-guard.report_evidence.v2` | `agent-guard.report_evidence.v2.schema.json` | none | Public-safe report JSON whose embedded evidence-pack manifest can bind separately supplied `agent-policy` audit events. |
 | Conformance evidence | `agent-guard.conformance.v1` | `agent-guard.conformance.v1.schema.json` | none | Profile, status, required gates/surfaces, counts, and conformance findings. |
-| Evidence pack manifest | `agent-guard.evidence_pack_manifest.v1` | `agent-guard.evidence_pack_manifest.v1.schema.json` | none | Sanitized artifact manifest, gate summary, and optional conformance summary. |
+| Evidence pack manifest | `agent-guard.evidence_pack_manifest.v1` | `agent-guard.evidence_pack_manifest.v1.schema.json` | none | Sanitized artifact manifest, including legacy path-and-role audit-event references that are not content-bound. |
+| Evidence pack manifest | `agent-guard.evidence_pack_manifest.v2` | `agent-guard.evidence_pack_manifest.v2.schema.json` | none | Sanitized artifact manifest whose audit-event entries require a controlled profile and canonical-content digest. |
 | Surface delta evidence | `agent-guard.surface_delta.v1` | `agent-guard.surface_delta.v1.schema.json` | none | Sanitized PR base/head agent-surface delta: added/removed/modified surface entries with controlled-vocabulary `changed_fields` names and risk labels; no raw diffs, base ref names, or instruction/description bodies. |
 
 Standalone conformance and evidence-pack files use the
 `agent-guard.result.v1` outer envelope. The listed
-`agent-guard.conformance.v1` and `agent-guard.evidence_pack_manifest.v1`
-schemas apply to their nested `conformance` and `evidence_pack_manifest`
-members, respectively.
+`agent-guard.conformance.v1` and the selected evidence-pack manifest schema
+apply to their nested `conformance` and `evidence_pack_manifest` members,
+respectively.
 
 These schema file names and `$id` values are frozen by tests. A schema version
 will not change without a new schema identifier and a documented compatibility
@@ -79,20 +81,23 @@ with exit `2`; raw patterns, paths, or file contents are not included in the
 error. These ceilings are implementation safety limits, not evidence-schema
 fields or a promise of generic content/credential scanning.
 
-Optional `agent-policy` audit-event entries are an additive v1 manifest field:
-the existing required `path` and `role` fields retain their meaning, while new
-producer output adds `content_binding`. The binding uses canonical JSON, an
-explicit expected event profile, and a domain-separated SHA-256 digest encoded
-as lowercase base32 with a controlled `b` prefix. This controlled digest is not
-a raw hexadecimal hash and is the only hash-like value admitted on this field.
-Current packaged consumers fail closed when an audit-event role lacks the
-binding or when the separately supplied event does not match. Older v1
-consumers may ignore the optional field, so callers that require content
-binding must use a consumer version that documents this contract. The event
-profile identifies the caller-selected contract but does not itself validate
-the event against an `agent-policy` JSON Schema; that remains producer-owned.
-The event body remains outside the fixed public bundle. Replacing both a
-trusted manifest and its event is outside this binding's threat model.
+Optional `agent-policy` audit-event content binding uses report and manifest v2.
+The producer emits v2 only when at least one caller-designated event is attached; reports
+without an event continue to use v1. Released v1 path-and-role references remain
+structurally valid legacy metadata, but they are explicitly unbound. A current
+consumer can read that v1 evidence, but fails closed if a caller asks it to
+verify event content against the unbound reference.
+
+V2 requires `content_binding` on every audit-event entry. The binding uses
+canonical JSON, an explicit expected event profile, and a domain-separated
+SHA-256 digest encoded as lowercase base32 with a controlled `b` prefix. This
+controlled digest is not a raw hexadecimal hash and is the only hash-like value
+admitted on this field. Current consumers fail closed when the separately
+supplied event or expected profile does not match. The profile identifies the
+caller-selected contract but does not itself validate the event against an
+`agent-policy` JSON Schema; that remains producer-owned. The event body remains
+outside the fixed public bundle. Replacing both a trusted manifest and its event
+is outside this binding's threat model.
 
 Workflow inputs use the same fail-closed approach. Workflow policies are capped
 at 256 KiB, individual policy strings at 4 KiB, and workflow files at 1 MiB.
@@ -223,7 +228,7 @@ future `0.x` releases:
   requires a new schema identifier and an explicit release-note compatibility
   decision.
 
-Consumers should fail closed on unknown top-level schema versions, but they
-should tolerate additional optional properties allowed by the schema. The
-packaged `agent_guard.consumer` module demonstrates that policy for sanitized
-report evidence.
+`load_report_schema()` remains an explicit v1 pin. Callers opting into supported
+version dispatch pass `select_report_schema(payload)` to `validate_report`.
+Unknown versions fail closed; allowed optional properties remain tolerated. The
+packaged consumer CLI applies that policy to sanitized report evidence.

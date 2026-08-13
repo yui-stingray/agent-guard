@@ -11,10 +11,14 @@ Why: keep static guard releases auditable while the package is still alpha.
   pattern-length limits. Timeout and limit failures remain deterministic,
   sanitized configuration errors; no raw pattern or context text is emitted.
 - Content-bound optional `agent-policy` audit-event references with a
-  canonical-JSON, profile-bound, public-safe digest. Producers now require a
-  reviewed repo-local event file and explicit profile, while consumers require
-  the separately supplied event and reject missing, malformed, or replaced
-  content. The event body remains outside the fixed seven-file public bundle.
+  canonical-JSON, profile-bound, public-safe digest. Producers require a
+  caller-designated repo-local JSON event and explicit profile; maintainer review
+  and event-schema validation remain external. Consumers require the separately
+  supplied event and reject missing, malformed, or replaced content. Audit-event
+  binding uses report and manifest v2; the released v1
+  schemas remain unchanged and their path-and-role references remain readable
+  as explicitly unbound legacy metadata. The event body remains outside the
+  fixed seven-file public bundle.
 - Defined a bounded demand-validation window through 2026-09-20 and froze
   feature releases pending an explicit maintainer decision after the 2026-09-21
   review. Marketplace publication remains separately prohibited without

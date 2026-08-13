@@ -17,19 +17,31 @@ from ._schema import require, require_mapping, require_sequence
 ERROR_AUDIT_EVENT_BINDING_INVALID = "agent-policy audit event binding is invalid"
 
 
-def _bound_audit_event_artifacts(report: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+def _audit_event_artifacts(
+    report: Mapping[str, Any],
+) -> tuple[str, list[Mapping[str, Any]]]:
     manifest = report.get("evidence_pack_manifest")
     if manifest is None:
-        return []
+        return "", []
     manifest_obj = require_mapping(manifest, ERROR_AUDIT_EVENT_BINDING_INVALID)
+    manifest_version = manifest_obj.get("schema_version")
+    require(
+        manifest_version
+        in {
+            "agent-guard.evidence_pack_manifest.v1",
+            "agent-guard.evidence_pack_manifest.v2",
+        },
+        ERROR_AUDIT_EVENT_BINDING_INVALID,
+    )
     artifacts = require_sequence(
         manifest_obj.get("artifacts"),
         ERROR_AUDIT_EVENT_BINDING_INVALID,
     )
-    return [
+    return str(manifest_version), [
         require_mapping(item, ERROR_AUDIT_EVENT_BINDING_INVALID)
         for item in artifacts
-        if isinstance(item, Mapping) and item.get("role") == "agent-policy-audit-event"
+        if isinstance(item, Mapping)
+        and item.get("role") == "agent-policy-audit-event"
     ]
 
 
@@ -41,10 +53,26 @@ def validate_agent_policy_audit_event_files(
 ) -> None:
     """Pair each path positionally with the same-index bound audit artifact."""
 
-    artifacts = _bound_audit_event_artifacts(report)
-    if not artifacts:
+    manifest_version, artifacts = _audit_event_artifacts(report)
+    if manifest_version == "agent-guard.evidence_pack_manifest.v1":
         require(not paths and not event_profile, ERROR_AUDIT_EVENT_BINDING_INVALID)
         return
+    if not manifest_version:
+        report_metadata = report.get("report")
+        is_v2_report = (
+            isinstance(report_metadata, Mapping)
+            and report_metadata.get("schema_version")
+            == "agent-guard.report_evidence.v2"
+        )
+        require(
+            not is_v2_report and not paths and not event_profile,
+            ERROR_AUDIT_EVENT_BINDING_INVALID,
+        )
+        return
+    require(
+        manifest_version == "agent-guard.evidence_pack_manifest.v2" and bool(artifacts),
+        ERROR_AUDIT_EVENT_BINDING_INVALID,
+    )
     try:
         profile = validate_agent_policy_audit_event_profile(event_profile)
     except ValueError:

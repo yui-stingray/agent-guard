@@ -17,6 +17,8 @@ from typing import Any
 from .public_redaction import contains_raw_url, sanitize_public_mapping
 
 EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION = "agent-guard.evidence_pack_manifest.v1"
+EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION_V2 = "agent-guard.evidence_pack_manifest.v2"
+REPORT_EVIDENCE_SCHEMA_VERSION_V2 = "agent-guard.report_evidence.v2"
 AGENT_POLICY_AUDIT_EVENT_BINDING_SCHEMA_VERSION = (
     "agent-guard.agent_policy_audit_event_binding.v1"
 )
@@ -27,6 +29,9 @@ MAX_AGENT_POLICY_AUDIT_EVENT_BYTES = 1 * 1024 * 1024
 ERROR_AUDIT_EVENT_INVALID = "agent-policy audit event is not valid bounded JSON"
 ERROR_AUDIT_EVENT_PATH = "agent-policy audit event must be a repository file"
 ERROR_AUDIT_EVENT_PROFILE = "agent-policy audit event profile is invalid"
+ERROR_AUDIT_EVENT_REPORT_VERSION = (
+    "bound agent-policy audit events require report evidence v2"
+)
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
 
@@ -477,33 +482,44 @@ def build_evidence_pack_manifest(
                     }
                 )
 
-    artifacts = []
+    artifacts: list[dict[str, object]] = []
     for path in artifact_paths or []:
         safe_path = safe_artifact_path(path, root=root)
         if safe_path:
             artifacts.append({"path": safe_path, "role": "report"})
+    audit_event_artifacts: list[dict[str, object]] = []
     if agent_policy_audit_event_artifacts is not None:
         if agent_policy_audit_event_paths:
             raise ValueError(ERROR_AUDIT_EVENT_INVALID)
-        artifacts.extend(
+        audit_event_artifacts = [
             _validate_agent_policy_audit_event_artifact_shape(artifact, root=root)
             for artifact in agent_policy_audit_event_artifacts
-        )
+        ]
     elif agent_policy_audit_event_paths:
         if root is None:
             raise ValueError(ERROR_AUDIT_EVENT_PATH)
-        artifacts.extend(
-            build_agent_policy_audit_event_artifacts(
-                list(agent_policy_audit_event_paths),
-                event_profile=agent_policy_audit_event_profile,
-                root=root,
-            )
+        audit_event_artifacts = build_agent_policy_audit_event_artifacts(
+            list(agent_policy_audit_event_paths),
+            event_profile=agent_policy_audit_event_profile,
+            root=root,
         )
     elif str(agent_policy_audit_event_profile).strip():
         raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
+    artifacts.extend(audit_event_artifacts)
+    if audit_event_artifacts:
+        report_metadata = report_payload.get("report")
+        if (
+            not isinstance(report_metadata, dict)
+            or report_metadata.get("schema_version") != REPORT_EVIDENCE_SCHEMA_VERSION_V2
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_REPORT_VERSION)
 
     manifest: dict[str, object] = {
-        "schema_version": EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION,
+        "schema_version": (
+            EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION_V2
+            if audit_event_artifacts
+            else EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION
+        ),
         "tool": report_payload.get("tool", {}),
         "sanitized": True,
         "report": {

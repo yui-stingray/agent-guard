@@ -20,36 +20,34 @@ from agent_guard.evidence_pack import (
 from tests.cli.helpers import run_cli
 
 AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
+V2_REPORT_PAYLOAD = {
+    "report": {"schema_version": "agent-guard.report_evidence.v2"},
+}
 
 
 def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     report = tmp_path / "report.json"
-    report.write_text(
-        json.dumps(
-            {
-                "tool": {"name": "agent-guard", "version": "0.1.7"},
-                "status": "ok",
-                "finding_count": 0,
-                "summary": {"surface_count": 2},
-                "report": {
-                    "schema_version": "agent-guard.report_evidence.v1",
-                    "format": "json",
-                    "scope": "context",
-                },
-                "evidence_coverage": {
-                    "gate_count": 1,
-                    "enabled_count": 1,
-                    "missing_count": 0,
-                    "failing_count": 0,
-                    "gates": [{"gate": "context", "status": "ok", "finding_count": 0}],
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
     event = tmp_path / ".agent-guard" / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
     event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    embedded_manifest = report_payload["evidence_pack_manifest"]
+    embedded_manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    embedded_manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    embedded_manifest["artifacts"].append(
+        {
+            "path": ".agent-guard/evidence/policy-admission-event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+    report.write_text(json.dumps(report_payload), encoding="utf-8")
 
     result = run_cli(
         "evidence-pack",
@@ -69,7 +67,7 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         "--artifact",
         "file://localhost/home/synthetic/private/report.json",
         "--agent-policy-audit-event",
-        str(event),
+        event.relative_to(tmp_path).as_posix(),
         "--agent-policy-audit-event-profile",
         AUDIT_EVENT_PROFILE,
         "--json",
@@ -78,7 +76,7 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     manifest = payload["evidence_pack_manifest"]
-    assert manifest["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
+    assert manifest["schema_version"] == "agent-guard.evidence_pack_manifest.v2"
     assert manifest["sanitized"] is True
     assert manifest["artifacts"][:-1] == [
         {"path": ".agent-guard/evidence/report.json", "role": "report"},
@@ -101,6 +99,95 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     assert str(tmp_path) not in result.stdout
     assert r"C:\Users\alice" not in result.stdout
     assert r"\\server\share" not in result.stdout
+
+
+def test_evidence_pack_manifest_cli_rejects_unverified_bound_v2_report(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "report.json"
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest = report_payload["evidence_pack_manifest"]
+    manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+    report.write_text(json.dumps(report_payload), encoding="utf-8")
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "agent-policy audit event binding is invalid"
+    assert str(event) not in result.stdout + result.stderr
+    assert AUDIT_EVENT_PROFILE not in result.stdout + result.stderr
+
+
+def test_evidence_pack_manifest_cli_rejects_mismatched_bound_v2_event(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "report.json"
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest = report_payload["evidence_pack_manifest"]
+    manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+    report.write_text(json.dumps(report_payload), encoding="utf-8")
+    private_marker = "synthetic-unreviewed-event-body"
+    event.write_text(json.dumps({"marker": private_marker}), encoding="utf-8")
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--agent-policy-audit-event",
+        str(event),
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "agent-policy audit event binding is invalid"
+    assert private_marker not in result.stdout + result.stderr
+    assert str(event) not in result.stdout + result.stderr
+    assert AUDIT_EVENT_PROFILE not in result.stdout + result.stderr
 
 
 def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: Path) -> None:
@@ -163,6 +250,7 @@ def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: P
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     manifest = payload["evidence_pack_manifest"]
+    assert manifest["schema_version"] == "agent-guard.evidence_pack_manifest.v1"
     assert manifest["sanitized"] is True
     assert manifest["tool"]["name"] == "<absolute-path>"
     assert manifest["tool"]["version"] == "<redacted>"
@@ -312,7 +400,7 @@ def test_manifest_rejects_extra_fields_in_prebuilt_audit_event_artifact(
         match="^agent-policy audit event is not valid bounded JSON$",
     ) as exc_info:
         build_evidence_pack_manifest(
-            report_payload={},
+            report_payload=V2_REPORT_PAYLOAD,
             agent_policy_audit_event_artifacts=[
                 {
                     "path": "reviewed/event.json",
@@ -342,10 +430,11 @@ def test_manifest_rejects_invalid_prebuilt_audit_event_artifact_shape(
         "content_binding": binding,
     }
     manifest = build_evidence_pack_manifest(
-        report_payload={},
+        report_payload=V2_REPORT_PAYLOAD,
         agent_policy_audit_event_artifacts=[valid_artifact],
         root=tmp_path,
     )
+    assert manifest["schema_version"] == "agent-guard.evidence_pack_manifest.v2"
     assert manifest["artifacts"] == [valid_artifact]
 
     invalid_artifacts = [
@@ -359,10 +448,37 @@ def test_manifest_rejects_invalid_prebuilt_audit_event_artifact_shape(
             match="^agent-policy audit event is not valid bounded JSON$",
         ):
             build_evidence_pack_manifest(
-                report_payload={},
+                report_payload=V2_REPORT_PAYLOAD,
                 agent_policy_audit_event_artifacts=[artifact],
                 root=tmp_path,
             )
+
+
+def test_bound_manifest_rejects_v1_report_without_leak(tmp_path: Path) -> None:
+    event = tmp_path / "event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    artifact = {
+        "path": "reviewed/event.json",
+        "role": "agent-policy-audit-event",
+        "content_binding": build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        ),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"^bound agent-policy audit events require report evidence v2$",
+    ) as exc_info:
+        build_evidence_pack_manifest(
+            report_payload={
+                "report": {"schema_version": "agent-guard.report_evidence.v1"},
+            },
+            agent_policy_audit_event_artifacts=[artifact],
+            root=tmp_path,
+        )
+
+    assert str(event) not in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
