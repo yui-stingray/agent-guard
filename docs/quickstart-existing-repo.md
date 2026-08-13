@@ -13,7 +13,7 @@ If `uv` is available, preview the starter plan without installing a persistent
 tool or changing the repository:
 
 ```console
-uvx --python 3.12 --from yui-agent-guard==0.3.4 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.5 agent-guard init --root . --print
 ```
 
 This pinned `uvx` path is for evaluation and human review without a persistent
@@ -30,7 +30,7 @@ recommended conformance and its evidence-pack manifest:
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) else "agent-guard requires Python 3.11.4+")' && \
 python3 -m venv .venv && \
   . .venv/bin/activate && \
-  python -m pip install yui-agent-guard==0.3.4
+  python -m pip install yui-agent-guard==0.3.5
 agent-guard init --root . --print
 # Review the proposed starter policies and workflow before writing them.
 agent-guard init --root . --write
@@ -57,7 +57,7 @@ reviewed write, and sanitized report sequence is:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.4
+.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.5
 .\.venv\Scripts\agent-guard.exe init --root . --print
 # Review the proposed starter policies and workflow before writing them.
 .\.venv\Scripts\agent-guard.exe init --root . --write

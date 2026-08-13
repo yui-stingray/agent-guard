@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - run: python -m pip install yui-agent-guard==0.3.4
+      - run: python -m pip install yui-agent-guard==0.3.5
       - name: Consume sanitized evidence
         run: sh examples/evidence_contracts_ci.sh consume
 ```
@@ -156,7 +156,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - run: python -m pip install yui-agent-guard==0.3.4
+      - run: python -m pip install yui-agent-guard==0.3.5
       - name: Strict release gate
         run: sh examples/evidence_contracts_ci.sh strict-release
 ```

@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.5 - 2026-08-13
+
+- The published 0.3.4 context scanner can be made unavailable by adversarial
+  repository-controlled regex, and this patch bounds that matching.
 - Isolated repository-controlled context-policy regular-expression matching
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,
