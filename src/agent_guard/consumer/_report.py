@@ -77,8 +77,9 @@ def validate_report(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str
     manifest = payload.get("evidence_pack_manifest")
     if manifest is not None:
         require(isinstance(manifest, dict), "evidence_pack_manifest must be an object")
+        manifest_properties = properties["evidence_pack_manifest"]["properties"]
         require(
-            manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v1",
+            manifest.get("schema_version") == manifest_properties["schema_version"]["const"],
             "evidence_pack_manifest.schema_version mismatch",
         )
         require(manifest.get("sanitized") is True, "evidence_pack_manifest.sanitized must be true")

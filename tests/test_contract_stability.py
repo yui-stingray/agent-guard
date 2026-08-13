@@ -32,11 +32,22 @@ FROZEN_SCHEMA_CONTRACTS = {
         "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.evidence_pack_manifest.v1.schema.json",
         {"schema_version": "agent-guard.evidence_pack_manifest.v1"},
     ),
+    "agent-guard.evidence_pack_manifest.v2.schema.json": (
+        "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.evidence_pack_manifest.v2.schema.json",
+        {"schema_version": "agent-guard.evidence_pack_manifest.v2"},
+    ),
     "agent-guard.report_evidence.v1.schema.json": (
         "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.report_evidence.v1.schema.json",
         {
             "schema_version": "agent-guard.result.v1",
             "report.schema_version": "agent-guard.report_evidence.v1",
+        },
+    ),
+    "agent-guard.report_evidence.v2.schema.json": (
+        "https://github.com/yui-stingray/agent-guard/schemas/agent-guard.report_evidence.v2.schema.json",
+        {
+            "schema_version": "agent-guard.result.v1",
+            "report.schema_version": "agent-guard.report_evidence.v2",
         },
     ),
     "agent-guard.result.v1.schema.json": (
@@ -54,8 +65,10 @@ DOCUMENTED_ARTIFACTS = (
     "agent-guard.context_inventory.v1",
     "agent-guard.context_lock_coverage.v1",
     "agent-guard.report_evidence.v1",
+    "agent-guard.report_evidence.v2",
     "agent-guard.conformance.v1",
     "agent-guard.evidence_pack_manifest.v1",
+    "agent-guard.evidence_pack_manifest.v2",
     "agent-guard.surface_delta.v1",
     "agent-guard.agb_results.v1",
     "agent-guard.evidence_results.v1",
@@ -164,7 +177,7 @@ def test_changelog_records_latest_release_entry() -> None:
         [
             "- The published 0.3.4 context scanner can be made unavailable by adversarial repository-controlled regex, and this patch bounds that matching.",
             "- Isolated repository-controlled context-policy regular-expression matching behind the existing bounded scanner worker and added fixed pattern-count and pattern-length limits. Timeout and limit failures remain deterministic, sanitized configuration errors; no raw pattern or context text is emitted.",
-            "- Content-bound optional `agent-policy` audit-event references with a canonical-JSON, profile-bound, public-safe digest. Producers now require a reviewed repo-local event file and explicit profile, while consumers require the separately supplied event and reject missing, malformed, or replaced content. The event body remains outside the fixed seven-file public bundle.",
+            "- Content-bound optional `agent-policy` audit-event references with a canonical-JSON, profile-bound, public-safe digest. Producers require a caller-designated repo-local JSON event and explicit profile; maintainer review and event-schema validation remain external. Consumers require the separately supplied event and reject missing, malformed, or replaced content. Audit-event binding uses report and manifest v2; the released v1 schemas remain unchanged and their path-and-role references remain readable as explicitly unbound legacy metadata. The event body remains outside the fixed seven-file public bundle.",
             "- Defined a bounded demand-validation window through 2026-09-20 and froze feature releases pending an explicit maintainer decision after the 2026-09-21 review. Marketplace publication remains separately prohibited without explicit authorization.",
             "- Locked the release build toolchain, pinned copyable GitHub Action examples to the immutable v0.3.4 release commit, and documented the post-release pin refresh contract.",
             "- Simplified reviewed bootstrap and monorepo onboarding, added explicit Python interpreter checks, and tightened guidance for copying public-safe evidence.",

@@ -1240,8 +1240,10 @@ def test_schema_resources_are_present_in_package_tree() -> None:
         "agent-guard.context_inventory.v1.schema.json",
         "agent-guard.context_lock_coverage.v1.schema.json",
         "agent-guard.report_evidence.v1.schema.json",
+        "agent-guard.report_evidence.v2.schema.json",
         "agent-guard.conformance.v1.schema.json",
         "agent-guard.evidence_pack_manifest.v1.schema.json",
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
         "agent-guard.surface_delta.v1.schema.json",
     }
 

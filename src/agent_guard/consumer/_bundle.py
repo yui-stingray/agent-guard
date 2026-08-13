@@ -21,11 +21,12 @@ from ._report import validate_report
 from ._schema import (
     DuplicateJSONKeyError,
     load_json_text,
-    load_report_schema,
     require,
     require_int,
     require_mapping,
     require_sequence,
+    select_evidence_pack_schema,
+    select_report_schema,
     validate_against_schema,
 )
 from ._sections import (
@@ -48,7 +49,6 @@ ALLOWED_EVIDENCE_ARTIFACT_NAMES = frozenset(
 )
 RESULT_SCHEMA = "agent-guard.result.v1.schema.json"
 CONFORMANCE_SCHEMA = "agent-guard.conformance.v1.schema.json"
-EVIDENCE_PACK_SCHEMA = "agent-guard.evidence_pack_manifest.v1.schema.json"
 
 ERROR_PUBLIC_BUNDLE_INVALID = "public evidence bundle is invalid"
 ERROR_PUBLIC_BUNDLE_LIMIT = "public evidence bundle exceeds configured limits"
@@ -327,7 +327,7 @@ def _validate_evidence_bundle(
 
     require(report_path.is_file() and not report_path.is_symlink(), "report artifact is invalid")
     report = _load_limited_payload(report_path, limit=MAX_REPORT_JSON_BYTES)
-    summary = validate_report(report, load_report_schema())
+    summary = validate_report(report, select_report_schema(report))
     validate_agent_policy_audit_event_files(
         report,
         agent_policy_audit_event_paths,
@@ -337,7 +337,7 @@ def _validate_evidence_bundle(
     bundle_report_path = evidence_dir / "agent-guard-report.json"
     if bundle_report_path.is_file():
         bundle_report = _load_limited_payload(bundle_report_path, limit=MAX_REPORT_JSON_BYTES)
-        validate_report(bundle_report, load_report_schema())
+        validate_report(bundle_report, select_report_schema(bundle_report))
         require(bundle_report == report, "bundle report does not match selected report")
 
     markdown_path = evidence_dir / "agent-guard-report.md"
@@ -435,7 +435,7 @@ def _validate_evidence_bundle(
             "$.artifact.evidence_pack_manifest",
         )
         validate_against_schema(
-            _load_packaged_schema(EVIDENCE_PACK_SCHEMA),
+            select_evidence_pack_schema(manifest),
             manifest,
             path="$.artifact.evidence_pack_manifest",
         )

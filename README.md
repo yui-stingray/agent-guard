@@ -356,7 +356,7 @@ event, add the same `--agent-policy-audit-event <reviewed-audit-event-path>` and
 both artifacts again after the producer has written the repo-local JSON event
 and a maintainer has reviewed it. The manifest records only a sanitized
 repository-relative path and a profile-bound canonical-content digest, not the
-event body. If the standalone manifest is present, the public bundle consumer
+event body. Audit events select evidence v2; event-free reports stay v1. If the standalone manifest is present, the public bundle consumer
 requires it to match the manifest embedded in the report. It also requires the
 event path and profile again to verify the binding. Keep the event outside
 `.agent-guard/evidence`: the seven-file public bundle allow-list rejects it.
@@ -694,9 +694,9 @@ For `report`, it returns:
   or context-lock coverage, digest, workflow, or policy/spec drift
 - exit `2` on configuration/runtime error
 
-Report output follows `agent-guard.report_evidence.v1`: the evidence payload is
-limited to deterministic scanner metadata and sanitized findings. The shared
-scanner JSON envelope remains `agent-guard.result.v1`.
+Event-free output follows `agent-guard.report_evidence.v1`; attaching a reviewed
+audit event selects `agent-guard.report_evidence.v2` with a bound v2 manifest.
+Both remain sanitized, inside the shared `agent-guard.result.v1` envelope.
 
 #### Packaged JSON schemas
 
@@ -709,13 +709,13 @@ files from the source tree:
   inventory evidence.
 - `agent-guard.context_lock_coverage.v1.schema.json`: hash-free context lock
   coverage evidence, including covered context files.
-- `agent-guard.report_evidence.v1.schema.json`: sanitized report evidence
-  payload for Markdown, JSON, GitHub annotation, and SARIF rendering, including
-  surface inventory and evidence coverage on success/violation payloads.
+- `agent-guard.report_evidence.v1.schema.json` (event-free) and
+  `agent-guard.report_evidence.v2.schema.json` (bound audit event): sanitized
+  report evidence, including surface inventory and evidence coverage.
 - `agent-guard.conformance.v1.schema.json`: profile evidence for `minimal`,
   `recommended`, and `strict` adoption levels.
-- `agent-guard.evidence_pack_manifest.v1.schema.json`: sanitized evidence
-  artifact manifest for reviewer handoff.
+- `agent-guard.evidence_pack_manifest.v1.schema.json` (legacy unbound) and
+  `agent-guard.evidence_pack_manifest.v2.schema.json` (bound): sanitized manifests.
 
 Installed wheels also include `agent-guard.surface_delta.v1.schema.json` for
 sanitized PR base/head agent surface delta evidence.

@@ -26,6 +26,12 @@ REQUIRED_MCP_RISK_LABELS = frozenset(
     }
 )
 MCP_POLICY_CONFORMANCE_RULES = frozenset({"required_mcp_policy_not_reviewed", "mcp_policy_weakened"})
+EVIDENCE_PACK_SCHEMA_VERSIONS = frozenset(
+    {
+        "agent-guard.evidence_pack_manifest.v1",
+        "agent-guard.evidence_pack_manifest.v2",
+    }
+)
 
 
 def validate_gate_counts(evidence_coverage: Mapping[str, Any], *, report_status: str) -> None:
@@ -162,10 +168,23 @@ def _validate_mcp_policy_conformance(
 
 
 def validate_evidence_pack_manifest(manifest: Mapping[str, Any], payload: Mapping[str, Any]) -> None:
+    manifest_version = manifest.get("schema_version")
+    require(
+        manifest_version in EVIDENCE_PACK_SCHEMA_VERSIONS,
+        "$.evidence_pack_manifest.schema_version mismatch",
+    )
     manifest_report = require_mapping(manifest.get("report"), "$.evidence_pack_manifest.report")
     report = require_mapping(payload.get("report"), "$.report")
     for key in ("schema_version", "format", "scope"):
         require(manifest_report.get(key) == report.get(key), f"$.evidence_pack_manifest.report.{key} must match $.report.{key}")
+    expected_report_version = {
+        "agent-guard.evidence_pack_manifest.v1": "agent-guard.report_evidence.v1",
+        "agent-guard.evidence_pack_manifest.v2": "agent-guard.report_evidence.v2",
+    }[manifest_version]
+    require(
+        report.get("schema_version") == expected_report_version,
+        "$.evidence_pack_manifest.schema_version does not match $.report.schema_version",
+    )
     require(manifest_report.get("status") == payload.get("status"), "$.evidence_pack_manifest.report.status must match $.status")
     require(
         manifest_report.get("finding_count") == payload.get("finding_count"),
@@ -191,6 +210,7 @@ def validate_evidence_pack_manifest(manifest: Mapping[str, Any], payload: Mappin
 
 def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
     artifacts = require_sequence(manifest.get("artifacts"), "$.evidence_pack_manifest.artifacts")
+    audit_event_count = 0
     for index, raw_artifact in enumerate(artifacts):
         artifact = require_mapping(raw_artifact, f"$.evidence_pack_manifest.artifacts[{index}]")
         role = artifact.get("role")
@@ -204,6 +224,9 @@ def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
         )
         if role != "agent-policy-audit-event":
             continue
+        audit_event_count += 1
+        if manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v1":
+            continue
         require(
             set(artifact) == {"path", "role", "content_binding"},
             f"$.evidence_pack_manifest.artifacts[{index}] has invalid fields",
@@ -214,6 +237,11 @@ def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
             raise ValueError(
                 f"$.evidence_pack_manifest.artifacts[{index}].content_binding is invalid"
             ) from None
+    if manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v2":
+        require(
+            audit_event_count > 0,
+            "$.evidence_pack_manifest.artifacts must include a bound audit event",
+        )
 
 
 def _manifest_gate_map(gates: Sequence[Any]) -> tuple[dict[str, Mapping[str, Any]], int, int, int]:
