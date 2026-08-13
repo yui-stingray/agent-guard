@@ -147,20 +147,33 @@ agent-guard report --root . \
   --mcp-policy .agent-guard/mcp-policy.yaml \
   --digest-policy .agent-guard/context-digest-policy.yaml \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
+  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1 \
   --format json \
   --output .agent-guard/evidence/agent-guard-report.json
 agent-guard evidence-pack manifest --root . \
   --report .agent-guard/evidence/agent-guard-report.json \
   --artifact .agent-guard/evidence/agent-guard-report.json \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
+  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1 \
   --json
+python examples/evidence_consumer.py \
+  .agent-guard/evidence/agent-guard-report.json \
+  --evidence-dir .agent-guard/evidence \
+  --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
+  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1
 ```
 
-The referenced event must already be produced and reviewed. Pass the identical
-path to both commands: the public bundle consumer requires the standalone
-manifest to match the manifest embedded in the report. `agent-guard` records
-only the sanitized path and does not verify file existence or content. The
-event itself is not part of the fixed seven-file public bundle.
+The referenced event must already be produced, reviewed, and stored as a
+repo-local regular JSON file. Pass the identical path and explicit expected
+profile to both producers. The manifest records a sanitized repository-relative
+path and a profile-bound digest. `agent-guard` reads and canonicalizes the
+bounded event JSON locally to compute that binding, but never embeds the event
+body. The consumer requires the event separately and fails closed when the
+event is missing, malformed, supplied under a different expected profile, or
+changed. The event itself is not part of the fixed seven-file public bundle.
+The binding does not protect an attacker who can replace both the evidence
+manifest and the event; use a signature, attestation, or immutable trusted
+storage for that threat model.
 
 When CI uploads evidence, pin third-party actions to versions or commit SHAs
 according to the repository's normal supply-chain policy, and keep generated
@@ -216,7 +229,9 @@ The JSON report is a compact statement of what `agent-guard` checked:
   evidence-pack expectations part of conformance.
 - Optional `evidence_pack_manifest` records the sanitized artifact manifest for
   reviewer handoff. Artifact roles are limited to `report` and
-  `agent-policy-audit-event`.
+  `agent-policy-audit-event`. Audit-event entries include a controlled binding
+  profile and public-safe canonical-content digest; consumers verify the event
+  supplied outside the public bundle.
 - `context_lock` records whether discovered context files are covered by digest
   policy, without emitting hash values.
 - Optional `path`, `content`, `api`, `digest`, and `workflow` sections summarize

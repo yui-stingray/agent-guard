@@ -12,6 +12,23 @@ from typing import Any, Iterable, Literal, Sequence
 
 import yaml
 
+from .bounded_scan import run_isolated_scan
+from .bounded_yaml import (
+    BoundedYamlInvalidError,
+    BoundedYamlLimitError,
+    load_bounded_yaml,
+)
+
+
+ERROR_CONTEXT_POLICY_NOT_FOUND = "policy file not found"
+ERROR_CONTEXT_POLICY_INVALID = "context policy YAML is not parseable"
+ERROR_CONTEXT_POLICY_LIMIT = "context policy exceeds configured limits"
+ERROR_CONTEXT_SCAN_TIMEOUT = "context scan exceeded execution budget"
+ERROR_CONTEXT_SCAN_RUNTIME = "context scan could not complete safely"
+MAX_CONTEXT_POLICY_BYTES = 256 * 1024
+MAX_CONTEXT_POLICY_REGEX_COUNT = 64
+MAX_CONTEXT_POLICY_REGEX_LENGTH = 4_096
+
 
 DEFAULT_INCLUDE = [
     "AGENTS.md",
@@ -310,16 +327,39 @@ class ContextInventory:
         }
 
 
-def load_context_policy(path: Path) -> dict[str, object]:
-    if not path.exists():
-        raise FileNotFoundError(f"policy file not found: {path}")
-
+def _read_context_policy_text(path: Path) -> str:
     try:
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"context policy YAML is not parseable: {path}") from exc
-    if not isinstance(loaded, dict):
-        raise ValueError(f"policy file must be YAML object: {path}")
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_CONTEXT_POLICY_BYTES + 1)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"{ERROR_CONTEXT_POLICY_NOT_FOUND}: {path}") from None
+    except OSError:
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID) from None
+
+    if len(raw) > MAX_CONTEXT_POLICY_BYTES:
+        raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID) from None
+
+
+def load_context_policy(path: Path) -> dict[str, object]:
+    try:
+        loaded = load_bounded_yaml(
+            _read_context_policy_text(path),
+            construct=yaml.safe_load,
+        )
+        if loaded is None:
+            loaded = {}
+        if not isinstance(loaded, dict):
+            raise BoundedYamlInvalidError
+    except BoundedYamlLimitError:
+        raise ValueError(ERROR_CONTEXT_POLICY_LIMIT) from None
+    except BoundedYamlInvalidError:
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID) from None
+    except (MemoryError, OverflowError, RecursionError):
+        raise ValueError(ERROR_CONTEXT_POLICY_LIMIT) from None
     return loaded
 
 
@@ -578,13 +618,18 @@ def normalize_rule_patterns(policy: dict[str, object]) -> list[dict[str, object]
 
 def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
     rules: list[dict[str, object]] = []
-    for item in normalize_rule_patterns(policy):
+    raw_rules = normalize_rule_patterns(policy)
+    if len(raw_rules) > MAX_CONTEXT_POLICY_REGEX_COUNT:
+        raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
+    for item in raw_rules:
         if not isinstance(item, dict):
             continue
         rule_id = str(item.get("id", "")).strip()
         pattern_text = str(item.get("pattern", "")).strip()
         if not rule_id or not pattern_text:
             continue
+        if len(pattern_text) > MAX_CONTEXT_POLICY_REGEX_LENGTH:
+            raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
         try:
             regex = re.compile(pattern_text)
         except re.error as exc:
@@ -772,7 +817,10 @@ def line_allows_rule(line: str, rule_id: str) -> bool:
     return "all" in allowed or rule_id in allowed
 
 
-def scan_context_files(*, root: Path, policy: dict[str, object]) -> tuple[list[ContextGuardFinding], int]:
+def _scan_context_files_unbounded(
+    root: Path,
+    policy: dict[str, object],
+) -> tuple[list[ContextGuardFinding], int]:
     root = root.resolve()
     rules = build_rules(policy)
     paths = iter_context_files(root=root, policy=policy)
@@ -802,3 +850,14 @@ def scan_context_files(*, root: Path, policy: dict[str, object]) -> tuple[list[C
                         )
                     )
     return findings, len(paths)
+
+
+def scan_context_files(*, root: Path, policy: dict[str, object]) -> tuple[list[ContextGuardFinding], int]:
+    return run_isolated_scan(
+        _scan_context_files_unbounded,
+        root,
+        policy,
+        timeout_error=ERROR_CONTEXT_SCAN_TIMEOUT,
+        runtime_error=ERROR_CONTEXT_SCAN_RUNTIME,
+        safe_errors=(ERROR_CONTEXT_POLICY_LIMIT,),
+    )

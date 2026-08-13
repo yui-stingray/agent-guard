@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..report_render import render_report_output
+from ._bindings import validate_agent_policy_audit_event_files
 from ._redaction import validate_public_evidence_shape, validate_public_text_shape
 from ._report import validate_report
 from ._schema import (
@@ -312,6 +313,9 @@ def _validate_sarif(payload: object) -> None:
 def _validate_evidence_bundle(
     evidence_dir: Path,
     report_path: Path,
+    *,
+    agent_policy_audit_event_paths: tuple[Path, ...] = (),
+    agent_policy_audit_event_profile: str = "",
 ) -> tuple[dict[str, Any], bytes | None]:
     """Validate a bundle and retain the exact annotation bytes read during validation."""
 
@@ -324,6 +328,11 @@ def _validate_evidence_bundle(
     require(report_path.is_file() and not report_path.is_symlink(), "report artifact is invalid")
     report = _load_limited_payload(report_path, limit=MAX_REPORT_JSON_BYTES)
     summary = validate_report(report, load_report_schema())
+    validate_agent_policy_audit_event_files(
+        report,
+        agent_policy_audit_event_paths,
+        event_profile=agent_policy_audit_event_profile,
+    )
 
     bundle_report_path = evidence_dir / "agent-guard-report.json"
     if bundle_report_path.is_file():
@@ -440,8 +449,19 @@ def _validate_evidence_bundle(
     return summary, annotation_bytes
 
 
-def validate_evidence_bundle(evidence_dir: Path, report_path: Path) -> dict[str, Any]:
+def validate_evidence_bundle(
+    evidence_dir: Path,
+    report_path: Path,
+    *,
+    agent_policy_audit_event_paths: tuple[Path, ...] = (),
+    agent_policy_audit_event_profile: str = "",
+) -> dict[str, Any]:
     """Validate an allowlisted public evidence directory against a report file."""
 
-    summary, _ = _validate_evidence_bundle(evidence_dir, report_path)
+    summary, _ = _validate_evidence_bundle(
+        evidence_dir,
+        report_path,
+        agent_policy_audit_event_paths=agent_policy_audit_event_paths,
+        agent_policy_audit_event_profile=agent_policy_audit_event_profile,
+    )
     return summary

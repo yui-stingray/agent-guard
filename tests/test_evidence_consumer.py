@@ -5,8 +5,8 @@ Why: keep the copyable consumer aligned with packaged report schemas.
 
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -20,17 +20,21 @@ from agent_guard.consumer import (
     RAW_URL_RE,
     load_payload,
     load_report_schema,
-    main as packaged_consumer_main,
+    validate_agent_policy_audit_event_files,
     validate_report,
 )
+from agent_guard.consumer import (
+    main as packaged_consumer_main,
+)
 from agent_guard.consumer._bundle import MAX_MARKDOWN_BYTES
+from agent_guard.evidence_pack import build_agent_policy_audit_event_binding
 from agent_guard.report_render import emit_report_output, render_report_output
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
 SCRIPT = REPO_ROOT / "examples" / "evidence_consumer.py"
 SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
+AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
 
 
 def run_consumer(path: Path) -> subprocess.CompletedProcess[str]:
@@ -57,6 +61,114 @@ def run_packaged_consumer_cli(*args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def test_packaged_consumer_rejects_unbound_legacy_audit_event_reference() -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/policy-admission-event.json",
+            "role": "agent-policy-audit-event",
+        }
+    )
+
+    with pytest.raises(ValueError, match="content_binding is required"):
+        validate_report(payload, load_report_schema())
+
+
+def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_leak(
+    tmp_path: Path,
+) -> None:
+    marker = "synthetic-private-passphrase"
+    event = tmp_path / "event.json"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": binding,
+            "event_body": {"passphrase": marker},
+        }
+    )
+
+    with pytest.raises(ValueError, match="invalid fields") as exc_info:
+        validate_report(payload, load_report_schema())
+
+    assert marker not in str(exc_info.value)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exercises POSIX final-component no-follow")
+def test_packaged_consumer_rejects_final_audit_event_symlink_without_leak(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "event.json"
+    external = tmp_path / "external.json"
+    external_marker = "synthetic-consumer-external-marker"
+    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    report = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    report["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": binding,
+        }
+    )
+    external.write_text(json.dumps({"marker": external_marker}), encoding="utf-8")
+    event.unlink()
+    event.symlink_to(external)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            report,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert external_marker not in str(exc_info.value)
+    assert str(external) not in str(exc_info.value)
+
+
+def test_packaged_consumer_rejects_large_number_audit_event_substitution(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text('{"sequence":9007199254740992.0}\n', encoding="utf-8")
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    report = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    report["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": binding,
+        }
+    )
+
+    event.write_text('{"sequence":9007199254740993.0}\n', encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(
+            report,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
 
 
 def _prepend_duplicate_json_member(text: str, *, key: str, value: object) -> str:

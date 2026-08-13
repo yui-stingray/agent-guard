@@ -25,6 +25,11 @@ def add_evidence_pack_parser(top) -> None:
         default=[],
         help="optional repo-relative agent-policy audit event artifact path",
     )
+    evidence_pack_manifest.add_argument(
+        "--agent-policy-audit-event-profile",
+        default="",
+        help="validated public profile identifier for every attached agent-policy audit event",
+    )
     evidence_pack_manifest.add_argument("--json", action="store_true", help="emit JSON")
 
 
@@ -37,6 +42,7 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
             report_payload=payload,
             artifact_paths=list(args.artifact or []),
             agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
+            agent_policy_audit_event_profile=str(args.agent_policy_audit_event_profile),
             root=root,
         )
     except Exception as exc:
@@ -71,4 +77,3 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0
-

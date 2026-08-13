@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
-
+from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
@@ -188,6 +188,38 @@ def test_report_schema_allows_conformance_and_evidence_pack_manifest() -> None:
         schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]["items"]["properties"]["role"]
     )
     assert artifact_role["enum"] == ["report", "agent-policy-audit-event"]
+
+
+def test_evidence_schemas_reject_extra_audit_fields_but_allow_report_metadata() -> None:
+    binding = {
+        "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
+        "event_profile": "agent-policy.audit_event.v1.1",
+        "canonicalization": "canonical-json-v1",
+        "digest_algorithm": "sha256",
+        "digest_encoding": "base32-lower-no-padding",
+        "digest": "b" + ("a" * 52),
+    }
+    for schema_name in (
+        "agent-guard.evidence_pack_manifest.v1.schema.json",
+        "agent-guard.report_evidence.v1.schema.json",
+    ):
+        report = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+        value = report["evidence_pack_manifest"] if "manifest" in schema_name else report
+        manifest = value if "manifest" in schema_name else value["evidence_pack_manifest"]
+        validator = Draft202012Validator(load_schema(schema_name))
+
+        manifest["artifacts"][0]["review_metadata"] = "synthetic-public-metadata"
+        assert validator.is_valid(value)
+
+        manifest["artifacts"].append(
+            {
+                "path": "reviewed/event.json",
+                "role": "agent-policy-audit-event",
+                "content_binding": binding,
+                "event_body": {"passphrase": "synthetic-private-passphrase"},
+            }
+        )
+        assert not validator.is_valid(value)
 
 
 def test_surface_delta_schema_requires_details_only_when_base_resolves() -> None:

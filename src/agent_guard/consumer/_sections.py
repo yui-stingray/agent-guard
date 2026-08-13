@@ -8,8 +8,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..evidence_pack import validate_agent_policy_audit_event_binding_shape
 from ._schema import require, require_int, require_mapping, require_sequence
-
 
 REVIEWED_MCP_POLICY_PATH = ".agent-guard/mcp-policy.yaml"
 REQUIRED_MCP_RISK_LABELS = frozenset(
@@ -186,6 +186,34 @@ def validate_evidence_pack_manifest(manifest: Mapping[str, Any], payload: Mappin
     require(failing_count == failing, "$.evidence_pack_manifest.summary.failing_gate_count must match gate statuses")
     _validate_manifest_coverage(manifest_gates, payload)
     _validate_manifest_conformance(manifest, payload)
+    _validate_manifest_artifacts(manifest)
+
+
+def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
+    artifacts = require_sequence(manifest.get("artifacts"), "$.evidence_pack_manifest.artifacts")
+    for index, raw_artifact in enumerate(artifacts):
+        artifact = require_mapping(raw_artifact, f"$.evidence_pack_manifest.artifacts[{index}]")
+        role = artifact.get("role")
+        require(
+            role in {"report", "agent-policy-audit-event"},
+            f"$.evidence_pack_manifest.artifacts[{index}].role is invalid",
+        )
+        require(
+            isinstance(artifact.get("path"), str) and bool(str(artifact.get("path")).strip()),
+            f"$.evidence_pack_manifest.artifacts[{index}].path must be a non-empty string",
+        )
+        if role != "agent-policy-audit-event":
+            continue
+        require(
+            set(artifact) == {"path", "role", "content_binding"},
+            f"$.evidence_pack_manifest.artifacts[{index}] has invalid fields",
+        )
+        try:
+            validate_agent_policy_audit_event_binding_shape(artifact.get("content_binding"))
+        except ValueError:
+            raise ValueError(
+                f"$.evidence_pack_manifest.artifacts[{index}].content_binding is invalid"
+            ) from None
 
 
 def _manifest_gate_map(gates: Sequence[Any]) -> tuple[dict[str, Mapping[str, Any]], int, int, int]:

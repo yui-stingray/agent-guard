@@ -12,7 +12,10 @@ from ..conformance import build_conformance_report
 from ..context_guard import collect_context_inventory, load_context_policy, scan_context_files
 from ..digest_guard import load_digest_policy, scan_digests
 from ..drift_guard import build_policy_spec_drift_report
-from ..evidence_pack import build_evidence_pack_manifest
+from ..evidence_pack import (
+    build_agent_policy_audit_event_artifacts,
+    build_evidence_pack_manifest,
+)
 from ..mcp_guard import build_mcp_config_report, load_mcp_policy
 from ..profiles import PROFILE_NAMES
 from ..report_render import emit_report_output, render_report_output
@@ -113,6 +116,11 @@ def add_report_parser(top) -> None:
         help="optional repo-relative agent-policy audit event artifact path for the embedded evidence-pack manifest",
     )
     report.add_argument(
+        "--agent-policy-audit-event-profile",
+        default="",
+        help="validated public profile identifier for every attached agent-policy audit event",
+    )
+    report.add_argument(
         "--format",
         choices=("markdown", "json", "github-annotations", "sarif"),
         default="markdown",
@@ -197,6 +205,10 @@ def run_report(args: argparse.Namespace) -> int:
         args.mcp_config_check = True
     digest_policy_arg = str(args.digest_policy).strip()
     workflow_policy_arg = str(args.workflow_policy).strip()
+    audit_event_paths = list(args.agent_policy_audit_event or [])
+    audit_event_profile = str(args.agent_policy_audit_event_profile).strip()
+    if audit_event_paths:
+        args.evidence_pack_manifest = True
     safe_context_policy_path = safe_policy_path(args.context_policy, root)
     surface_inventory_version = args.surface_inventory_version
     scope = report_scope(
@@ -210,6 +222,11 @@ def run_report(args: argparse.Namespace) -> int:
     )
 
     try:
+        audit_event_artifacts = build_agent_policy_audit_event_artifacts(
+            audit_event_paths,
+            event_profile=audit_event_profile,
+            root=root,
+        )
         policy = load_context_policy(policy_path)
         findings, scanned_files = scan_context_files(root=root, policy=policy)
         inventory = collect_context_inventory(root=root, policy=policy)
@@ -602,7 +619,7 @@ def run_report(args: argparse.Namespace) -> int:
         evidence_pack_manifest = build_evidence_pack_manifest(
             report_payload=payload,
             artifact_paths=artifact_paths,
-            agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
+            agent_policy_audit_event_artifacts=audit_event_artifacts,
             root=root,
         )
         payload["evidence_pack_manifest"] = evidence_pack_manifest
@@ -628,7 +645,7 @@ def run_report(args: argparse.Namespace) -> int:
             evidence_pack_manifest = build_evidence_pack_manifest(
                 report_payload=payload,
                 artifact_paths=artifact_paths,
-                agent_policy_audit_event_paths=list(args.agent_policy_audit_event or []),
+                agent_policy_audit_event_artifacts=audit_event_artifacts,
                 root=root,
             )
             payload["evidence_pack_manifest"] = evidence_pack_manifest

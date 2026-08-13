@@ -6,12 +6,22 @@ Why: keep repository-level agent instructions from weakening safety controls.
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 import pytest
 import yaml
 
+import agent_guard.bounded_scan as bounded_scan
+import agent_guard.bounded_yaml as bounded_yaml
+import agent_guard.context_guard as context_guard
 from agent_guard.context_guard import (
     ContextGuardFinding,
+    ERROR_CONTEXT_POLICY_INVALID,
+    ERROR_CONTEXT_POLICY_LIMIT,
+    ERROR_CONTEXT_SCAN_TIMEOUT,
+    MAX_CONTEXT_POLICY_BYTES,
+    MAX_CONTEXT_POLICY_REGEX_COUNT,
+    MAX_CONTEXT_POLICY_REGEX_LENGTH,
     build_rules,
     collect_context_inventory,
     iter_context_files,
@@ -407,6 +417,67 @@ def test_context_guard_rejects_malformed_policy(tmp_path: Path) -> None:
         load_context_policy(bad)
 
 
+@pytest.mark.parametrize("payload", ("[]\n", "false\n", "0\n", '""\n'))
+def test_context_guard_rejects_falsy_non_mapping_policy(
+    tmp_path: Path,
+    payload: str,
+) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=rf"^{ERROR_CONTEXT_POLICY_INVALID}$"):
+        load_context_policy(bad)
+
+
+def test_context_policy_rejects_exactly_one_byte_over_limit_before_yaml_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "synthetic-oversized-context-policy-marker"
+    raw_policy = marker.encode("utf-8") + b" " * (
+        MAX_CONTEXT_POLICY_BYTES + 1 - len(marker.encode("utf-8"))
+    )
+    assert len(raw_policy) == MAX_CONTEXT_POLICY_BYTES + 1
+    policy_path = tmp_path / "context-policy.yaml"
+    policy_path.write_bytes(raw_policy)
+
+    def unexpected_safe_load(_text: str) -> object:
+        raise AssertionError("oversized context policy reached YAML parsing")
+
+    monkeypatch.setattr(context_guard.yaml, "safe_load", unexpected_safe_load)
+
+    with pytest.raises(ValueError, match=f"^{ERROR_CONTEXT_POLICY_LIMIT}$") as exc_info:
+        load_context_policy(policy_path)
+
+    assert marker not in str(exc_info.value)
+
+
+def test_context_policy_rejects_nested_yaml_structure_before_object_construction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "synthetic-nested-context-policy-marker"
+    raw_policy = (
+        "root: "
+        + ("[" * (bounded_yaml.MAX_YAML_DEPTH + 1))
+        + marker
+        + ("]" * (bounded_yaml.MAX_YAML_DEPTH + 1))
+        + "\n"
+    )
+    policy_path = tmp_path / "context-policy.yaml"
+    policy_path.write_text(raw_policy, encoding="utf-8")
+
+    def unexpected_safe_load(_text: str) -> object:
+        raise AssertionError("nested context policy reached YAML construction")
+
+    monkeypatch.setattr(context_guard.yaml, "safe_load", unexpected_safe_load)
+
+    with pytest.raises(ValueError, match=f"^{ERROR_CONTEXT_POLICY_LIMIT}$") as exc_info:
+        load_context_policy(policy_path)
+
+    assert marker not in str(exc_info.value)
+
+
 def test_context_guard_rejects_invalid_regex(tmp_path: Path) -> None:
     bad_policy = policy_file(
         tmp_path,
@@ -421,3 +492,54 @@ def test_context_guard_rejects_invalid_regex(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="invalid forbidden_patterns regex"):
         build_rules(load_context_policy(bad_policy))
+
+
+def test_context_guard_enforces_regex_execution_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bounded_scan, "ISOLATED_SCAN_TIMEOUT_SECONDS", 0.25)
+    sentinel = "sk-" + ("r" * 24)
+    policy = {
+        "scan": {"include": ["AGENTS.md"], "exclude": []},
+        "policy": {
+            "forbidden_patterns": [
+                {
+                    "id": "catastrophic",
+                    "pattern": f"(?# {sentinel})(a+)+$",
+                    "message": "synthetic context rule",
+                }
+            ]
+        },
+    }
+    write(tmp_path / "AGENTS.md", ("a" * 30) + "!\n")
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match=f"^{ERROR_CONTEXT_SCAN_TIMEOUT}$") as exc_info:
+        scan_context_files(root=tmp_path, policy=policy)
+
+    assert time.monotonic() - started < 3
+    assert sentinel not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        [{"id": "bounded", "pattern": "safe"}] * (MAX_CONTEXT_POLICY_REGEX_COUNT + 1),
+        [{"id": "bounded", "pattern": "a" * (MAX_CONTEXT_POLICY_REGEX_LENGTH + 1)}],
+    ],
+)
+def test_context_guard_rejects_policy_regex_limits_without_echo(
+    tmp_path: Path,
+    rules: list[dict[str, str]],
+) -> None:
+    write(tmp_path / "AGENTS.md", "safe\n")
+
+    with pytest.raises(ValueError, match=f"^{ERROR_CONTEXT_POLICY_LIMIT}$"):
+        scan_context_files(
+            root=tmp_path,
+            policy={
+                "scan": {"include": ["AGENTS.md"], "exclude": []},
+                "policy": {"forbidden_patterns": rules},
+            },
+        )
