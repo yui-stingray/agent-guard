@@ -128,7 +128,7 @@ def test_packaged_consumer_rejects_final_audit_event_symlink_without_leak(
 
     with pytest.raises(
         ValueError,
-        match="^agent-policy audit event binding is invalid$",
+        match=r"^agent-policy audit event binding is invalid$",
     ) as exc_info:
         validate_agent_policy_audit_event_files(
             report,
@@ -162,7 +162,7 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
 
     with pytest.raises(
         ValueError,
-        match="^agent-policy audit event binding is invalid$",
+        match=r"^agent-policy audit event binding is invalid$",
     ):
         validate_agent_policy_audit_event_files(
             report,

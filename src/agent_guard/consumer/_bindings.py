@@ -39,6 +39,8 @@ def validate_agent_policy_audit_event_files(
     *,
     event_profile: str,
 ) -> None:
+    """Pair each path positionally with the same-index bound audit artifact."""
+
     artifacts = _bound_audit_event_artifacts(report)
     if not artifacts:
         require(not paths and not event_profile, ERROR_AUDIT_EVENT_BINDING_INVALID)

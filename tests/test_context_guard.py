@@ -16,6 +16,7 @@ import agent_guard.bounded_yaml as bounded_yaml
 import agent_guard.context_guard as context_guard
 from agent_guard.context_guard import (
     ContextGuardFinding,
+    ERROR_CONTEXT_POLICY_INVALID,
     ERROR_CONTEXT_POLICY_LIMIT,
     ERROR_CONTEXT_SCAN_TIMEOUT,
     MAX_CONTEXT_POLICY_BYTES,
@@ -413,6 +414,18 @@ def test_context_guard_rejects_malformed_policy(tmp_path: Path) -> None:
     bad.write_text("- not-a-mapping\n", encoding="utf-8")
 
     with pytest.raises(ValueError):
+        load_context_policy(bad)
+
+
+@pytest.mark.parametrize("payload", ("[]\n", "false\n", "0\n", '""\n'))
+def test_context_guard_rejects_falsy_non_mapping_policy(
+    tmp_path: Path,
+    payload: str,
+) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=rf"^{ERROR_CONTEXT_POLICY_INVALID}$"):
         load_context_policy(bad)
 
 

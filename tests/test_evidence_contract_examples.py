@@ -476,6 +476,7 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
     )
 
     assert missing_event_result.returncode == 1
+    assert missing_event_result.stdout == ""
     assert missing_event_result.stderr.strip() == "agent-guard evidence bundle invalid"
     assert consumer_result.returncode == 0, (
         consumer_result.stdout + consumer_result.stderr

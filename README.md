@@ -356,9 +356,9 @@ event, add the same `--agent-policy-audit-event <reviewed-audit-event-path>` and
 both artifacts again after the producer has written the repo-local JSON event
 and a maintainer has reviewed it. The manifest records only a sanitized
 repository-relative path and a profile-bound canonical-content digest, not the
-event body. The public bundle consumer requires the standalone manifest to
-match the manifest embedded in the report and requires the event path and
-profile again to verify the binding. Keep the event outside
+event body. If the standalone manifest is present, the public bundle consumer
+requires it to match the manifest embedded in the report. It also requires the
+event path and profile again to verify the binding. Keep the event outside
 `.agent-guard/evidence`: the seven-file public bundle allow-list rejects it.
 
 The following optional PR review command is available in `0.3.0`:

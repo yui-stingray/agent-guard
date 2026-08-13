@@ -349,7 +349,9 @@ def load_context_policy(path: Path) -> dict[str, object]:
         loaded = load_bounded_yaml(
             _read_context_policy_text(path),
             construct=yaml.safe_load,
-        ) or {}
+        )
+        if loaded is None:
+            loaded = {}
         if not isinstance(loaded, dict):
             raise BoundedYamlInvalidError
     except BoundedYamlLimitError:
