@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Made static MCP package pin inference inspect recognized package-manager
+  operands and selectors instead of arbitrary command arguments. Full SemVer,
+  exact `uvx` requirements, and package-attached full SHA-256 pins remain
+  eligible; ranges, npm-style major/minor-only versions, short digests, option
+  values, and ambiguous layouts fail closed as unpinned metadata.
 - Isolated repository-controlled context-policy regular-expression matching
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,

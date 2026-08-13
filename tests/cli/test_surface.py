@@ -766,7 +766,7 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
         tmp_path / ".codex" / "config.toml",
         "[mcp_servers.docs]\n"
         'command = "uvx"\n'
-        'args = ["docs-server==1.2.3"]\n'
+        'args = ["docs-server@1.2.3"]\n'
         'env = { API_KEY = "${API_KEY}" }\n',
     )
     write(

@@ -12,6 +12,101 @@ from urllib.parse import parse_qsl, urlparse
 
 
 PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "uvx", "python", "python3", "node", "deno", "docker"}
+DIRECT_PACKAGE_OPERAND_COMMANDS = frozenset({"npx", "uvx"})
+PACKAGE_OPERAND_SUBCOMMANDS = {
+    "npm": frozenset({"exec", "x"}),
+    "pnpm": frozenset({"dlx"}),
+    "yarn": frozenset({"dlx"}),
+    "bun": frozenset({"x"}),
+}
+PACKAGE_SELECTOR_OPTIONS = {
+    "npx": frozenset({"--package", "-p"}),
+    "npm": frozenset({"--package"}),
+    "pnpm": frozenset({"--package"}),
+    "yarn": frozenset({"--package", "-p"}),
+    "bun": frozenset({"--package", "-p"}),
+}
+UVX_PACKAGE_SELECTOR_OPTIONS = frozenset({"--from", "--with", "-w"})
+PACKAGE_OPERAND_BOOLEAN_OPTIONS = {
+    "npx": frozenset({"-q", "-y", "--quiet", "--yes"}),
+    "npm": frozenset(
+        {
+            "--dangerously-allow-all-scripts",
+            "--include-workspace-root",
+            "--strict-allow-scripts",
+            "--workspaces",
+            "--parseable",
+            "-p",
+            "-q",
+            "-y",
+            "--quiet",
+            "--yes",
+        }
+    ),
+    "pnpm": frozenset({"-c", "-s", "--shell-mode", "--silent"}),
+    "yarn": frozenset({"-q", "--quiet"}),
+    "bun": frozenset({"-b", "--bun", "--verbose"}),
+    "uvx": frozenset(
+        {
+            "--offline",
+            "-q",
+            "-v",
+            "--quiet",
+            "--verbose",
+        }
+    ),
+}
+PACKAGE_OPERAND_VALUE_OPTIONS = {
+    "npx": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"}),
+    "npm": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"}),
+    "pnpm": frozenset({"--allow-build", "--reporter"}),
+    "yarn": frozenset(),
+    "bun": frozenset({"--cwd", "--shell"}),
+    "uvx": frozenset(
+        {
+            "--cache-dir",
+            "--directory",
+            "--project",
+            "--python",
+            "-p",
+        }
+    ),
+}
+NPM_PACKAGE_NAME = r"(?:@[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*"
+SEMVER_NUMERIC_IDENTIFIER = r"(?:0|[1-9]\d*)"
+SEMVER_ALPHANUMERIC_IDENTIFIER = r"(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+SEMVER_PRERELEASE_IDENTIFIER = rf"(?:{SEMVER_NUMERIC_IDENTIFIER}|{SEMVER_ALPHANUMERIC_IDENTIFIER})"
+NPM_FULL_SEMVER = (
+    r"v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    rf"(?:-{SEMVER_PRERELEASE_IDENTIFIER}(?:\.{SEMVER_PRERELEASE_IDENTIFIER})*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
+PYTHON_PACKAGE_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+PYTHON_EXTRA_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+PYTHON_EXTRAS = rf"(?:\[{PYTHON_EXTRA_NAME}(?:,{PYTHON_EXTRA_NAME})*\])?"
+PYTHON_EXACT_VERSION = (
+    r"v?(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*"
+    r"(?:[._-]?(?:alpha|a|beta|b|preview|pre|c|rc)[._-]?[0-9]*)?"
+    r"(?:-(?:[0-9]+)|[._-]?(?:post|rev|r)[._-]?[0-9]*)?"
+    r"(?:[._-]?dev[._-]?[0-9]*)?"
+    r"(?:\+[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*)?"
+)
+NPM_PACKAGE_VERSION_PIN_RE = re.compile(
+    rf"{NPM_PACKAGE_NAME}@{NPM_FULL_SEMVER}",
+    re.ASCII,
+)
+NPM_PACKAGE_SHA256_PIN_RE = re.compile(
+    rf"{NPM_PACKAGE_NAME}@sha256:[A-Fa-f0-9]{{64}}",
+    re.ASCII,
+)
+PYTHON_PACKAGE_VERSION_PIN_RE = re.compile(
+    rf"{PYTHON_PACKAGE_NAME}{PYTHON_EXTRAS}=={PYTHON_EXACT_VERSION}",
+    re.ASCII | re.IGNORECASE,
+)
+UVX_COMMAND_VERSION_PIN_RE = re.compile(
+    rf"{PYTHON_PACKAGE_NAME}@{PYTHON_EXACT_VERSION}",
+    re.ASCII | re.IGNORECASE,
+)
 MCP_URL_KEYS = ("url", "uri", "endpoint", "serverUrl", "server_url")
 SAFE_MCP_URL_SCHEMES = {"http", "https", "sse"}
 MCP_RISKY_PATTERNS = frozenset(
@@ -245,19 +340,268 @@ def infer_transport(raw: dict[str, object], remote_host: str, command: str) -> s
     return "unknown"
 
 
-def infer_version_pin(command: str, args: list[str]) -> bool | None:
-    if not command and not args:
+def option_value(
+    args: list[str],
+    index: int,
+    options: frozenset[str],
+) -> tuple[str | None, int] | None:
+    value = args[index]
+    for option in options:
+        if value == option:
+            if index + 1 >= len(args) or args[index + 1].startswith("-"):
+                return None, 1
+            return args[index + 1], 2
+        if value.startswith(f"{option}="):
+            inline_value = value[len(option) + 1 :]
+            return inline_value or None, 1
+        if len(option) == 2 and value.startswith(option) and len(value) > len(option):
+            inline_value = value[len(option) :].removeprefix("=")
+            return inline_value or None, 1
+    return None
+
+
+def is_boolean_option(value: str, options: frozenset[str]) -> bool:
+    if value in options:
+        return True
+    return any(option.startswith("--") and value.startswith(f"{option}=") for option in options)
+
+
+def npm_package_operand_args(args: list[str]) -> tuple[list[str], list[str], bool] | None:
+    try:
+        boundary = args.index("--")
+    except ValueError:
+        prefix_and_subcommand = args
+    else:
+        prefix_and_subcommand = args[:boundary]
+
+    selectors: list[str] = []
+    index = 0
+    while index < len(prefix_and_subcommand):
+        value = prefix_and_subcommand[index]
+        if value.lower() in PACKAGE_OPERAND_SUBCOMMANDS["npm"]:
+            return args[index + 1 :], selectors, True
+
+        selector_option = option_value(
+            prefix_and_subcommand,
+            index,
+            package_selector_options("npm"),
+        )
+        if selector_option is not None:
+            selector, consumed = selector_option
+            if selector is None:
+                return None
+            selectors.append(selector)
+            index += consumed
+            continue
+
+        value_option = option_value(prefix_and_subcommand, index, PACKAGE_OPERAND_VALUE_OPTIONS["npm"])
+        if value_option is not None:
+            option_argument, consumed = value_option
+            if option_argument is None:
+                return None
+            index += consumed
+            continue
+
+        if is_boolean_option(value, PACKAGE_OPERAND_BOOLEAN_OPTIONS["npm"]):
+            index += 1
+            continue
+        if value.startswith("-"):
+            subcommand_index = next(
+                (
+                    candidate
+                    for candidate in range(index + 1, len(prefix_and_subcommand))
+                    if prefix_and_subcommand[candidate].lower() in PACKAGE_OPERAND_SUBCOMMANDS["npm"]
+                ),
+                None,
+            )
+            if subcommand_index is not None:
+                return args[subcommand_index + 1 :], selectors, False
         return None
-    joined = " ".join(args)
-    if "@latest" in joined:
+    return None
+
+
+def subcommand_package_operand_args(
+    command: str,
+    args: list[str],
+) -> tuple[list[str], list[str], bool] | None:
+    try:
+        boundary = args.index("--")
+    except ValueError:
+        prefix_and_subcommand = args
+    else:
+        prefix_and_subcommand = args[:boundary]
+
+    subcommands = PACKAGE_OPERAND_SUBCOMMANDS[command]
+    selectors: list[str] = []
+    index = 0
+    while index < len(prefix_and_subcommand):
+        value = prefix_and_subcommand[index]
+        if value.lower() in subcommands:
+            return args[index + 1 :], selectors, True
+
+        selector_option = option_value(
+            prefix_and_subcommand,
+            index,
+            package_selector_options(command),
+        )
+        if selector_option is not None:
+            selector, consumed = selector_option
+            if selector is None:
+                return None
+            selectors.append(selector)
+            index += consumed
+            continue
+
+        value_option = option_value(
+            prefix_and_subcommand,
+            index,
+            PACKAGE_OPERAND_VALUE_OPTIONS[command],
+        )
+        if value_option is not None:
+            option_argument, consumed = value_option
+            if option_argument is None:
+                return None
+            index += consumed
+            continue
+        if is_boolean_option(value, PACKAGE_OPERAND_BOOLEAN_OPTIONS[command]):
+            index += 1
+            continue
+        if value.startswith("-") and any(
+            candidate.lower() in subcommands
+            for candidate in prefix_and_subcommand[index + 1 :]
+        ):
+            subcommand_index = next(
+                candidate
+                for candidate in range(index + 1, len(prefix_and_subcommand))
+                if prefix_and_subcommand[candidate].lower() in subcommands
+            )
+            return args[subcommand_index + 1 :], selectors, False
+        return None
+    return None
+
+
+def package_operand_args(command: str, args: list[str]) -> tuple[list[str], list[str], bool] | None:
+    normalized_command = command.strip()
+    if normalized_command in DIRECT_PACKAGE_OPERAND_COMMANDS:
+        return args, [], True
+    if normalized_command == "npm":
+        return npm_package_operand_args(args)
+    subcommands = PACKAGE_OPERAND_SUBCOMMANDS.get(normalized_command)
+    if not subcommands:
+        return None
+    return subcommand_package_operand_args(normalized_command, args)
+
+
+def package_selector_options(command: str) -> frozenset[str]:
+    if command == "uvx":
+        return UVX_PACKAGE_SELECTOR_OPTIONS
+    return PACKAGE_SELECTOR_OPTIONS.get(command, frozenset())
+
+
+def package_operands(
+    command: str,
+    args: list[str],
+    initial_selectors: list[str],
+) -> list[tuple[str, bool]] | None:
+    try:
+        boundary = args.index("--")
+    except ValueError:
+        before_boundary = args
+        after_boundary: list[str] = []
+    else:
+        before_boundary = args[:boundary]
+        after_boundary = args[boundary + 1 :]
+
+    selectors = list(initial_selectors)
+    first_positional: str | None = None
+    uvx_from_selected = False
+    index = 0
+    while index < len(before_boundary):
+        value = before_boundary[index]
+        selector_option = option_value(
+            before_boundary,
+            index,
+            package_selector_options(command),
+        )
+        if selector_option is not None:
+            selector_value, consumed = selector_option
+            if selector_value is None:
+                return None
+            if first_positional is not None and command != "npm":
+                return None
+            if command == "uvx" and (value == "--from" or value.startswith("--from=")):
+                uvx_from_selected = True
+            selectors.append(selector_value)
+            index += consumed
+            continue
+
+        value_option = option_value(
+            before_boundary,
+            index,
+            PACKAGE_OPERAND_VALUE_OPTIONS[command],
+        )
+        if value_option is not None:
+            option_argument, consumed = value_option
+            if option_argument is None:
+                return None
+            if first_positional is not None and command != "npm":
+                return None
+            index += consumed
+            continue
+
+        if is_boolean_option(value, PACKAGE_OPERAND_BOOLEAN_OPTIONS[command]):
+            if first_positional is not None and command != "npm":
+                return None
+            index += 1
+            continue
+        if value.startswith("-"):
+            return None
+        if first_positional is None:
+            first_positional = value
+        index += 1
+
+    if selectors and command == "uvx" and not uvx_from_selected:
+        primary_operand = first_positional
+        if primary_operand is None and after_boundary:
+            primary_operand = after_boundary[0]
+        if primary_operand is None or primary_operand.startswith("-"):
+            return None
+        return [*((selector, False) for selector in selectors), (primary_operand, True)]
+    if selectors:
+        return [(selector, False) for selector in selectors]
+    if first_positional is not None:
+        return [(first_positional, True)]
+    if after_boundary:
+        if after_boundary[0].startswith("-"):
+            return None
+        return [(after_boundary[0], True)]
+    return []
+
+
+def is_immutable_package_operand(command: str, operand: str, *, primary: bool) -> bool:
+    if command == "uvx":
+        pattern = UVX_COMMAND_VERSION_PIN_RE if primary else PYTHON_PACKAGE_VERSION_PIN_RE
+        return bool(pattern.fullmatch(operand))
+    return bool(
+        NPM_PACKAGE_SHA256_PIN_RE.fullmatch(operand)
+        or NPM_PACKAGE_VERSION_PIN_RE.fullmatch(operand)
+    )
+
+
+def infer_version_pin(command: str, args: list[str]) -> bool | None:
+    package_execution = package_operand_args(command, args)
+    if package_execution is None:
+        return None
+    operand_args, initial_selectors, valid = package_execution
+    if not valid:
         return False
-    if re.search(r"(?:^|\s)[^\s@]+@v?\d+(?:[.\-][A-Za-z0-9]+)*", joined):
-        return True
-    if re.search(r"(?:^|\s)[^\s=<>!~]+==[A-Za-z0-9_.+-]+", joined):
-        return True
-    if re.search(r"(?:@sha256:|sha256:)[A-Fa-f0-9]{16,}", joined):
-        return True
-    return False if command in PACKAGE_MANAGER_COMMANDS else None
+    operands = package_operands(command, operand_args, initial_selectors)
+    if not operands:
+        return False
+    return all(
+        is_immutable_package_operand(command, operand, primary=primary)
+        for operand, primary in operands
+    )
 
 
 def normalized_auth_field_name(name: object) -> str:

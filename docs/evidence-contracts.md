@@ -220,6 +220,18 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `.agent-guard/mcp-policy.yaml`. External MCP policy files can drive scanner
   experiments, but conformance reports display them as `<external-policy>` and
   do not treat them as reviewed repository evidence.
+  `version_pinned` is emitted only for recognized package-execution forms. For
+  `npx`, `npm exec`/`npm x`, `pnpm dlx`, `yarn dlx`, and `bun x`, every actual
+  package operand or package selector must use a full SemVer or a
+  package-attached `sha256` value with 64 hexadecimal digits. For `uvx`, every
+  selected requirement must use an exact `name[extras]==version` form; a
+  positional command must use uv's exact-only `name@version` syntax and is also
+  required unless `--from` selects it.
+  Ranges, tags such as `latest`, npm-style major/minor-only versions, short
+  digests, editable or requirements-file inputs, and ambiguous or unsupported
+  option layouts are conservatively not treated as pinned. This is static command
+  metadata classification; it does not resolve registries, lock files, or live
+  package identity.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. Recommended and strict
   conformance also fail when the reviewed MCP policy omits the default static
