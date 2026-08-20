@@ -254,11 +254,22 @@ _SAFE_NEGATION_BOUNDARY = re.compile(
     r"(?i)(?:[,.;!?]|\b(?:and|but|however|nor|or|then|while|yet)\b)"
 )
 _SAFE_NEGATION_COORDINATOR = re.compile(r"(?i)\b(?:nor|or)\b")
-_SAFE_NEGATION_UNSAFE_POSTFIX = re.compile(
-    r"(?i)\b(?:after|as\s+long\s+as|before|during|except|if|"
-    r"only\s+if|provided(?:\s+that)?|unless|until|when|whenever)\b"
+_SAFE_NEGATION_INLINE_MARKUP = r"(?:[*_]{1,3}|`)?"
+_SAFE_NEGATION_UNSAFE_QUALIFIER = (
+    rf"(?:after|as{_SAFE_NEGATION_INLINE_MARKUP}\s+"
+    rf"{_SAFE_NEGATION_INLINE_MARKUP}long{_SAFE_NEGATION_INLINE_MARKUP}\s+"
+    rf"{_SAFE_NEGATION_INLINE_MARKUP}as|before|during|except|if|"
+    rf"only{_SAFE_NEGATION_INLINE_MARKUP}\s+"
+    rf"{_SAFE_NEGATION_INLINE_MARKUP}if|provided(?:\s+that)?|unless|until|"
+    rf"when|whenever|while)"
 )
-_SAFE_NEGATION_PROVIDED_BY = re.compile(r"(?i)\s+by\b")
+_SAFE_NEGATION_UNSAFE_POSTFIX = re.compile(
+    rf"(?i)\b{_SAFE_NEGATION_UNSAFE_QUALIFIER}\b"
+)
+_SAFE_NEGATION_PROVIDED_BY = re.compile(
+    r"(?i)\s+(?:by|(?P<marker>\*{1,3}|_{1,3}|`)by(?P=marker))"
+    r"(?=$|[\s!\"#$%&'()+,./:;<=>?@\[\]\\^{}|~])"
+)
 _SAFE_NEGATION_PROVIDED_ARTICLE = re.compile(r"(?i)\b(?:a|an|the)\s+$")
 _SAFE_NEGATION_ADJECTIVE_BRIDGE = re.compile(r"\s*(?:[*_]{1,3}|`)?\s*")
 _SAFE_NEGATION_CLAUSE_VERB = re.compile(
@@ -276,7 +287,6 @@ _SAFE_NEGATION_PREFIX_TEXT = (
     r"(?:[*_]{1,3})?\s*"
     rf"(?:please\s+)?{_SAFE_NEGATION_NEGATOR}\s+(?:ever\s+)?"
 )
-_SAFE_NEGATION_INLINE_MARKUP = r"(?:[*_]{1,3}|`)?"
 _SAFE_NEGATION_DIRECT_PREFIX = re.compile(
     rf"(?i){_SAFE_NEGATION_PREFIX_TEXT}{_SAFE_NEGATION_INLINE_MARKUP}"
 )
@@ -1575,10 +1585,14 @@ def line_allows_rule(line: str, rule_id: str) -> bool:
 def _action_is_safely_negated(
     line: str,
     *,
+    unsafe_leading_qualifier: bool,
     clause_start: int,
     action_start: int,
     rule_id: str,
 ) -> bool:
+    if unsafe_leading_qualifier:
+        return False
+
     prefix = line[clause_start:action_start]
     prefix_pattern = (
         _SAFE_NEGATION_COMMAND_PREFIX
@@ -1586,6 +1600,23 @@ def _action_is_safely_negated(
         else _SAFE_NEGATION_DIRECT_PREFIX
     )
     return prefix_pattern.fullmatch(prefix) is not None
+
+
+def _negation_qualifier_is_unsafe(
+    line: str,
+    *,
+    qualifier: re.Match[str],
+    end: int,
+) -> bool:
+    return not (
+        qualifier.group().casefold() == "provided"
+        and _SAFE_NEGATION_PROVIDED_BY.match(
+            line,
+            qualifier.end(),
+            end,
+        )
+        is not None
+    )
 
 
 def _has_unsafe_negation_postfix(
@@ -1650,6 +1681,8 @@ def _has_unsafe_negation_postfix(
             return True
         if boundary is None:
             return False
+        if _SAFE_NEGATION_UNSAFE_POSTFIX.fullmatch(boundary.group()) is not None:
+            return True
         if boundary.group() in {".", "!", "?"}:
             return False
         cursor = boundary.end()
@@ -1697,26 +1730,53 @@ def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
 
     rule_id = str(rule["id"])
     action_pattern = _SAFE_NEGATION_ACTION_PATTERNS[rule_id]
+    qualifier_iter = iter(_SAFE_NEGATION_UNSAFE_POSTFIX.finditer(line))
+    qualifier = next(qualifier_iter, None)
+    has_qualifier_candidate = qualifier is not None
+
+    def consume_unsafe_qualifiers(end: int) -> bool:
+        nonlocal qualifier
+        found = False
+        while qualifier is not None and qualifier.start() < end:
+            if _negation_qualifier_is_unsafe(
+                line,
+                qualifier=qualifier,
+                end=end,
+            ):
+                found = True
+            qualifier = next(qualifier_iter, None)
+        return found
+
     first_action = action_pattern.match(line, first_unsafe_match.start())
     if (
         first_action is not None
         and action_pattern.search(line, first_action.end()) is None
     ):
         clause_start = 0
+        unsafe_leading_qualifier = False
         for boundary in _SAFE_NEGATION_BOUNDARY.finditer(
             line,
             0,
             first_action.start(),
         ):
             clause_start = boundary.end()
+            segment_is_unsafe = (
+                consume_unsafe_qualifiers(clause_start)
+                if qualifier is not None
+                else False
+            )
+            unsafe_leading_qualifier = (
+                unsafe_leading_qualifier or segment_is_unsafe
+            )
         if not _action_is_safely_negated(
             line,
+            unsafe_leading_qualifier=unsafe_leading_qualifier,
             clause_start=clause_start,
             action_start=first_action.start(),
             rule_id=rule_id,
         ):
             return True
-        if _has_unsafe_negation_postfix(
+        if has_qualifier_candidate and _has_unsafe_negation_postfix(
             line,
             action_end=first_action.end(),
             action_pattern=action_pattern,
@@ -1736,10 +1796,19 @@ def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
     boundary_iter = iter(_SAFE_NEGATION_BOUNDARY.finditer(line))
     boundary = next(boundary_iter, None)
     clause_start = 0
+    unsafe_leading_qualifier = False
     safely_negated_through = 0
     for action in action_pattern.finditer(line):
         while boundary is not None and boundary.end() <= action.start():
             clause_start = boundary.end()
+            segment_is_unsafe = (
+                consume_unsafe_qualifiers(clause_start)
+                if qualifier is not None
+                else False
+            )
+            unsafe_leading_qualifier = (
+                unsafe_leading_qualifier or segment_is_unsafe
+            )
             boundary = next(boundary_iter, None)
         unsafe_match = regex.match(line, action.start())
         if unsafe_match is None:
@@ -1748,13 +1817,14 @@ def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
         if not safely_negated:
             safely_negated = _action_is_safely_negated(
                 line,
+                unsafe_leading_qualifier=unsafe_leading_qualifier,
                 clause_start=clause_start,
                 action_start=action.start(),
                 rule_id=rule_id,
             )
         if not safely_negated:
             return True
-        if _has_unsafe_negation_postfix(
+        if has_qualifier_candidate and _has_unsafe_negation_postfix(
             line,
             action_end=action.end(),
             action_pattern=action_pattern,
