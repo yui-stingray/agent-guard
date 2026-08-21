@@ -186,18 +186,26 @@ def apply_report_defaults(args: argparse.Namespace) -> None:
         args.surface_inventory_version = "v1"
 
 
-def emit_report_payload(
+def render_report_payload(
     args: argparse.Namespace,
     payload: dict[str, object],
     *,
     _enforce_budget: bool = True,
-) -> None:
+) -> str:
     rendered = render_report_output(payload, args.format)
     if _enforce_budget:
         rendered = require_public_output_budget(
             rendered,
             error=ERROR_REPORT_OUTPUT_LIMIT,
         )
+    return rendered
+
+
+def emit_rendered_report_payload(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+    rendered: str,
+) -> None:
     if str(args.output).strip():
         emit_report_output(rendered, args.output)
     else:
@@ -208,6 +216,23 @@ def emit_report_payload(
         f"agent-guard report: status={payload.get('status', 'error')} "
         f"exit_code={payload.get('exit_code', 2)} "
         "output=written\n"
+    )
+
+
+def emit_report_payload(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+    *,
+    _enforce_budget: bool = True,
+) -> None:
+    emit_rendered_report_payload(
+        args,
+        payload,
+        render_report_payload(
+            args,
+            payload,
+            _enforce_budget=_enforce_budget,
+        ),
     )
 
 
@@ -335,12 +360,13 @@ def run_report(args: argparse.Namespace) -> int:
                 resolve_policy_arg(digest_policy_arg, root),
                 _input_budget=digest_input_budget,
             )
+            context_lock_input_budget = context_input_budget.next_read_pass()
             context_lock_report = build_context_lock_report(
                 root=root,
                 inventory=inventory,
                 digest_policy=digest_policy,
                 digest_policy_arg=digest_policy_arg,
-                _input_budget=context_input_budget,
+                _input_budget=context_lock_input_budget,
             )
             digest_findings, checked_files = scan_digests(
                 root=root,
@@ -735,7 +761,7 @@ def run_report(args: argparse.Namespace) -> int:
             payload["evidence_pack_manifest"] = evidence_pack_manifest
     payload = sanitize_public_mapping(payload)
     try:
-        emit_report_payload(args, payload)
+        rendered = render_report_payload(args, payload)
     except ValueError as exc:
         if str(exc) != ERROR_REPORT_OUTPUT_LIMIT:
             raise
@@ -764,5 +790,9 @@ def run_report(args: argparse.Namespace) -> int:
             )
         except ValueError:
             return 2
+        return 2
+    try:
+        emit_rendered_report_payload(args, payload, rendered)
+    except ValueError:
         return 2
     return exit_code

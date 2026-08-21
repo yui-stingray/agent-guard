@@ -6,6 +6,7 @@ Why: shrink the legacy CLI module without changing subcommand behavior.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from importlib import metadata
@@ -49,11 +50,50 @@ def require_public_output_budget(text: str, *, error: str) -> str:
     return text
 
 
+def _silence_failed_stdout() -> None:
+    """Drain pending output into the platform null device before shutdown."""
+
+    stdout = sys.stdout
+    try:
+        stdout_fd = stdout.fileno()
+        null_fd = os.open(
+            os.devnull,
+            os.O_WRONLY | getattr(os, "O_BINARY", 0),
+        )
+    except Exception:
+        return
+
+    close_null_fd = null_fd != stdout_fd
+    try:
+        if close_null_fd:
+            os.dup2(null_fd, stdout_fd)
+    except Exception:
+        return
+    finally:
+        if close_null_fd:
+            try:
+                os.close(null_fd)
+            except OSError:
+                pass
+
+    for output in (getattr(stdout, "buffer", None), stdout):
+        if output is None:
+            continue
+        try:
+            output.flush()
+        except Exception:
+            pass
+
+
 def emit_public_output(text: str, *, error: str) -> None:
     """Write exact UTF-8 bytes without platform newline translation."""
 
     try:
         data = text.encode("utf-8")
+    except (MemoryError, UnicodeEncodeError, UnicodeError):
+        raise ValueError(error) from None
+
+    try:
         output = getattr(sys.stdout, "buffer", None)
         if output is None:
             sys.stdout.write(text)
@@ -61,10 +101,17 @@ def emit_public_output(text: str, *, error: str) -> None:
             return
         sys.stdout.flush()
         written = output.write(data)
-        if written is not None and written != len(data):
+        if (
+            isinstance(written, bool)
+            or not isinstance(written, int)
+            or written != len(data)
+        ):
             raise OSError
         output.flush()
-    except (MemoryError, OSError, UnicodeEncodeError, UnicodeError, ValueError):
+    except (MemoryError, UnicodeEncodeError, UnicodeError):
+        raise ValueError(error) from None
+    except (OSError, ValueError):
+        _silence_failed_stdout()
         raise ValueError(error) from None
 
 

@@ -8,13 +8,14 @@ from pathlib import Path
 
 import pytest
 
+from agent_guard.bounded_repo_reader import DistinctInputBudget
 from agent_guard.cli import build_parser
 import agent_guard.cli.report as report_cli
 from agent_guard.digest_guard import MAX_DIGEST_DISTINCT_INPUT_BYTES
 from tests.cli.helpers import run_cli, sha256_text, write
 
 
-def test_report_uses_separate_digest_budget_while_context_lock_keeps_context_budget(
+def test_report_uses_separate_context_read_pass_and_digest_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -79,8 +80,14 @@ def test_report_uses_separate_digest_budget_while_context_lock_keeps_context_bud
     captured = capsys.readouterr()
     assert captured.err == ""
     context_budget = observed["context_policy"]
+    context_lock_budget = observed["context_lock"]
     digest_budget = observed["digest_policy"]
-    assert observed["context_lock"] is context_budget
+    assert isinstance(context_budget, DistinctInputBudget)
+    assert isinstance(context_lock_budget, DistinctInputBudget)
+    assert context_lock_budget is not context_budget
+    context_used_bytes = context_budget.used_bytes
+    context_lock_budget.charge_bytes(b"x", identity="shared-pass-probe")
+    assert context_budget.used_bytes == context_used_bytes + 1
     assert observed["digest_scan"] is digest_budget
     assert digest_budget is not context_budget
     assert getattr(digest_budget, "max_bytes") == MAX_DIGEST_DISTINCT_INPUT_BYTES

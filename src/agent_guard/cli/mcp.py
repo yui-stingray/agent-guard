@@ -72,15 +72,14 @@ def _emit_mcp_payload(
             if args.json
             else f"ERROR: {ERROR_MCP_CONFIG_LIMIT}"
         )
-        emit_public_output(f"{rendered}\n", error=ERROR_MCP_CONFIG_LIMIT)
+        try:
+            emit_public_output(f"{rendered}\n", error=ERROR_MCP_CONFIG_LIMIT)
+        except ValueError:
+            pass
         return False
     try:
         emit_public_output(rendered, error=ERROR_MCP_CONFIG_LIMIT)
     except ValueError:
-        emit_public_output(
-            f"ERROR: {ERROR_MCP_CONFIG_LIMIT}\n",
-            error=ERROR_MCP_CONFIG_LIMIT,
-        )
         return False
     return True
 

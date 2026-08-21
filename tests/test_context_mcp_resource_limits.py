@@ -7,11 +7,14 @@ import io
 import json
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import agent_guard.bounded_scan as bounded_scan
 import agent_guard.bounded_repo_reader as bounded_repo_reader
 import agent_guard.bounded_yaml as bounded_yaml
 import agent_guard.context_guard as context_guard
@@ -27,7 +30,7 @@ from agent_guard.cli.digest import run_digest_check
 from agent_guard.cli.mcp import run_mcp_check
 from agent_guard.cli.report import ERROR_REPORT_OUTPUT_LIMIT, run_report
 from agent_guard.cli.surface import ERROR_SURFACE_INVENTORY_LIMIT, run_surface_inventory
-from tests.cli.helpers import run_cli
+from tests.cli.helpers import ROOT, SRC, run_cli
 
 
 def _write_exact_json(path: Path, size: int, *, payload: bytes = b'{"mcpServers":{}}') -> None:
@@ -495,7 +498,7 @@ def test_context_distinct_input_budget_deduplicates_hardlinks(tmp_path: Path) ->
     first = context_dir / "AGENTS.md"
     first.write_bytes(data)
     os.link(first, context_dir / "CLAUDE.md")
-    budget = bounded_repo_reader.DistinctInputBudget(max_bytes=len(data))
+    budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data))
 
     inventory = context_guard.collect_context_inventory(
         root=tmp_path,
@@ -505,6 +508,95 @@ def test_context_distinct_input_budget_deduplicates_hardlinks(tmp_path: Path) ->
 
     assert len(inventory.context_files) == 2
     assert budget.used_bytes == len(data)
+    assert budget.read_bytes == 2 * len(data)
+
+
+def test_digest_duplicate_references_charge_total_read_budget(tmp_path: Path) -> None:
+    data = b"Require approval before writes.\n"
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(data)
+    policy = {
+        "checks": [
+            {
+                "id": "first",
+                "path": "AGENTS.md",
+                "sha256": hashlib.sha256(data).hexdigest(),
+            },
+            {
+                "id": "second",
+                "path": "AGENTS.md",
+                "sha256": hashlib.sha256(data).hexdigest(),
+            },
+        ]
+    }
+    exact_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data))
+
+    assert digest_guard.scan_digests(
+        root=tmp_path,
+        policy=policy,
+        _input_budget=exact_budget,
+    ) == ([], 2)
+    assert exact_budget.used_bytes == len(data)
+    assert exact_budget.read_bytes == 2 * len(data)
+
+    short_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data) - 1)
+    with pytest.raises(ValueError, match=f"^{digest_guard.ERROR_DIGEST_SCAN_LIMIT}$"):
+        digest_guard.scan_digests(
+            root=tmp_path,
+            policy=policy,
+            _input_budget=short_budget,
+        )
+
+
+def test_context_hardlinks_charge_total_read_budget(tmp_path: Path) -> None:
+    context_dir = tmp_path / "contexts"
+    context_dir.mkdir()
+    data = b"Require approval before writes.\n"
+    first = context_dir / "AGENTS.md"
+    first.write_bytes(data)
+    os.link(first, context_dir / "CLAUDE.md")
+    policy = _context_policy(["contexts"])
+    exact_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data))
+
+    inventory = context_guard.collect_context_inventory(
+        root=tmp_path,
+        policy=policy,
+        _input_budget=exact_budget,
+    )
+    assert len(inventory.context_files) == 2
+    assert exact_budget.used_bytes == len(data)
+    assert exact_budget.read_bytes == 2 * len(data)
+
+    short_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data) - 1)
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_LIMIT}$"):
+        context_guard.collect_context_inventory(
+            root=tmp_path,
+            policy=policy,
+            _input_budget=short_budget,
+        )
+
+
+def test_mcp_hardlinks_charge_total_read_budget(tmp_path: Path) -> None:
+    data = b"{}"
+    first = tmp_path / ".mcp.json"
+    first.write_bytes(data)
+    os.link(first, tmp_path / "mcp.json")
+    exact_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data))
+
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(
+        tmp_path,
+        _input_budget=exact_budget,
+    )
+    assert len(surfaces) == 2
+    assert exact_budget.used_bytes == len(data)
+    assert exact_budget.read_bytes == 2 * len(data)
+
+    short_budget = bounded_repo_reader.DistinctInputBudget(max_bytes=2 * len(data) - 1)
+    with pytest.raises(ValueError, match=f"^{surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT}$"):
+        surface_inventory_mcp.collect_mcp_config_surfaces(
+            tmp_path,
+            _input_budget=short_budget,
+        )
 
 
 def test_distinct_input_budget_rejects_identity_content_change() -> None:
@@ -523,6 +615,22 @@ def test_distinct_input_budget_rejects_identity_content_change() -> None:
 
     with pytest.raises(bounded_repo_reader.BoundedRepoReadError):
         budget.charge(replacement)
+
+
+def test_distinct_input_budget_bounds_each_pass_with_shared_distinct_accounting() -> None:
+    data = b"bounded input"
+    budget = bounded_repo_reader.DistinctInputBudget(max_bytes=len(data))
+    budget.charge_bytes(data, identity="shared")
+
+    second_pass = budget.next_read_pass()
+    second_pass.charge_bytes(data, identity="shared")
+
+    assert budget.used_bytes == len(data)
+    assert budget.read_bytes == 2 * len(data)
+    assert budget.read_pass_bytes == len(data)
+    assert second_pass.read_pass_bytes == len(data)
+    with pytest.raises(bounded_repo_reader.BoundedRepoLimitError):
+        second_pass.charge_bytes(data, identity="shared")
 
 
 def test_windows_cross_handle_metadata_uses_comparable_fields() -> None:
@@ -595,6 +703,124 @@ def test_combined_context_operation_charges_policy_and_files_once(tmp_path: Path
             policy=policy,
             _input_budget=short_budget,
         )
+
+
+@pytest.mark.parametrize("lock_mode", ["generate", "check"])
+def test_context_lock_gives_each_fixed_pass_the_existing_input_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    lock_mode: str,
+) -> None:
+    policy_bytes = b"scan:\n  include: [AGENTS.md]\n"
+    context_bytes = b"Require approval before writes.\n"
+    context_policy = tmp_path / "context-policy.yaml"
+    context_policy.write_bytes(policy_bytes)
+    (tmp_path / "AGENTS.md").write_bytes(context_bytes)
+    digest_policy_bytes = (
+        "checks:\n"
+        "  - id: context_agents\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: {hashlib.sha256(context_bytes).hexdigest()}\n"
+    ).encode("utf-8")
+    if lock_mode == "check":
+        (tmp_path / "digest-policy.yaml").write_bytes(digest_policy_bytes)
+
+    exact_distinct_bytes = len(policy_bytes) + len(context_bytes)
+    if lock_mode == "check":
+        exact_distinct_bytes += len(digest_policy_bytes)
+    budget = bounded_repo_reader.DistinctInputBudget(max_bytes=exact_distinct_bytes)
+    monkeypatch.setattr(
+        context_cli,
+        "MAX_CONTEXT_DISTINCT_INPUT_BYTES",
+        exact_distinct_bytes,
+    )
+
+    def make_budget(*, max_bytes: int) -> bounded_repo_reader.DistinctInputBudget:
+        assert max_bytes == exact_distinct_bytes
+        return budget
+
+    monkeypatch.setattr(context_cli, "DistinctInputBudget", make_budget)
+    argv = [
+        "context",
+        "lock",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        "context-policy.yaml",
+        "--json",
+    ]
+    if lock_mode == "check":
+        argv.extend(["--check", "--digest-policy", "digest-policy.yaml"])
+
+    assert run_context_lock(build_parser().parse_args(argv)) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert budget.used_bytes == exact_distinct_bytes
+    assert budget.read_bytes == (
+        len(policy_bytes)
+        + 2 * len(context_bytes)
+        + (len(digest_policy_bytes) if lock_mode == "check" else 0)
+    )
+    assert budget.read_pass_bytes == len(policy_bytes) + len(context_bytes)
+
+
+def test_digest_enabled_report_gives_context_reread_the_existing_input_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    policy_bytes = b"scan:\n  include: [AGENTS.md]\n"
+    context_bytes = b"Require approval before writes.\n"
+    context_policy = tmp_path / "context-policy.yaml"
+    context_policy.write_bytes(policy_bytes)
+    (tmp_path / "AGENTS.md").write_bytes(context_bytes)
+    (tmp_path / "digest-policy.yaml").write_text(
+        "checks:\n"
+        "  - id: context_agents\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: {hashlib.sha256(context_bytes).hexdigest()}\n",
+        encoding="utf-8",
+    )
+    exact_distinct_bytes = len(policy_bytes) + len(context_bytes)
+    context_budget = bounded_repo_reader.DistinctInputBudget(
+        max_bytes=exact_distinct_bytes
+    )
+    monkeypatch.setattr(
+        report_cli,
+        "MAX_CONTEXT_DISTINCT_INPUT_BYTES",
+        exact_distinct_bytes,
+    )
+
+    def make_budget(*, max_bytes: int) -> bounded_repo_reader.DistinctInputBudget:
+        if max_bytes == exact_distinct_bytes:
+            return context_budget
+        return bounded_repo_reader.DistinctInputBudget(max_bytes=max_bytes)
+
+    monkeypatch.setattr(report_cli, "DistinctInputBudget", make_budget)
+    args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            "context-policy.yaml",
+            "--digest-policy",
+            "digest-policy.yaml",
+            "--format",
+            "json",
+        ]
+    )
+
+    assert run_report(args) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["context_lock"]["status"] == "ok"
+    assert payload["digest"]["status"] == "ok"
+    assert context_budget.used_bytes == exact_distinct_bytes
+    assert context_budget.read_bytes == len(policy_bytes) + 2 * len(context_bytes)
+    assert context_budget.read_pass_bytes == exact_distinct_bytes
 
 
 def test_mcp_operation_charges_policy_and_config_once(tmp_path: Path) -> None:
@@ -677,6 +903,42 @@ def test_public_output_writes_exact_lf_bytes_without_text_translation(
     assert stream.buffer.getvalue() == b"first\nsecond\n"
 
 
+@pytest.mark.parametrize(
+    "write_result",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(True, id="true"),
+        pytest.param(False, id="false"),
+        pytest.param(0, id="short"),
+        pytest.param(2, id="overlong"),
+        pytest.param(1.0, id="float"),
+        pytest.param("1", id="string"),
+    ],
+)
+def test_public_output_rejects_invalid_buffer_write_result(
+    monkeypatch: pytest.MonkeyPatch,
+    write_result: object,
+) -> None:
+    class InvalidWriteBuffer:
+        def write(self, _data: bytes) -> object:
+            return write_result
+
+        def flush(self) -> None:
+            pytest.fail("invalid write result must fail before flush")
+
+    class Stream:
+        def __init__(self) -> None:
+            self.buffer = InvalidWriteBuffer()
+
+        def flush(self) -> None:
+            return None
+
+    monkeypatch.setattr(cli_common.sys, "stdout", Stream())
+
+    with pytest.raises(ValueError, match="^fixed$"):
+        cli_common.emit_public_output("x", error="fixed")
+
+
 def test_public_entrypoint_fallbacks_bypass_text_newline_translation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -732,6 +994,247 @@ def test_public_entrypoint_fallbacks_bypass_text_newline_translation(
         assert raw.endswith(b"\n")
         assert b"\r" not in raw
         assert json.loads(raw)["status"] == "error"
+
+
+@pytest.mark.parametrize(
+    ("argv", "runner"),
+    [
+        (
+            ["context", "check", "--policy", "context-policy.yaml", "--json"],
+            run_context_check,
+        ),
+        (
+            ["digest", "check", "--policy", "digest-policy.yaml", "--json"],
+            run_digest_check,
+        ),
+        (["mcp", "check", "--json"], run_mcp_check),
+        (
+            ["report", "--context-policy", "context-policy.yaml", "--format", "json"],
+            run_report,
+        ),
+        (
+            [
+                "surface",
+                "inventory",
+                "--context-policy",
+                "context-policy.yaml",
+                "--schema-version",
+                "v2",
+                "--json",
+            ],
+            run_surface_inventory,
+        ),
+    ],
+)
+def test_public_entrypoint_delayed_stdout_flush_failure_returns_exit_two_without_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    argv: list[str],
+    runner: object,
+) -> None:
+    class DelayedFlushBuffer:
+        def __init__(self) -> None:
+            self.write_attempts = 0
+
+        def write(self, data: bytes) -> int:
+            self.write_attempts += 1
+            return len(data)
+
+        def flush(self) -> None:
+            raise OSError("synthetic private stream detail")
+
+    class DelayedFlushStream:
+        def __init__(self) -> None:
+            self.buffer = DelayedFlushBuffer()
+
+        def flush(self) -> None:
+            return None
+
+    (tmp_path / "context-policy.yaml").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "digest-policy.yaml").write_text("checks: []\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("Require approval before writes.\n", encoding="utf-8")
+    stream = DelayedFlushStream()
+    monkeypatch.setattr(cli_common.sys, "stdout", stream)
+    command = (
+        [argv[0], "--root", str(tmp_path), *argv[1:]]
+        if argv[0] == "report"
+        else [*argv[:2], "--root", str(tmp_path), *argv[2:]]
+    )
+    args = build_parser().parse_args(command)
+
+    assert callable(runner)
+    assert runner(args) == 2
+    assert stream.buffer.write_attempts == 1
+
+
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="nonblocking anonymous pipe semantics require POSIX",
+)
+def test_public_cli_full_nonblocking_pipe_exits_two_without_output_or_diagnostic(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "context-policy.yaml").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text(
+        "Require approval before writes.\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{SRC}{os.pathsep}{env['PYTHONPATH']}"
+        if env.get("PYTHONPATH")
+        else str(SRC)
+    )
+    read_fd, write_fd = os.pipe()
+    try:
+        os.set_blocking(write_fd, False)
+        pipe_chunk_size = os.fpathconf(write_fd, "PC_PIPE_BUF")
+        pipe_chunk = b"x" * pipe_chunk_size
+        prefilled_bytes = 0
+        while True:
+            try:
+                written = os.write(write_fd, pipe_chunk)
+            except BlockingIOError:
+                break
+            assert written > 0
+            prefilled_bytes += written
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "agent_guard.cli",
+                "context",
+                "check",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                "context-policy.yaml",
+                "--json",
+            ],
+            cwd=ROOT,
+            env=env,
+            stdout=write_fd,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=(
+                bounded_scan.ISOLATED_SCAN_START_TIMEOUT_SECONDS
+                + bounded_scan.ISOLATED_SCAN_TIMEOUT_SECONDS
+            ),
+        )
+        os.close(write_fd)
+        write_fd = -1
+        drained_bytes = 0
+        while chunk := os.read(read_fd, pipe_chunk_size):
+            drained_bytes += len(chunk)
+    finally:
+        if write_fd >= 0:
+            os.close(write_fd)
+        os.close(read_fd)
+
+    assert result.returncode == 2
+    assert result.stderr == b""
+    assert drained_bytes == prefilled_bytes
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/dev/full").exists(),
+    reason="/dev/full is only available on supported POSIX hosts",
+)
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(
+            ["context", "check", "--policy", "context-policy.yaml", "--json"],
+            id="context-json",
+        ),
+        pytest.param(
+            ["digest", "check", "--policy", "digest-policy.yaml", "--json"],
+            id="digest-json",
+        ),
+        pytest.param(["mcp", "check", "--json"], id="mcp-json"),
+        pytest.param(
+            [
+                "report",
+                "--context-policy",
+                "context-policy.yaml",
+                "--digest-policy",
+                "digest-policy.yaml",
+                "--format",
+                "json",
+            ],
+            id="report-json",
+        ),
+        pytest.param(
+            [
+                "surface",
+                "inventory",
+                "--context-policy",
+                "context-policy.yaml",
+                "--schema-version",
+                "v2",
+            ],
+            id="surface-plain",
+        ),
+        pytest.param(
+            [
+                "surface",
+                "inventory",
+                "--context-policy",
+                "context-policy.yaml",
+                "--schema-version",
+                "v2",
+                "--json",
+            ],
+            id="surface-json",
+        ),
+    ],
+)
+def test_public_cli_delayed_stdout_flush_failure_exits_two_without_diagnostic(
+    tmp_path: Path,
+    argv: list[str],
+) -> None:
+    private_marker = "synthetic-private-stdout-marker"
+    context_bytes = f"Require approval before writes. {private_marker}\n".encode("utf-8")
+    (tmp_path / "AGENTS.md").write_bytes(context_bytes)
+    (tmp_path / "context-policy.yaml").write_text(
+        "scan:\n  include: [AGENTS.md]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "digest-policy.yaml").write_text(
+        "checks:\n"
+        "  - id: context_agents\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: {hashlib.sha256(context_bytes).hexdigest()}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".mcp.json").write_text("{}", encoding="utf-8")
+    command = (
+        [argv[0], "--root", str(tmp_path), *argv[1:]]
+        if argv[0] == "report"
+        else [*argv[:2], "--root", str(tmp_path), *argv[2:]]
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{SRC}{os.pathsep}{env['PYTHONPATH']}"
+        if env.get("PYTHONPATH")
+        else str(SRC)
+    )
+
+    with Path("/dev/full").open("wb") as sink:
+        result = subprocess.run(
+            [sys.executable, "-m", "agent_guard.cli", *command],
+            cwd=ROOT,
+            env=env,
+            stdout=sink,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    assert result.returncode == 2
+    assert result.stderr == b""
+    assert private_marker.encode("utf-8") not in result.stderr
 
 
 def test_context_glob_selectors_reject_length_and_component_overflow() -> None:
