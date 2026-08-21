@@ -283,3 +283,28 @@ jobs:
           name: agent-guard-evidence-report
           path: .agent-guard/evidence/
           if-no-files-found: error
+
+  required-ci:
+    name: agent-guard required CI
+    if: ${{ always() }}
+    needs:
+      - actionlint
+      - release-contract
+      - action-smoke-status
+      - windows-cli-smoke
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI contract to pass
+        env:
+          ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          RELEASE_CONTRACT_RESULT: ${{ needs.release-contract.result }}
+          ACTION_SMOKE_RESULT: ${{ needs.action-smoke-status.result }}
+          WINDOWS_CLI_RESULT: ${{ needs.windows-cli-smoke.result }}
+          PYTEST_MATRIX_RESULT: ${{ needs.test.result }}
+        run: |
+          test "$ACTIONLINT_RESULT" = "success"
+          test "$RELEASE_CONTRACT_RESULT" = "success"
+          test "$ACTION_SMOKE_RESULT" = "success"
+          test "$WINDOWS_CLI_RESULT" = "success"
+          test "$PYTEST_MATRIX_RESULT" = "success"

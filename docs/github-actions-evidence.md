@@ -27,9 +27,108 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Reject unreviewed context policy changes
+        if: github.event_name == 'pull_request'
+        env:
+          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AGENT_GUARD_ROOT: "."
+          AGENT_GUARD_CONTEXT_POLICY: .agent-guard/context-policy.yaml
+        run: |
+          set -euo pipefail
+
+          fail_preflight() {
+            echo "::error::pull request context policy preflight configuration is invalid"
+            exit 2
+          }
+
+          validate_repo_relative_path() {
+            local candidate="$1"
+            local allow_root_dot="$2"
+            local part
+            local -a parts
+
+            if [ "$allow_root_dot" = "true" ] && [ "$candidate" = "." ]; then
+              return 0
+            fi
+            case "$candidate" in
+              ""|/*|*/|*//* ) fail_preflight ;;
+            esac
+            if [[ ! "$candidate" =~ ^[A-Za-z0-9._@+=,~/-]+$ ]]; then
+              fail_preflight
+            fi
+            IFS='/' read -r -a parts <<< "$candidate"
+            for part in "${parts[@]}"; do
+              case "$part" in
+                ""|.|..) fail_preflight ;;
+              esac
+            done
+          }
+
+          base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
+          root="${AGENT_GUARD_ROOT:-.}"
+          context_policy="${AGENT_GUARD_CONTEXT_POLICY:-.agent-guard/context-policy.yaml}"
+
+          case "$base_sha" in
+            ""|*[!0-9a-f]*) fail_preflight ;;
+          esac
+          if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+            fail_preflight
+          fi
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            fail_preflight
+          fi
+
+          validate_repo_relative_path "$root" true
+          validate_repo_relative_path "$context_policy" false
+          if [ "$root" = "." ]; then
+            effective_policy="$context_policy"
+          else
+            effective_policy="$root/$context_policy"
+          fi
+
+          cursor=""
+          IFS='/' read -r -a policy_parts <<< "$effective_policy"
+          for part in "${policy_parts[@]}"; do
+            cursor="${cursor:+$cursor/}$part"
+            if [ -L "$cursor" ]; then
+              fail_preflight
+            fi
+          done
+          if [ ! -f "$effective_policy" ] || [ -L "$effective_policy" ]; then
+            fail_preflight
+          fi
+
+          current_entry="$(git ls-files --stage -- "$effective_policy")"
+          current_mode="${current_entry%% *}"
+          case "$current_mode" in
+            100644|100755) ;;
+            *) fail_preflight ;;
+          esac
+
+          base_entry="$(git ls-tree "$base_sha" -- "$effective_policy")"
+          base_mode="${base_entry%% *}"
+          base_rest="${base_entry#* }"
+          base_type="${base_rest%% *}"
+          case "$base_mode:$base_type" in
+            100644:blob|100755:blob) ;;
+            *) fail_preflight ;;
+          esac
+
+          if git diff --quiet "$base_sha" -- "$effective_policy"; then
+            :
+          else
+            diff_status="$?"
+            if [ "$diff_status" -eq 1 ]; then
+              echo "::error::published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+              exit 1
+            fi
+            fail_preflight
+          fi
       - id: agent-guard
         uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
+        timeout-minutes: 1
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -49,6 +148,16 @@ jobs:
             ${{ steps.agent-guard.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
 ```
+
+The preflight derives the effective context-policy path from the same `root`
+and `context-policy` values passed to the Action. It requires a tracked regular
+file at that repository-relative path, rejects symlinked path components, and
+emits no diff or path value. Keep its one-minute step limit, the smallest
+positive timeout GitHub Actions supports. This is a temporary bound for the
+published regex risk, not a fixed release. Review and merge a context-policy
+change separately before rerunning evidence from the trusted revision. Because
+a pull request can also alter an in-repository workflow, normal workflow review
+remains required; this preflight is not an independent trust anchor.
 
 The action keeps per-scanner JSON in temporary runner storage so scanner
 diagnostics do not appear in workflow logs or uploaded public artifacts. Raw
@@ -130,29 +239,26 @@ and the conformance artifact for controlled findings such as
 recommended evidence at an external policy file.
 
 For monorepos or repositories where the reviewed agent-maintained project lives
-in a subdirectory, set `root` to that project root. Policy and evidence paths are
-resolved relative to that root unless they are absolute paths:
+in a subdirectory, set `AGENT_GUARD_ROOT` on the complete workflow's preflight
+and set the matching Action input. Policy and evidence paths are resolved relative
+to that root. In a pull-request workflow, both `root` and `context-policy` must
+use canonical repository-relative values so the preflight can bind the exact
+tracked file. Absolute policy paths remain local CLI experiment inputs and are
+not accepted by this published-Action mitigation:
 
 ```yaml
-      - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-        with:
-          root: services/api
-          conformance-profile: recommended
+with:
+  root: services/api
+  conformance-profile: recommended
 ```
 
 When a pull request should surface guard policy or workflow changes relative
-to its base branch, fetch the base ref and pass it explicitly:
+to its base branch, retain the checkout and preflight from the complete
+workflow above, fetch the base ref, and add this input to that Action step:
 
 ```yaml
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-        with:
-          base-ref: origin/${{ github.base_ref }}
+with:
+  base-ref: origin/${{ github.base_ref }}
 ```
 
 The `base-ref` input only adds sanitized review evidence for changed
@@ -173,37 +279,33 @@ itself.
 
 This Action input is available in `v0.3.0`.
 
-Fetch the base ref explicitly before running the action, the same way
-`base-ref` requires it:
+Retain the preflight from the complete workflow and fetch the base ref
+explicitly before running the action, the same way `base-ref` requires it. Add
+this input to the existing Action step:
 
 ```yaml
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-        with:
-          conformance-profile: recommended
-          surface-delta-base-ref: origin/${{ github.base_ref }}
+with:
+  conformance-profile: recommended
+  surface-delta-base-ref: origin/${{ github.base_ref }}
 ```
 
 For a pull request event, the exact base commit is also available as
-`${{ github.event.pull_request.base.sha }}`. Fetch it first, then pass it as a
-stable merge-base anchor instead of a branch name that can move:
+`${{ github.event.pull_request.base.sha }}`. In the complete workflow, fetch it
+before the preflight, then pass it as a stable merge-base anchor instead of a
+branch name that can move:
 
 ```yaml
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Fetch PR base commit
-        run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
-      - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-        with:
-          conformance-profile: recommended
-          surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
+- name: Fetch PR base commit
+  run: git fetch origin ${{ github.event.pull_request.base.sha }} --depth=1
+```
+
+Keep the complete preflight directly after that fetch step. On the existing
+Action step, set:
+
+```yaml
+with:
+  conformance-profile: recommended
+  surface-delta-base-ref: ${{ github.event.pull_request.base.sha }}
 ```
 
 Auto-detecting the base ref from the `pull_request` event and fetching it
@@ -276,8 +378,6 @@ permissions:
   security-events: write
 
 steps:
-  - uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-    id: agent-guard
   - name: Upload SARIF
     if: >-
       always() &&

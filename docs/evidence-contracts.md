@@ -6,6 +6,13 @@ conformance, and evidence-pack commands emit small, sanitized evidence payloads
 that maintainers can read in pull requests, store as CI artifacts, or validate
 in downstream wrappers without sending repository contents to a model.
 
+> **Version gate:** the latest published package and Action are `0.3.4` and
+> contain the v1 report and manifest contracts. Bound audit-event report and
+> manifest v2, including the guard-owned
+> `agent-guard.public_agent_policy_audit_event.v1` profile, describe unreleased
+> `0.3.5.dev0` source only. Public install and Action examples remain pinned to
+> `0.3.4` and cannot be used to exercise those source-only features.
+
 ## Contracts
 
 Installed wheels package these JSON Schema resources under
@@ -147,20 +154,20 @@ agent-guard report --root . \
   --mcp-policy .agent-guard/mcp-policy.yaml \
   --digest-policy .agent-guard/context-digest-policy.yaml \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
-  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1 \
+  --agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1 \
   --format json \
   --output .agent-guard/evidence/agent-guard-report.json
 agent-guard evidence-pack manifest --root . \
   --report .agent-guard/evidence/agent-guard-report.json \
   --artifact .agent-guard/evidence/agent-guard-report.json \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
-  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1 \
+  --agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1 \
   --json
 python examples/evidence_consumer.py \
   .agent-guard/evidence/agent-guard-report.json \
   --evidence-dir .agent-guard/evidence \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
-  --agent-policy-audit-event-profile agent-policy.audit_event.v1.1
+  --agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1
 ```
 
 The referenced event must already be produced, reviewed, and stored as a
@@ -169,10 +176,17 @@ profile to both producers. Events select v2; event-free reports stay v1. The
 manifest records a sanitized repository-relative
 path and a profile-bound digest. `agent-guard` reads and canonicalizes the
 bounded event JSON locally to compute that binding, but never embeds the event
-body. The only recognized profile is `agent-policy.audit_event.v1.1`; producer
-and consumer validate its required fields, exact top-level and decision fields,
-decision enums, and bounded optional strings against the published
-[agent-policy v0.1.11 schema](https://github.com/yui-stingray/agent-policy/blob/v0.1.11/src/agent_policy/schemas/agent-policy.audit_event.v1.1.schema.json).
+body. The only recognized profile is
+`agent-guard.public_agent_policy_audit_event.v1`. It validates a public-safe
+subset of the underlying published
+[agent-policy v0.1.11 event shape](https://github.com/yui-stingray/agent-policy/blob/v0.1.11/src/agent_policy/schemas/agent-policy.audit_event.v1.1.schema.json):
+required fields, exact top-level and decision fields, decision enums, bounded
+optional strings, and a sanitized repository-relative optional path. That
+guard-owned path grammar permits non-whitespace printable ASCII only and
+rejects absolute paths, colons, backslashes, dot segments, controlled
+secret-shaped values, and every embedded raw 64-hex hash. It is a
+public-artifact contract, not a generic secret scanner or a claim that the
+producer-owned `agent-policy` JSON Schema uses the same narrower grammar.
 Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
 including escaped lone surrogates, before computing a digest.
 The consumer requires the event separately and fails closed when the event is

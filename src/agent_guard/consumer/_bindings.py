@@ -8,6 +8,7 @@ from typing import Any
 
 from ..evidence_pack import (
     build_agent_policy_audit_event_binding,
+    is_sanitized_repository_relative_path,
     validate_agent_policy_audit_event_binding_shape,
     validate_agent_policy_audit_event_profile,
 )
@@ -81,6 +82,10 @@ def validate_agent_policy_audit_event_files(
 
     for artifact, path in zip(artifacts, paths, strict=True):
         try:
+            require(
+                is_sanitized_repository_relative_path(artifact.get("path")),
+                ERROR_AUDIT_EVENT_BINDING_INVALID,
+            )
             expected = validate_agent_policy_audit_event_binding_shape(
                 artifact.get("content_binding")
             )

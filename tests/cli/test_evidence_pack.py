@@ -20,7 +20,7 @@ from agent_guard.evidence_pack import (
 from tests.audit_event_helpers import audit_event_payload, write_audit_event
 from tests.cli.helpers import run_cli
 
-AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+AUDIT_EVENT_PROFILE = "agent-guard.public_agent_policy_audit_event.v1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 V2_REPORT_PAYLOAD = {
@@ -58,15 +58,7 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
         "--report",
         str(report),
         "--artifact",
-        str(tmp_path / ".agent-guard" / "evidence" / "report.json"),
-        "--artifact",
-        str(tmp_path.parent / "outside-report.json"),
-        "--artifact",
-        r"C:\Users\alice\secret\agent-guard-report.json",
-        "--artifact",
-        r"\\server\share\agent-guard-report.json",
-        "--artifact",
-        "file://localhost/home/synthetic/private/report.json",
+        ".agent-guard/evidence/report.json",
         "--agent-policy-audit-event",
         event.relative_to(tmp_path).as_posix(),
         "--agent-policy-audit-event-profile",
@@ -81,10 +73,6 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     assert manifest["sanitized"] is True
     assert manifest["artifacts"][:-1] == [
         {"path": ".agent-guard/evidence/report.json", "role": "report"},
-        {"path": "outside-report.json", "role": "report"},
-        {"path": "agent-guard-report.json", "role": "report"},
-        {"path": "agent-guard-report.json", "role": "report"},
-        {"path": "<redacted-url>", "role": "report"},
     ]
     audit_artifact = manifest["artifacts"][-1]
     assert audit_artifact["path"] == ".agent-guard/evidence/policy-admission-event.json"
@@ -100,6 +88,122 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     assert str(tmp_path) not in result.stdout
     assert r"C:\Users\alice" not in result.stdout
     assert r"\\server\share" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    (
+        "../claimed/event.json",
+        "/claimed/event.json",
+        r"C:\claimed\event.json",
+        r"claimed\event.json",
+        "https://example.invalid/claimed/event.json",
+        "./claimed/event.json",
+        "claimed/./event.json",
+        "claimed/../event.json",
+        " claimed/event.json",
+        "claimed/event.json ",
+    ),
+)
+def test_bound_manifest_rejects_unsafe_report_artifact_paths_without_leak(
+    tmp_path: Path,
+    unsafe_path: str,
+) -> None:
+    event_marker = "synthetic-private-event-body"
+    event = tmp_path / "event.json"
+    write_audit_event(event, context={"marker": event_marker})
+    audit_artifact = {
+        "path": "reviewed/event.json",
+        "role": "agent-policy-audit-event",
+        "content_binding": build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        ),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="^evidence-pack artifact path is invalid$",
+    ) as exc_info:
+        build_evidence_pack_manifest(
+            report_payload=V2_REPORT_PAYLOAD,
+            artifact_paths=[unsafe_path],
+            agent_policy_audit_event_artifacts=[audit_artifact],
+            root=tmp_path,
+        )
+
+    error = str(exc_info.value)
+    assert unsafe_path not in error
+    assert str(event) not in error
+    assert AUDIT_EVENT_PROFILE not in error
+    assert event_marker not in error
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    (
+        "../claimed/event.json",
+        "/claimed/event.json",
+        r"C:\claimed\event.json",
+        r"claimed\event.json",
+        "https://example.invalid/claimed/event.json",
+        "./claimed/event.json",
+        "claimed/./event.json",
+        "claimed/../event.json",
+        " claimed/event.json",
+        "claimed/event.json ",
+    ),
+)
+def test_bound_manifest_cli_rejects_unsafe_report_artifact_paths_without_leak(
+    tmp_path: Path,
+    unsafe_path: str,
+) -> None:
+    event_marker = "synthetic-cli-private-event-body"
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event, context={"marker": event_marker})
+    report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+    report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    embedded_manifest = report_payload["evidence_pack_manifest"]
+    embedded_manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    embedded_manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    embedded_manifest["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(report_payload), encoding="utf-8")
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--artifact",
+        unsafe_path,
+        "--agent-policy-audit-event",
+        "reviewed/event.json",
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "evidence-pack artifact path is invalid"
+    public_output = result.stdout + result.stderr
+    assert unsafe_path not in public_output
+    assert str(event) not in public_output
+    assert AUDIT_EVENT_PROFILE not in public_output
+    assert event_marker not in public_output
 
 
 def test_evidence_pack_manifest_cli_rejects_unverified_bound_v2_report(
@@ -245,6 +349,12 @@ def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: P
         str(report),
         "--artifact",
         raw_url,
+        "--artifact",
+        str(tmp_path.parent / "outside-report.json"),
+        "--artifact",
+        r"C:\Users\alice\secret\agent-guard-report.json",
+        "--artifact",
+        r"\\server\share\agent-guard-report.json",
         "--json",
     )
 
@@ -262,6 +372,9 @@ def test_evidence_pack_manifest_cli_sanitizes_copied_report_metadata(tmp_path: P
     assert manifest["conformance"]["profile"] == "recommended"
     assert manifest["artifacts"] == [
         {"path": "<redacted-url>", "role": "report"},
+        {"path": "outside-report.json", "role": "report"},
+        {"path": "agent-guard-report.json", "role": "report"},
+        {"path": "agent-guard-report.json", "role": "report"},
     ]
     for value in (secret_shaped, raw_url, local_path, windows_path, unc_path, hash_shaped):
         assert value not in result.stdout
@@ -401,9 +514,7 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     (
         "reviewed/event.json",
         ".agent-guard/reviewed-event.json",
-        "reviewed/event:version.json",
-        "reviewed/caf\u00e9-\u8a3c\u62e0.json",
-        "reviewed/\U00013440event.json",
+        "reviewed/event-version.json",
     ),
 )
 def test_audit_event_binding_accepts_sanitized_repository_relative_payload_paths(
@@ -447,6 +558,8 @@ def test_audit_event_binding_accepts_sanitized_repository_relative_payload_paths
         "reviewed/\U00013438event.json",
         "reviewed/\U00013439event.json",
         "reviewed/\U0001343fevent.json",
+        "reviewed/caf\u00e9-\u8a3c\u62e0.json",
+        "reviewed/\U00013440event.json",
     ),
 )
 def test_audit_event_binding_rejects_unsanitized_payload_paths_before_canonicalization(
@@ -542,7 +655,7 @@ def test_audit_event_binding_rejects_unsupported_profile_before_digest(
     ):
         build_agent_policy_audit_event_binding(
             event,
-            event_profile="agent-policy.audit_event.v1.2",
+            event_profile="agent-policy.audit_event.v1.1",
         )
 
 

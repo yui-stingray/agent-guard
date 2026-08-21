@@ -11,7 +11,6 @@ import json
 import os
 import re
 import stat
-import unicodedata
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
@@ -36,19 +35,38 @@ ERROR_AUDIT_EVENT_REPORT_VERSION = (
 ERROR_AUDIT_EVENT_BINDING_REQUIRED = (
     "report evidence v2 requires bound agent-policy audit events"
 )
-AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1 = "agent-policy.audit_event.v1.1"
+ERROR_EVIDENCE_PACK_ARTIFACT_PATH = "evidence-pack artifact path is invalid"
+PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1 = (
+    "agent-guard.public_agent_policy_audit_event.v1"
+)
 SUPPORTED_AGENT_POLICY_AUDIT_EVENT_PROFILES = frozenset(
-    {AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1}
+    {PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1}
 )
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
 _AUDIT_EVENT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:@/+~-]+$")
-_AUDIT_EVENT_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-_UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES = frozenset(
-    {"Cc", "Cf", "Cs", "Zl", "Zp"}
+SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN = (
+    r"^(?!.*(?:sk-[A-Za-z0-9_-]{16,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"AKIA[0-9A-Z]{16}|"
+    r"ASIA[0-9A-Z]{16}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----))"
+    r"(?!.*[A-Fa-f0-9]{64})"
+    r"(?!.*\s)"
+    r"(?!/)"
+    r"(?!.*:)"
+    r"(?!.*\\)"
+    r"(?!.*//)"
+    r"(?!.*\/$)"
+    r"(?!\.{1,2}(?:/|$))"
+    r"(?!.*\/\.{1,2}(?:/|$))"
+    r"[\u0021-\u007E]+$"
 )
-# Unicode 15.0 assigned these format controls after Python 3.11's UCD 14 baseline.
-_UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS = range(0x13439, 0x13440)
+_SANITIZED_REPOSITORY_RELATIVE_PATH_RE = re.compile(
+    SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN
+)
 _AUDIT_EVENT_DECISION_MODES = frozenset(
     {"deny", "require_approval", "auto_allow"}
 )
@@ -152,36 +170,37 @@ def _contains_control_character(value: str) -> bool:
     return any(ord(character) <= 0x1F for character in value)
 
 
-def _contains_unsafe_audit_event_path_character(value: str) -> bool:
-    return any(
-        unicodedata.category(character)
-        in _UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES
-        or ord(character) in _UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS
-        for character in value
-    )
-
-
-def _is_sanitized_repository_relative_path(value: str) -> bool:
-    posix_path = PurePosixPath(value)
-    windows_path = PureWindowsPath(value)
-    if (
-        "\\" in value
-        or value == "."
-        or _AUDIT_EVENT_URI_SCHEME_RE.match(value)
-        or posix_path.is_absolute()
-        or posix_path.as_posix() != value
-        or windows_path.is_absolute()
-        or windows_path.drive
-        or any(component in {".", ".."} for component in posix_path.parts)
+def is_sanitized_repository_relative_path(value: object) -> bool:
+    if type(value) is not str or not _SANITIZED_REPOSITORY_RELATIVE_PATH_RE.fullmatch(
+        value
     ):
         return False
-    return (
-        safe_artifact_path(value) == value
-        and sanitize_public_mapping({"path": value}) == {"path": value}
-    )
+    posix_path = PurePosixPath(value)
+    return posix_path.as_posix() == value
 
 
-def _validate_agent_policy_audit_event_v1_1(payload: dict[str, Any]) -> None:
+def _normalized_repository_relative_artifact_path(
+    value: object,
+    *,
+    root: Path | None,
+) -> str | None:
+    if is_sanitized_repository_relative_path(value):
+        return value
+    if type(value) is not str or root is None:
+        return None
+    try:
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            return None
+        relative = candidate.resolve(strict=False).relative_to(
+            root.resolve(strict=True)
+        ).as_posix()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    return relative if is_sanitized_repository_relative_path(relative) else None
+
+
+def _validate_public_agent_policy_audit_event_v1(payload: dict[str, Any]) -> None:
     required_fields = {"repo", "capability", "context", "decision"}
     optional_fields = {"session_id", "command", "path"}
     if not required_fields <= set(payload) or not set(payload) <= (
@@ -238,8 +257,7 @@ def _validate_agent_policy_audit_event_v1_1(payload: dict[str, Any]) -> None:
         if (
             not _is_json_string(event_path)
             or not 1 <= len(event_path) <= 1024
-            or _contains_unsafe_audit_event_path_character(event_path)
-            or not _is_sanitized_repository_relative_path(event_path)
+            or not is_sanitized_repository_relative_path(event_path)
         ):
             raise ValueError(ERROR_AUDIT_EVENT_INVALID)
 
@@ -249,8 +267,8 @@ def _validate_agent_policy_audit_event_payload(
     *,
     event_profile: str,
 ) -> None:
-    if event_profile == AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1:
-        _validate_agent_policy_audit_event_v1_1(payload)
+    if event_profile == PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1:
+        _validate_public_agent_policy_audit_event_v1(payload)
         return
     raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
 
@@ -547,18 +565,16 @@ def _validate_agent_policy_audit_event_artifact_shape(
     path = artifact.get("path")
     if not isinstance(path, str):
         raise TypeError(ERROR_AUDIT_EVENT_INVALID)
-    normalized_path = path.strip()
     if (
-        not normalized_path
-        or safe_artifact_path(normalized_path, root=root) != normalized_path
-        or sanitize_public_mapping({"path": normalized_path}) != {"path": normalized_path}
+        not is_sanitized_repository_relative_path(path)
+        or safe_artifact_path(path, root=root) != path
     ):
         raise ValueError(ERROR_AUDIT_EVENT_INVALID)
     binding = validate_agent_policy_audit_event_binding_shape(
         artifact.get("content_binding")
     )
     return {
-        "path": normalized_path,
+        "path": path,
         "role": "agent-policy-audit-event",
         "content_binding": binding,
     }
@@ -627,11 +643,6 @@ def build_evidence_pack_manifest(
                     }
                 )
 
-    artifacts: list[dict[str, object]] = []
-    for path in artifact_paths or []:
-        safe_path = safe_artifact_path(path, root=root)
-        if safe_path:
-            artifacts.append({"path": safe_path, "role": "report"})
     audit_event_artifacts: list[dict[str, object]] = []
     if agent_policy_audit_event_artifacts is not None:
         if agent_policy_audit_event_paths:
@@ -655,7 +666,6 @@ def build_evidence_pack_manifest(
         )
     elif str(agent_policy_audit_event_profile).strip():
         raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
-    artifacts.extend(audit_event_artifacts)
     report_metadata = report_payload.get("report")
     report_schema_version = (
         report_metadata.get("schema_version")
@@ -667,6 +677,21 @@ def build_evidence_pack_manifest(
             raise ValueError(ERROR_AUDIT_EVENT_REPORT_VERSION)
     elif report_schema_version == REPORT_EVIDENCE_SCHEMA_VERSION_V2:
         raise ValueError(ERROR_AUDIT_EVENT_BINDING_REQUIRED)
+
+    artifacts: list[dict[str, object]] = []
+    for path in artifact_paths or []:
+        if audit_event_artifacts:
+            safe_path = _normalized_repository_relative_artifact_path(
+                path,
+                root=root,
+            )
+            if safe_path is None:
+                raise ValueError(ERROR_EVIDENCE_PACK_ARTIFACT_PATH)
+        else:
+            safe_path = safe_artifact_path(path, root=root)
+        if safe_path:
+            artifacts.append({"path": safe_path, "role": "report"})
+    artifacts.extend(audit_event_artifacts)
 
     manifest: dict[str, object] = {
         "schema_version": (

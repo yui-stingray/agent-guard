@@ -11,6 +11,13 @@ This page documents the current emitted artifacts, the schema version each one
 uses, volatile fields consumers must ignore, and the compatibility promise for
 downstream wrappers.
 
+> **Version gate:** published `0.3.4` packages the v1 report and manifest
+> schemas. The v2 report/manifest rows and bound audit-event behavior below are
+> unreleased `0.3.5.dev0` source only, including the guard-owned
+> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable public
+> install and Action examples remain pinned to `0.3.4`; a source contract is
+> not a release claim.
+
 ## Execution Platforms
 
 The Python CLI supports the Windows and POSIX process-containment behavior
@@ -89,15 +96,24 @@ consumer can read that v1 evidence, but fails closed if a caller asks it to
 verify event content against the unbound reference.
 
 V2 requires at least one audit-event artifact and `content_binding` on every
-audit-event entry. The binding uses canonical JSON, an explicit expected event profile, and a domain-separated
+audit-event entry. Every v2 artifact path must be a canonical sanitized
+repository-relative path: absolute paths, drive paths, colons, backslashes,
+and dot segments fail closed; only non-whitespace printable ASCII is admitted,
+and controlled secret-shaped values and every embedded raw 64-hex hash also
+fail closed. This is the guard-owned public-artifact grammar, not generic
+secret scanning or the generic producer-owned `agent-policy` path grammar. The
+binding uses canonical JSON, an
+explicit expected event profile, and a domain-separated
 SHA-256 digest encoded as lowercase base32 with a controlled `b` prefix. This
 controlled digest is not a raw hexadecimal hash and is the only hash-like value
 admitted on this field. Current consumers fail closed when the separately
-supplied event or expected profile does not match. The profile identifies the
-caller-selected contract but does not itself validate the event against an
-`agent-policy` JSON Schema; that remains producer-owned. The event body remains
-outside the fixed public bundle. Replacing both a trusted manifest and its event
-is outside this binding's threat model.
+supplied event or expected profile does not match. The only recognized profile,
+`agent-guard.public_agent_policy_audit_event.v1`, is a guard-owned contract that
+validates a bounded public-safe subset of the underlying `agent-policy` v1.1
+event shape. It does not claim validation against the generic producer-owned
+`agent-policy` JSON Schema. The event body remains outside the fixed public
+bundle. Replacing both a trusted manifest and its event is outside this
+binding's threat model.
 
 Workflow inputs use the same fail-closed approach. Workflow policies are capped
 at 256 KiB, individual policy strings at 4 KiB, and workflow files at 1 MiB.

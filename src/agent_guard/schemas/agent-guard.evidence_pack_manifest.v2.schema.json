@@ -84,7 +84,11 @@
         "type": "object",
         "required": ["path", "role"],
         "properties": {
-          "path": {"type": "string"},
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!.*(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----))(?!.*[A-Fa-f0-9]{64})(?!.*\\s)(?!/)(?!.*:)(?!.*\\\\)(?!.*//)(?!.*\\/$)(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[\\u0021-\\u007E]+$"
+          },
           "role": {"type": "string", "enum": ["report", "agent-policy-audit-event"]},
           "content_binding": {
             "type": "object",
@@ -99,7 +103,7 @@
             "properties": {
               "schema_version": {"const": "agent-guard.agent_policy_audit_event_binding.v1"},
               "event_profile": {
-                "const": "agent-policy.audit_event.v1.1"
+                "const": "agent-guard.public_agent_policy_audit_event.v1"
               },
               "canonicalization": {"const": "canonical-json-v1"},
               "digest_algorithm": {"const": "sha256"},
@@ -116,6 +120,14 @@
               "required": ["content_binding"],
               "propertyNames": {
                 "enum": ["path", "role", "content_binding"]
+              }
+            }
+          },
+          {
+            "if": {"properties": {"role": {"const": "report"}}},
+            "then": {
+              "propertyNames": {
+                "enum": ["path", "role"]
               }
             }
           }

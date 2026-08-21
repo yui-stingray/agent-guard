@@ -6,6 +6,35 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Marked master package and generated-evidence identity as PEP 440
+  `0.3.5.dev0` while public install, Action, and provenance examples remain
+  pinned to published `0.3.4`. Added an explicit published/source feature gate
+  and a bounded known-risk notice for `0.3.4` context-policy regular
+  expressions without claiming a fixed release or lifting the release freeze.
+- Kept `init --write` pinned to the latest published package, and added a
+  context-policy diff preflight plus the smallest supported positive Action
+  timeout to copyable pull-request workflows while the published regex risk
+  remains. The preflight now validates the Action's exact root-relative policy,
+  requires tracked regular files in the current and base revisions, and rejects
+  symlinked path components. These controls do not claim a fixed release or
+  bypass workflow review.
+- Made release publication reject development, pre-release, local, and other
+  non-final version tags and require an exact versioned CHANGELOG heading.
+- Raised the development-only pytest requirement to `pytest>=9.0.3,<10`; runtime
+  dependencies are unchanged.
+- Named the unreleased bound-event grammar
+  `agent-guard.public_agent_policy_audit_event.v1` as a guard-owned public-safe
+  subset of the underlying `agent-policy` v1.1 event shape. Bound v2 producers,
+  schemas, and consumers now share one non-whitespace printable-ASCII,
+  public-safe artifact-path grammar that rejects traversal, colons, controlled
+  secret-shaped values, and embedded raw 64-hex hashes while released v1 path
+  behavior remains unchanged.
+- Added the stable `agent-guard required CI` aggregate check over actionlint,
+  release tooling, packaged Action smoke, Windows CLI, and the supported Python
+  pytest matrix.
+- Parsed native Windows launcher paths before POSIX inline-command tokenization
+  while preserving POSIX command prefixes, package arguments, and public path
+  redaction.
 - Corrected `bun x` and direct `bunx` pin inference to evaluate only the package operand
   (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are
   consumed only before `x`; version-dependent post-`x` selectors such as
@@ -40,8 +69,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Content-bound optional `agent-policy` audit-event references with a
   canonical-JSON, profile-bound, public-safe digest. Producers require a
   caller-designated repo-local JSON event and the recognized
-  `agent-policy.audit_event.v1.1` profile. Producers and consumers validate that
-  profile's published event shape and reject unsupported profiles, malformed
+  `agent-guard.public_agent_policy_audit_event.v1` profile. Producers and
+  consumers validate its public-safe subset of the underlying `agent-policy`
+  v1.1 event shape and reject unsupported profiles, malformed
   events, or replaced content. Maintainer review remains external. Audit-event
   binding uses report and manifest v2; the released v1
   schemas remain unchanged and their path-and-role references remain readable

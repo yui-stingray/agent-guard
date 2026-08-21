@@ -5,9 +5,13 @@ Why: prevent PyPI upload attempts for the wrong version.
 
 from __future__ import annotations
 
+import re
 import sys
 import tomllib
 from pathlib import Path
+
+
+FINAL_RELEASE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 def load_project_version(pyproject_path: Path) -> str:
@@ -29,6 +33,13 @@ def main(argv: list[str]) -> int:
     tag_name = argv[1]
     expected_version = normalize_tag(tag_name)
     actual_version = load_project_version(Path("pyproject.toml"))
+
+    if not FINAL_RELEASE_VERSION_RE.fullmatch(expected_version):
+        print(
+            "release tag must name a final numeric x.y.z version",
+            file=sys.stderr,
+        )
+        return 1
 
     if actual_version != expected_version:
         print(

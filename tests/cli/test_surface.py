@@ -895,6 +895,65 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
         assert forbidden not in result.stdout
 
 
+def test_surface_inventory_cli_normalizes_windows_launcher_paths_without_disclosure(
+    tmp_path: Path,
+) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    relative_launcher = r"tools\npx.cmd"
+    absolute_launcher = r"C:\Program Files\nodejs\npx.cmd"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "relative": {
+                        "command": relative_launcher,
+                        "args": ["pkg"],
+                    },
+                    "absolute": {
+                        "command": absolute_launcher,
+                        "args": ["pkg@1.2.3"],
+                    },
+                    "quoted-inline": {
+                        "command": f'"{absolute_launcher}" --yes pkg@1.2.3',
+                    },
+                }
+            }
+        ),
+    )
+
+    result = run_cli(
+        "surface",
+        "inventory",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(policy),
+        "--schema-version",
+        "v2",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    surfaces = json.loads(result.stdout)["surface_inventory"]["surfaces"]
+    servers = {
+        item["server_name"]: item
+        for item in surfaces
+        if item["surface"] == "mcp_server_reference"
+    }
+    assert servers["relative"]["command_basename"] == "npx.cmd"
+    assert servers["relative"]["package_manager"] == "npx"
+    assert servers["relative"]["version_pinned"] is False
+    for name in ("absolute", "quoted-inline"):
+        assert servers[name]["command_basename"] == "npx.cmd"
+        assert servers[name]["package_manager"] == "npx"
+        assert servers[name]["version_pinned"] is True
+    for private in (relative_launcher, absolute_launcher, "Program Files", "nodejs"):
+        assert private not in result.stdout
+        assert private not in result.stderr
+
+
 def test_surface_inventory_cli_json_redacts_secret_shaped_public_surface_payload(
     tmp_path: Path,
 ) -> None:

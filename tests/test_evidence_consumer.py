@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
 SCRIPT = REPO_ROOT / "examples" / "evidence_consumer.py"
 SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
-AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+AUDIT_EVENT_PROFILE = "agent-guard.public_agent_policy_audit_event.v1"
 
 
 def _bound_v2_report(event: Path) -> dict[str, object]:
@@ -93,7 +93,7 @@ def test_packaged_consumer_accepts_legacy_unbound_audit_event_reference(
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_pack_manifest"]["artifacts"].append(
         {
-            "path": "reviewed/policy-admission-event.json",
+            "path": "../legacy/policy-admission-event.json",
             "role": "agent-policy-audit-event",
         }
     )
@@ -147,6 +147,41 @@ def test_v1_content_binding_field_never_counts_as_bound(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    (
+        "../claimed/event.json",
+        "/claimed/event.json",
+        r"C:\claimed\event.json",
+        r"claimed\event.json",
+        "https://example.invalid/claimed/event.json",
+        "./claimed/event.json",
+        "claimed/./event.json",
+        "claimed/../event.json",
+        " claimed/event.json",
+        "claimed/event.json ",
+    ),
+)
+def test_v2_consumer_rejects_unsafe_artifact_paths_without_leak(
+    tmp_path: Path,
+    unsafe_path: str,
+) -> None:
+    event_marker = "synthetic-consumer-private-event-body"
+    event = tmp_path / "event.json"
+    write_audit_event(event, context={"marker": event_marker})
+    payload = _bound_v2_report(event)
+    payload["evidence_pack_manifest"]["artifacts"][0]["path"] = unsafe_path
+
+    with pytest.raises(ValueError, match=r"artifact.*path is invalid") as exc_info:
+        validate_report(payload, select_report_schema(payload))
+
+    error = str(exc_info.value)
+    assert unsafe_path not in error
+    assert str(event) not in error
+    assert AUDIT_EVENT_PROFILE not in error
+    assert event_marker not in error
+
+
 def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_leak(
     tmp_path: Path,
 ) -> None:
@@ -178,6 +213,46 @@ def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_lea
         validate_report(payload, select_report_schema(payload))
 
     assert marker not in str(exc_info.value)
+
+    permissive_schema = json.loads(json.dumps(select_report_schema(payload)))
+    artifact_schema = permissive_schema["properties"]["evidence_pack_manifest"][
+        "properties"
+    ]["artifacts"]["items"]
+    artifact_schema["allOf"] = []
+    with pytest.raises(ValueError, match="invalid fields") as runtime_exc_info:
+        validate_report(payload, permissive_schema)
+
+    assert marker not in str(runtime_exc_info.value)
+
+
+def test_packaged_consumer_rejects_extra_report_artifact_fields_without_leak(
+    tmp_path: Path,
+) -> None:
+    marker = "synthetic-private-report-body"
+    event = tmp_path / "event.json"
+    write_audit_event(event)
+    payload = _bound_v2_report(event)
+    report_artifact = next(
+        artifact
+        for artifact in payload["evidence_pack_manifest"]["artifacts"]
+        if artifact.get("role") == "report"
+    )
+    report_artifact["event_body"] = {"marker": marker}
+
+    with pytest.raises(ValueError, match="invalid fields") as exc_info:
+        validate_report(payload, select_report_schema(payload))
+
+    assert marker not in str(exc_info.value)
+
+    permissive_schema = json.loads(json.dumps(select_report_schema(payload)))
+    artifact_schema = permissive_schema["properties"]["evidence_pack_manifest"][
+        "properties"
+    ]["artifacts"]["items"]
+    artifact_schema["allOf"] = []
+    with pytest.raises(ValueError, match="invalid fields") as runtime_exc_info:
+        validate_report(payload, permissive_schema)
+
+    assert marker not in str(runtime_exc_info.value)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="exercises POSIX final-component no-follow")
@@ -389,6 +464,32 @@ def test_current_consumer_rejects_mixed_unbound_v2_entries_without_leak(
 
     assert marker not in str(exc_info.value)
     assert str(event) not in str(exc_info.value)
+
+
+def test_current_consumer_rejects_non_repository_audit_event_artifact_path(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "synthetic-reviewed-event.json"
+    write_audit_event(event)
+    payload = _bound_v2_report(event)
+    marker = "../claimed/event.json"
+    payload["evidence_pack_manifest"]["artifacts"][-1]["path"] = marker
+
+    with pytest.raises(ValueError) as report_error:
+        validate_report(payload, select_report_schema(payload))
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as binding_error:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert marker not in str(report_error.value)
+    assert marker not in str(binding_error.value)
+    assert str(event) not in str(binding_error.value)
 
 
 def test_current_consumer_rejects_v2_without_bound_audit_event() -> None:

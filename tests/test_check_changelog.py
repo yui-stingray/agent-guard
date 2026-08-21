@@ -6,6 +6,8 @@ Why: missing release notes should be caught before a version tag is pushed.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -35,7 +37,27 @@ def test_current_project_version_has_changelog_entry() -> None:
     root = Path(__file__).resolve().parents[1]
     version = MODULE.load_project_version(root / "pyproject.toml")
 
-    assert version in MODULE.changelog_versions(root / "CHANGELOG.md")
+    assert MODULE.changelog_heading(version) == "Unreleased"
+    assert MODULE._extract_heading_notes(root / "CHANGELOG.md", "Unreleased")
+
+
+def test_development_version_maps_to_unreleased_without_becoming_release_heading() -> None:
+    assert MODULE.changelog_heading("0.3.5.dev0") == "Unreleased"
+    assert MODULE.changelog_heading("0.3.5") == "0.3.5"
+
+
+def test_release_mode_rejects_development_version() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--release"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "requires a final versioned heading" in result.stderr
 
 
 def test_extract_release_notes_returns_selected_body(tmp_path: Path) -> None:
@@ -51,4 +73,3 @@ def test_extract_release_notes_returns_selected_body(tmp_path: Path) -> None:
     )
 
     assert MODULE.extract_release_notes(changelog, "0.1.1") == "- Current release.\n- Second item.\n"
-

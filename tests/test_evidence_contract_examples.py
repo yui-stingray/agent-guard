@@ -24,7 +24,7 @@ SRC = REPO_ROOT / "src"
 SCRIPT = REPO_ROOT / "examples" / "evidence_contracts_ci.sh"
 SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 ACTION_METADATA = REPO_ROOT / "action.yml"
-AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+AUDIT_EVENT_PROFILE = "agent-guard.public_agent_policy_audit_event.v1"
 
 PUBLIC_ARTIFACT_NAMES = (
     "agent-guard-report.json",
