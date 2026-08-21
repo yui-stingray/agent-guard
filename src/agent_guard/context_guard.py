@@ -93,7 +93,7 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     {
         "id": "approval_bypass",
         "severity": "high",
-        "pattern": r"(?i)(?:\b(ignore|bypass|disable|skip)\b|(?<!not )(?<!never )\buse\s+b\s+y\s+p\s+a\s+s\s+s\b).{0,80}\b(approval|permission|policy|guardrail|safety checks?)\b",
+        "pattern": r"(?i)(?:\b(ignore|bypass|disable|skip)\b|\buse\s+b\s+y\s+p\s+a\s+s\s+s\b).{0,80}\b(approval|permission|policy|guardrail|safety checks?)\b",
         "message": "agent context must not instruct agents to bypass approval or policy checks",
     },
     {
@@ -207,34 +207,193 @@ DEFAULT_FORBIDDEN_PATTERNS = [
     {
         "id": "delegate_policy_bypass",
         "severity": "high",
-        "pattern": r"(?i)(?<!not )(?<!never )\b(delegate|handoff|ask\s+another\s+agent|spawn\s+agent|subagent)\b.{0,80}\b(bypass|avoid|skip)\b.{0,80}\b(approval|policy|guardrail|review)\b",
+        "pattern": r"(?i)\b(delegate|handoff|ask\s+another\s+agent|spawn\s+agent|subagent)\b.{0,80}\b(bypass|avoid|skip)\b.{0,80}\b(approval|policy|guardrail|review)\b",
         "message": "agent context must not use delegation to bypass review or policy boundaries",
     },
     {
         "id": "unsafe_tool_auto_allow",
         "severity": "high",
-        "pattern": r"(?i)(?<!not )(?<!never )\b(always|automatically|auto)\b.{0,80}\b(allow|approve|permit)\b.{0,40}\b(all|any)\b.{0,20}\b(tools?|commands?|capabilities)\b",
+        "pattern": r"(?i)\b(always|automatically|auto)\b.{0,80}\b(allow|approve|permit)\b.{0,40}\b(all|any)\b.{0,20}\b(tools?|commands?|capabilities)\b",
         "message": "agent context must not broadly auto-allow all tools or commands",
     },
     {
         "id": "unreviewed_agent_output",
         "severity": "high",
-        "pattern": r"(?i)(?<!not )(?<!never )\b(apply|merge|execute|trust)\b.{0,80}\b(agent|model|llm|ai)\b.{0,80}\b(output|patch(?:es)?|changes?)\b.{0,80}\b(without|no)\b.{0,40}\b(review|verification|tests?)\b",
+        "pattern": r"(?i)\b(apply|merge|execute|trust)\b.{0,80}\b(agent|model|llm|ai)\b.{0,80}\b(output|patch(?:es)?|changes?)\b.{0,80}\b(without|no)\b.{0,40}\b(review|verification|tests?)\b",
         "message": "agent context must not accept agent output without review or verification",
     },
     {
         "id": "unsafe_background_agent",
         "severity": "medium",
-        "pattern": r"(?i)(?<!not )(?<!never )\b(run|keep|start)\b.{0,80}\b(background|daemon|persistent)\b.{0,80}\b(without|no)\b.{0,40}\b(approval|notice|reporting|review)\b",
+        "pattern": r"(?i)\b(run|keep|start)\b.{0,80}\b(background|daemon|persistent)\b.{0,80}\b(without|no)\b.{0,40}\b(approval|notice|reporting|review)\b",
         "message": "agent context should not authorize unreviewed background or persistent agent activity",
     },
     {
         "id": "unreviewed_suppression",
         "severity": "high",
-        "pattern": r"(?i)(?<!not )(?<!never )\b(add|insert|use)\b.{0,80}\b(agent-guard:\s*allow|allowlist|suppression)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval)\b",
+        "pattern": r"(?i)\b(add|insert|use)\b.{0,80}\b(agent-guard:\s*allow|allowlist|suppression)\b.{0,80}\b(without|no)\b.{0,40}\b(review|approval)\b",
         "message": "agent context must not authorize unreviewed guard suppressions",
     },
 ]
+
+_SAFE_NEGATION_RULE_IDS = frozenset(
+    {
+        "approval_bypass",
+        "secret_prompt",
+        "destructive_command",
+        "disable_safety_tools",
+        "ignore_test_failures",
+        "delegate_policy_bypass",
+        "unsafe_tool_auto_allow",
+        "unreviewed_agent_output",
+        "unsafe_background_agent",
+        "unreviewed_suppression",
+    }
+)
+_SAFE_NEGATION_BOUNDARY = re.compile(
+    r"(?i)(?:[,.;!?]|\b(?:and|but|however|nor|or|then|while|yet)\b)"
+)
+_SAFE_NEGATION_INLINE_MARKUP = r"(?:[*_]{1,3}|`)?"
+_SAFE_NEGATION_NEGATOR = (
+    r"(?:never|do\s+not|don't|"
+    r"(?:(?:(?:the\s+)?agents?|you)\s+)?(?:must|shall|should)\s+not)"
+)
+_SAFE_NEGATION_PREFIX_TEXT = (
+    r"\s*(?:(?:[-*+>]|[0-9]+[.)])\s+)?"
+    r"(?:[*_]{1,3})?"
+    r"(?:(?:important|note|warning|caution)\s*:\s*)?"
+    r"(?:[*_]{1,3})?\s*"
+    rf"(?:please\s+)?{_SAFE_NEGATION_NEGATOR}\s+(?:ever\s+)?"
+)
+_SAFE_NEGATION_DIRECT_PREFIX = re.compile(
+    rf"(?i){_SAFE_NEGATION_PREFIX_TEXT}{_SAFE_NEGATION_INLINE_MARKUP}"
+)
+_SAFE_NEGATION_COMMAND_PREFIX = re.compile(
+    rf"(?i){_SAFE_NEGATION_PREFIX_TEXT}(?:(?:execute|invoke|run|use)\s+)?"
+    rf"{_SAFE_NEGATION_INLINE_MARKUP}"
+)
+_SAFE_NEGATION_ANALYSIS_MARKUP = re.compile(r"[*_`]")
+_SAFE_NEGATION_SENTENCE_BOUNDARY = re.compile(r"(?:[;!?]|(?<!\d)\.)")
+_SAFE_NEGATION_CLAUSE_BOUNDARY = re.compile(
+    r"(?i)(?:,\s*(?!provided\b)|\b(?:and|but|however|otherwise|then|while|yet)\b)"
+)
+_SAFE_NEGATION_ANY_ACTION = re.compile(
+    r"(?i)\b(?:ask\s+another\s+agent|turn\s+off|always|automatically|"
+    r"auto|provide|paste|enter|write|execute|invoke|run|git|rm|ignore|"
+    r"hide|suppress|dismiss|bypass|disable|skip|delegate|handoff|"
+    r"spawn\s+agent|subagent|apply|merge|trust|keep|start|add|insert|use)\b"
+)
+_SAFE_NEGATION_ATTRIBUTION_SOURCE = (
+    r'(?:[A-Za-z0-9][A-Za-z0-9_-]*|"[^"\r\n]+"|\'[^\'\r\n]+\'|'
+    r"\([^()\r\n]+\)|"
+    r"\[[^\[\]\r\n]+\])"
+)
+_SAFE_NEGATION_SAFE_LEADING = re.compile(
+    rf"(?i)(?:[\s,]*|\s*[0-9]+\.\s*|"
+    rf"\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE}\s*,\s*)"
+)
+_SAFE_NEGATION_ATTRIBUTION_CLAUSE = re.compile(
+    rf"(?i)\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE}\s*"
+)
+_SAFE_NEGATION_BENIGN_PRECEDING_CLAUSE = re.compile(
+    r"(?i)\s*run\s+(?:the\s+)?tests?\s+first\s*"
+)
+
+_SAFE_NEGATION_APPROVAL_ACTION = (
+    r"(?:(?:ignore|bypass|disable|skip)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|bypass|disable|skip))*\s+"
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:approval|permission|policy)(?:\s+(?:checks?|gates?))?|"
+    r"(?:ignore|bypass|disable|skip)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|bypass|disable|skip))*\s+"
+    r"(?:(?:a|an|the|all|any)\s+)?(?:guardrails?|safety\s+checks?)|"
+    r"use\s+b\s+y\s+p\s+a\s+s\s+s\s+(?:for\s+)?"
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:approval|permission|policy|guardrails?|safety\s+checks?))"
+)
+_SAFE_NEGATION_SECRET_OBJECT = (
+    r"(?:(?:a|an|the|any|this|that|your|our|their|plaintext|raw|"
+    r"provided|requested)\s+)*"
+    r"(?:api[_ -]?key|token|password|secret)"
+)
+_SAFE_NEGATION_SECRET_ACTION = (
+    r"(?:(?:provide|paste|enter|write)"
+    r"(?:\s+(?:or|nor)\s+(?:provide|paste|enter|write))*\s+"
+    rf"{_SAFE_NEGATION_SECRET_OBJECT}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_SECRET_OBJECT})*"
+    rf"(?:\s*,?\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE})?)"
+)
+_SAFE_NEGATION_DESTRUCTIVE_ACTION = (
+    r"(?:(?:execute|invoke|run|use)\s+)?"
+    r"(?:git\s+(?:reset\s+--hard|push\s+--force\b|clean\s+-f)|"
+    r"rm\s+-rf\s+(?:/|~|/home|/mnt/c|[A-Za-z]:\\))"
+)
+_SAFE_NEGATION_DISABLE_OBJECT = (
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:agent-guard|agent-policy|safety\s+checks?|guardrails?|"
+    r"policy\s+checks?|evidence\s+gate)"
+)
+_SAFE_NEGATION_DISABLE_ACTION = (
+    r"(?:(?:disable|turn\s+off|skip|bypass)"
+    r"(?:\s+(?:or|nor)\s+(?:disable|turn\s+off|skip|bypass))*\s+"
+    rf"{_SAFE_NEGATION_DISABLE_OBJECT}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_DISABLE_OBJECT})*)"
+)
+_SAFE_NEGATION_IGNORE_FAILURE_ACTION = (
+    r"(?:(?:ignore|hide|suppress|dismiss)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|hide|suppress|dismiss))*\s+"
+    r"(?:failing|failed|broken)\s+(?:tests?|checks?|ci|lint|build))"
+)
+_SAFE_NEGATION_DELEGATE_ACTION = (
+    r"(?:(?:delegate(?:\s+to\s+(?:a|an|another|the)\s+agent)?|"
+    r"handoff(?:\s+to\s+(?:a|an|another|the)\s+agent)?|"
+    r"ask\s+another\s+agent|spawn\s+agent|subagent)"
+    r"\s+(?:to\s+)?(?:bypass|avoid|skip)\s+(?:the\s+)?"
+    r"(?:approval|policy|guardrail|review)(?:\s+(?:checks?|gates?))?)"
+)
+_SAFE_NEGATION_TOOL_ALLOW_ACTION = (
+    r"(?:(?:always|automatically|auto)\s+(?:allow|approve|permit)\s+"
+    r"(?:all|any)\s+(?:tools?|commands?|capabilities)"
+    r"(?:\s+for\s+every\s+task)?)"
+)
+_SAFE_NEGATION_AGENT_OUTPUT_ACTION = (
+    r"(?:(?:apply|merge|execute|trust)\s+"
+    r"(?:(?:a|an|the|any|ai)\s+)*(?:agent|model|llm|ai)\s+"
+    r"(?:output|patches?|changes?)\s+(?:without|no)\s+"
+    r"(?:review|verification|tests?))"
+)
+_SAFE_NEGATION_BACKGROUND_ACTION = (
+    r"(?:(?:run|keep|start)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:(?:persistent|background|daemon)\s+)*"
+    r"(?:agent|activity|job|process)(?:\s+(?:running|active))?\s+"
+    r"(?:without|no)\s+(?:approval|notice|reporting|review))"
+)
+_SAFE_NEGATION_SUPPRESSION_ACTION = (
+    r"(?:(?:add|insert|use)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:agent-guard:\s*allow(?:\s+(?:allowlist|suppression))?|"
+    r"allowlist|suppression)\s+(?:without|no)\s+(?:review|approval))"
+)
+_SAFE_NEGATION_RECOGNIZED_ACTION = (
+    rf"(?:{_SAFE_NEGATION_APPROVAL_ACTION}|{_SAFE_NEGATION_SECRET_ACTION}|"
+    rf"{_SAFE_NEGATION_DESTRUCTIVE_ACTION}|{_SAFE_NEGATION_DISABLE_ACTION}|"
+    rf"{_SAFE_NEGATION_IGNORE_FAILURE_ACTION}|{_SAFE_NEGATION_DELEGATE_ACTION}|"
+    rf"{_SAFE_NEGATION_TOOL_ALLOW_ACTION}|{_SAFE_NEGATION_AGENT_OUTPUT_ACTION}|"
+    rf"{_SAFE_NEGATION_BACKGROUND_ACTION}|{_SAFE_NEGATION_SUPPRESSION_ACTION})"
+)
+_SAFE_NEGATION_STRENGTHENING_SUFFIX = (
+    r"(?:\s+(?:under\s+any\s+circumstances|for\s+any\s+reason))?"
+)
+_SAFE_NEGATION_RECOGNIZED_BODY = re.compile(
+    rf"(?i){_SAFE_NEGATION_RECOGNIZED_ACTION}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_RECOGNIZED_ACTION})*"
+    rf"{_SAFE_NEGATION_STRENGTHENING_SUFFIX}\s*"
+)
+_SAFE_NEGATION_RECOGNIZED_ACTION_CLAUSE = re.compile(
+    rf"(?i)\s*{_SAFE_NEGATION_RECOGNIZED_ACTION}\s*"
+)
 
 CONTEXT_INVENTORY_SCHEMA_VERSION = "agent-guard.context_inventory.v1"
 BOUNDARY_CATEGORIES = [
@@ -1113,10 +1272,12 @@ def normalize_rule_patterns(policy: dict[str, object]) -> list[dict[str, object]
 
 def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
     rules: list[dict[str, object]] = []
+    cfg = policy_section(policy)
+    uses_default_patterns = "forbidden_patterns" not in cfg
     raw_rules = normalize_rule_patterns(policy)
     if len(raw_rules) > MAX_CONTEXT_POLICY_REGEX_COUNT:
         raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
-    for item in raw_rules:
+    for rule_index, item in enumerate(raw_rules):
         if not isinstance(item, dict):
             continue
         rule_id = str(item.get("id", "")).strip()
@@ -1135,6 +1296,15 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
                 "severity": str(item.get("severity", "high")).strip() or "high",
                 "message": str(item.get("message", "policy violation")).strip() or "policy violation",
                 "regex": regex,
+                "default_rule": (
+                    uses_default_patterns
+                    and rule_index < len(DEFAULT_FORBIDDEN_PATTERNS)
+                ),
+                "safe_negation": (
+                    uses_default_patterns
+                    and rule_index < len(DEFAULT_FORBIDDEN_PATTERNS)
+                    and rule_id in _SAFE_NEGATION_RULE_IDS
+                ),
             }
         )
     return rules
@@ -1490,6 +1660,163 @@ def line_allows_rule(line: str, rule_id: str) -> bool:
     return "all" in allowed or rule_id in allowed
 
 
+def _safe_negation_prefix_is_complete(
+    segment: str,
+    *,
+    action_start: int,
+) -> bool:
+    clause_start = 0
+    for boundary in _SAFE_NEGATION_BOUNDARY.finditer(
+        segment,
+        0,
+        action_start,
+    ):
+        clause_start = boundary.end()
+
+    if _SAFE_NEGATION_SAFE_LEADING.fullmatch(segment, 0, clause_start) is None:
+        return False
+    return bool(
+        _SAFE_NEGATION_DIRECT_PREFIX.fullmatch(
+            segment,
+            clause_start,
+            action_start,
+        )
+        or _SAFE_NEGATION_COMMAND_PREFIX.fullmatch(
+            segment,
+            clause_start,
+            action_start,
+        )
+    )
+
+
+def _segment_is_complete_unconditional_prohibition(segment: str) -> bool:
+    action = _SAFE_NEGATION_ANY_ACTION.search(segment)
+    if action is None or not _safe_negation_prefix_is_complete(
+        segment,
+        action_start=action.start(),
+    ):
+        return False
+    return (
+        _SAFE_NEGATION_RECOGNIZED_BODY.fullmatch(
+            segment,
+            action.start(),
+        )
+        is not None
+    )
+
+
+def _iter_safe_negation_clauses(line: str) -> Iterable[str]:
+    for sentence in _SAFE_NEGATION_SENTENCE_BOUNDARY.split(line):
+        yield from _SAFE_NEGATION_CLAUSE_BOUNDARY.split(sentence)
+
+
+def _is_safe_attribution_clause(clause: str) -> bool:
+    return _SAFE_NEGATION_ATTRIBUTION_CLAUSE.fullmatch(clause) is not None
+
+
+def _is_benign_preceding_clause(clause: str) -> bool:
+    return _SAFE_NEGATION_BENIGN_PRECEDING_CLAUSE.fullmatch(clause) is not None
+
+
+def _line_is_complete_unconditional_prohibitions(line: str) -> bool:
+    normalized = _SAFE_NEGATION_ANALYSIS_MARKUP.sub(
+        "",
+        line.replace("\u2019", "'"),
+    )
+    saw_prohibition = False
+    segment_cache: dict[str, bool] = {}
+    for clause in _iter_safe_negation_clauses(normalized):
+        if not clause.strip() or _is_safe_attribution_clause(clause):
+            continue
+        if not saw_prohibition and _is_benign_preceding_clause(clause):
+            continue
+        is_complete = segment_cache.get(clause)
+        if is_complete is None:
+            is_complete = _segment_is_complete_unconditional_prohibition(clause)
+            segment_cache[clause] = is_complete
+        if not is_complete:
+            return False
+        saw_prohibition = True
+    return saw_prohibition
+
+
+def _safe_negation_is_complete(
+    line: str,
+    *,
+    regex: re.Pattern[str],
+) -> bool:
+    normalized = _SAFE_NEGATION_ANALYSIS_MARKUP.sub(
+        "",
+        line.replace("\u2019", "'"),
+    )
+    saw_rule_match = False
+    clause_cache: dict[str, tuple[bool, bool, bool]] = {}
+    for clause in _iter_safe_negation_clauses(normalized):
+        if not clause.strip() or _is_safe_attribution_clause(clause):
+            continue
+        if not saw_rule_match and _is_benign_preceding_clause(clause):
+            continue
+        cached = clause_cache.get(clause)
+        if cached is None:
+            has_rule_match = regex.search(clause) is not None
+            is_complete = _segment_is_complete_unconditional_prohibition(clause)
+            has_other_recognized_action = (
+                not has_rule_match
+                and _SAFE_NEGATION_RECOGNIZED_ACTION_CLAUSE.fullmatch(clause)
+                is not None
+            )
+            cached = (
+                has_rule_match,
+                is_complete,
+                has_other_recognized_action,
+            )
+            clause_cache[clause] = cached
+        has_rule_match, is_complete, has_other_recognized_action = cached
+        if has_rule_match:
+            saw_rule_match = True
+            if not is_complete:
+                return False
+            continue
+        if has_other_recognized_action or is_complete:
+            continue
+        return False
+    return saw_rule_match
+
+
+def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
+    regex = rule["regex"]
+    assert isinstance(regex, re.Pattern)
+    if not bool(rule.get("safe_negation")):
+        return regex.search(line) is not None
+
+    normalized = line.replace("\u2019", "'")
+    if regex.search(normalized) is None:
+        return False
+    return not _safe_negation_is_complete(
+        normalized,
+        regex=regex,
+    )
+
+
+def _matching_rule_indices(
+    line: str,
+    rules: list[dict[str, object]],
+) -> tuple[int, ...]:
+    matches: list[int] = []
+    complete_default_prohibitions = _line_is_complete_unconditional_prohibitions(
+        line
+    )
+    for index, rule in enumerate(rules):
+        if complete_default_prohibitions and bool(rule.get("default_rule")):
+            continue
+        rule_id = str(rule["id"])
+        if line_allows_rule(line, rule_id):
+            continue
+        if _rule_matches_line(line, rule):
+            matches.append(index)
+    return tuple(matches)
+
+
 def _scan_context_files_unbounded(
     root: Path,
     policy: dict[str, object],
@@ -1537,24 +1864,24 @@ def _scan_context_files_unbounded(
         )
         if text is None:
             continue
+        rule_match_cache: dict[str, tuple[int, ...]] = {}
         for lineno, line in enumerate(text.splitlines(), start=1):
-            for rule in rules:
-                rule_id = str(rule["id"])
-                if line_allows_rule(line, rule_id):
-                    continue
-                regex = rule["regex"]
-                assert isinstance(regex, re.Pattern)
-                if regex.search(line):
-                    finding = ContextGuardFinding(
-                        file=rel,
-                        line=lineno,
-                        rule_id=rule_id,
-                        severity=str(rule["severity"]),
-                        message=str(rule["message"]),
-                        snippet=line.strip()[:200],
-                    )
-                    result_budget.add(finding)
-                    findings.append(finding)
+            matching_indices = rule_match_cache.get(line)
+            if matching_indices is None:
+                matching_indices = _matching_rule_indices(line, rules)
+                rule_match_cache[line] = matching_indices
+            for index in matching_indices:
+                rule = rules[index]
+                finding = ContextGuardFinding(
+                    file=rel,
+                    line=lineno,
+                    rule_id=str(rule["id"]),
+                    severity=str(rule["severity"]),
+                    message=str(rule["message"]),
+                    snippet=line.strip()[:200],
+                )
+                result_budget.add(finding)
+                findings.append(finding)
     return findings, len(paths)
 
 
@@ -1609,7 +1936,8 @@ def _scan_context_files_with_inventory_unbounded(
         data = opened.data
         receipts.append(opened.receipt())
         aliases.append((opened.relative_path, alias_path))
-        line_count = len(text.splitlines()) if text is not None else None
+        lines = text.splitlines() if text is not None else None
+        line_count = len(lines) if lines is not None else None
         empty_entry = ContextInventoryEntry(
             path=rel,
             kind=context_kind(rel),
@@ -1638,21 +1966,20 @@ def _scan_context_files_with_inventory_unbounded(
                 evidence=evidence,
             )
         )
-        if text is None:
+        if lines is None:
             continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            for rule in rules:
-                rule_id = str(rule["id"])
-                if line_allows_rule(line, rule_id):
-                    continue
-                regex = rule["regex"]
-                assert isinstance(regex, re.Pattern)
-                if not regex.search(line):
-                    continue
+        rule_match_cache: dict[str, tuple[int, ...]] = {}
+        for lineno, line in enumerate(lines, start=1):
+            matching_indices = rule_match_cache.get(line)
+            if matching_indices is None:
+                matching_indices = _matching_rule_indices(line, rules)
+                rule_match_cache[line] = matching_indices
+            for index in matching_indices:
+                rule = rules[index]
                 finding = ContextGuardFinding(
                     file=rel,
                     line=lineno,
-                    rule_id=rule_id,
+                    rule_id=str(rule["id"]),
                     severity=str(rule["severity"]),
                     message=str(rule["message"]),
                     snippet=line.strip()[:200],

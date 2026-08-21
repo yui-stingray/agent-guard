@@ -15,6 +15,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,
   sanitized configuration errors; no raw pattern or context text is emitted.
+- Tuned narrow English negation handling for built-in context rules so safe
+  prohibitions do not become findings, while custom regular expressions,
+  mixed unsafe clauses, double negation, and verification-skip instructions
+  retain deterministic fail-closed behavior.
 - Content-bound optional `agent-policy` audit-event references with a
   canonical-JSON, profile-bound, public-safe digest. Producers require a
   caller-designated repo-local JSON event and the recognized
