@@ -15,6 +15,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from agent_guard.evidence_pack import (
+    SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN,
+    is_sanitized_repository_relative_path,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "src" / "agent_guard" / "schemas"
@@ -30,6 +35,48 @@ EXPECTED_SCHEMAS = {
     "agent-guard.report_evidence.v2.schema.json": "agent-guard.report_evidence.v2",
     "agent-guard.surface_delta.v1.schema.json": "agent-guard.surface_delta.v1",
 }
+
+
+def _v2_artifact_path_schema(schema_name: str) -> dict[str, object]:
+    schema = load_schema(schema_name)
+    if schema_name == "agent-guard.report_evidence.v2.schema.json":
+        return schema["properties"]["evidence_pack_manifest"]["properties"][
+            "artifacts"
+        ]["items"]["properties"]["path"]
+    return schema["properties"]["artifacts"]["items"]["properties"]["path"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "reviewed/event.json",
+        ".agent-guard/reviewed-event.json",
+        "reviewed/event-version_1@public.json",
+        "reviewed/a http:token",
+        "reviewed/g" + ("a" * 64) + "g.json",
+        "reviewed/event:version.json",
+        "reviewed/../event.json",
+        "reviewed/caf\u00e9.json",
+    ),
+)
+def test_v2_artifact_path_runtime_and_schemas_have_identical_grammar(
+    value: str,
+) -> None:
+    runtime_accepts = is_sanitized_repository_relative_path(value)
+
+    for schema_name in (
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
+        "agent-guard.report_evidence.v2.schema.json",
+    ):
+        path_schema = _v2_artifact_path_schema(schema_name)
+        assert path_schema["pattern"] == SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN
+        assert Draft202012Validator(path_schema).is_valid(value) is runtime_accepts
+
+    assert runtime_accepts is (value in {
+        "reviewed/event.json",
+        ".agent-guard/reviewed-event.json",
+        "reviewed/event-version_1@public.json",
+    })
 
 
 def run_cli(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
@@ -204,7 +251,7 @@ def test_v1_evidence_schemas_accept_released_unbound_audit_event_references() ->
         manifest = value if "manifest" in schema_name else value["evidence_pack_manifest"]
         manifest["artifacts"].append(
             {
-                "path": "reviewed/event.json",
+                "path": "../legacy/event.json",
                 "role": "agent-policy-audit-event",
             }
         )
@@ -215,7 +262,7 @@ def test_v1_evidence_schemas_accept_released_unbound_audit_event_references() ->
 def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
     binding = {
         "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
-        "event_profile": "agent-policy.audit_event.v1.1",
+        "event_profile": "agent-guard.public_agent_policy_audit_event.v1",
         "canonicalization": "canonical-json-v1",
         "digest_algorithm": "sha256",
         "digest_encoding": "base32-lower-no-padding",
@@ -262,8 +309,32 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
         )
         assert validator.is_valid(value)
 
+        for unsafe_path in (
+            "../claimed/event.json",
+            "/claimed/event.json",
+            r"C:\claimed\event.json",
+            "reviewed/../event.json",
+            "reviewed/./event.json",
+            r"reviewed\event.json",
+            "https://example.invalid/reviewed/event.json",
+            "file:reviewed/event.json",
+            " reviewed/event.json",
+            "reviewed/event.json ",
+            ".",
+            "reviewed/ev" + chr(0x202E) + "ent.json",
+            "reviewed/ev" + chr(0x13439) + "ent.json",
+            "reviewed/" + "A" + "KIA" + ("A" * 16) + ".json",
+            "reviewed/" + ("a" * 64) + ".json",
+        ):
+            assert not is_sanitized_repository_relative_path(unsafe_path)
+            for artifact in manifest["artifacts"]:
+                original_path = artifact["path"]
+                artifact["path"] = unsafe_path
+                assert not validator.is_valid(value)
+                artifact["path"] = original_path
+
         manifest["artifacts"][-1]["content_binding"] = binding | {
-            "event_profile": "agent-policy.audit_event.v1.2"
+            "event_profile": "agent-policy.audit_event.v1.1"
         }
         assert not validator.is_valid(value)
         manifest["artifacts"][-1]["content_binding"] = binding
@@ -277,6 +348,12 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
             "passphrase": "synthetic-private-passphrase"
         }
         assert not validator.is_valid(value)
+
+        manifest["artifacts"][0]["event_body"] = {
+            "passphrase": "synthetic-private-passphrase"
+        }
+        assert not validator.is_valid(value)
+        del manifest["artifacts"][0]["event_body"]
 
         manifest["artifacts"][-1] = {
             "path": "reviewed/event.json",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -21,7 +22,7 @@ from agent_guard.consumer import validate_agent_policy_audit_event_files
 
 WINDOWS_ONLY = pytest.mark.skipif(os.name != "nt", reason="requires native Windows handles")
 POSIX_ONLY = pytest.mark.skipif(os.name == "nt", reason="requires POSIX directory descriptors")
-AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
+AUDIT_EVENT_PROFILE = "agent-guard.public_agent_policy_audit_event.v1"
 
 
 @POSIX_ONLY
@@ -215,6 +216,40 @@ def test_windows_mcp_wildcard_discovery_is_case_insensitive(tmp_path: Path) -> N
     surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
 
     assert any(item.get("path") == ".claude/Settings-CI.JSON" for item in surfaces)
+
+
+@WINDOWS_ONLY
+def test_windows_mcp_launcher_paths_preserve_package_metadata_without_disclosure(
+    tmp_path: Path,
+) -> None:
+    launcher = r"C:\Program Files\nodejs\npx.cmd"
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "native": {
+                        "command": launcher,
+                        "args": ["pkg@1.2.3"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
+    native = next(
+        item
+        for item in surfaces
+        if item.get("surface") == "mcp_server_reference"
+        and item.get("server_name") == "native"
+    )
+
+    assert native["command_basename"] == "npx.cmd"
+    assert native["package_manager"] == "npx"
+    assert native["version_pinned"] is True
+    assert launcher not in str(native)
+    assert "Program Files" not in str(native)
 
 
 @WINDOWS_ONLY

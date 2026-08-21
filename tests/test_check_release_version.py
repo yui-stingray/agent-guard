@@ -5,6 +5,7 @@ Why: a broken guard would let mismatched tags reach PyPI upload.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import tomllib
@@ -14,6 +15,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_release_version.py"
 PYPROJECT = ROOT / "pyproject.toml"
+SPEC = importlib.util.spec_from_file_location("check_release_version", SCRIPT)
+assert SPEC is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(MODULE)
 
 
 def project_version() -> str:
@@ -33,13 +39,20 @@ def run_script(tag_name: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_matching_tag_succeeds() -> None:
+def test_matching_development_tag_is_not_releasable() -> None:
     version = project_version()
 
     result = run_script(f"v{version}")
 
-    assert result.returncode == 0
-    assert f"release tag/version match: {version}" in result.stdout
+    assert version.endswith(".dev0")
+    assert result.returncode == 1
+    assert "final numeric x.y.z version" in result.stderr
+
+
+def test_final_release_version_grammar_is_bounded() -> None:
+    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch("0.3.5")
+    for value in ("0.3.5.dev0", "0.3.5rc1", "0.3", "v0.3.5", "0.3.5+local"):
+        assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(value) is None
 
 
 def test_mismatched_tag_fails_early() -> None:

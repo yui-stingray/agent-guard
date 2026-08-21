@@ -90,7 +90,7 @@ jobs:
             --master-sha "$(git rev-parse origin/master)" \
             "${args[@]}"
       - name: Check changelog entry
-        run: python scripts/check_changelog.py
+        run: python scripts/check_changelog.py --release
       - name: Install locked release build tools
         run: >-
           python -m pip install --require-hashes --only-binary=:all:

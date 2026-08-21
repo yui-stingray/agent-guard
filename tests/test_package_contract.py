@@ -1214,6 +1214,7 @@ def test_dev_extra_includes_benchmark_schema_tools() -> None:
 
     dev_deps = pyproject["project"]["optional-dependencies"]["dev"]
 
+    assert "pytest>=9.0.3,<10" in dev_deps
     assert any(dep.startswith("pytest-cov") for dep in dev_deps)
     assert any(dep.startswith("jsonschema") for dep in dev_deps)
 

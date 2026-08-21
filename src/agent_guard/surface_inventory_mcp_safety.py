@@ -13,6 +13,10 @@ from urllib.parse import parse_qsl, urlparse
 
 PACKAGE_MANAGER_COMMANDS = {"npx", "npm", "pnpm", "yarn", "bun", "bunx", "uvx", "python", "python3", "node", "deno", "docker"}
 WINDOWS_PACKAGE_MANAGER_SUFFIXES = (".cmd", ".exe", ".bat", ".ps1")
+_WINDOWS_EXECUTABLE_RE = re.compile(
+    r"^(?P<path>(?:[A-Za-z]:\\[^\"'\r\n]*?|[^\s\"'\r\n]+\\[^\s\"'\r\n]*?)\.(?:cmd|exe|bat|ps1))(?=$|\s)",
+    re.IGNORECASE,
+)
 DIRECT_PACKAGE_OPERAND_COMMANDS = frozenset({"npx", "uvx"})
 PACKAGE_OPERAND_SUBCOMMANDS = {
     "npm": frozenset({"exec", "x"}),
@@ -176,15 +180,46 @@ INSTRUCTION_LIKE_DESCRIPTION = re.compile(
 )
 
 
-def command_basename(command: object) -> str:
-    if not isinstance(command, str):
-        return ""
+def _command_parts(command: str) -> tuple[str, list[str]]:
     raw_text = command.strip()
+    if not raw_text:
+        return "", []
+
+    if raw_text[0] in {"'", '"'}:
+        quote = raw_text[0]
+        closing_quote = raw_text.find(quote, 1)
+        if closing_quote > 0:
+            executable = raw_text[1:closing_quote]
+            if "\\" in executable and executable.lower().endswith(
+                WINDOWS_PACKAGE_MANAGER_SUFFIXES
+            ):
+                remainder = raw_text[closing_quote + 1 :].strip()
+                try:
+                    return executable, shlex.split(remainder, posix=True)
+                except ValueError:
+                    return executable, remainder.split()
+
+    windows_match = _WINDOWS_EXECUTABLE_RE.match(raw_text)
+    if windows_match:
+        executable = windows_match.group("path")
+        remainder = raw_text[windows_match.end() :].strip()
+        try:
+            return executable, shlex.split(remainder, posix=True)
+        except ValueError:
+            return executable, remainder.split()
+
     try:
         parts = shlex.split(raw_text, posix=True)
     except ValueError:
         parts = raw_text.split()
-    text = (parts[0] if parts else raw_text).strip().strip("'\"")
+    return (parts[0], parts[1:]) if parts else (raw_text, [])
+
+
+def command_basename(command: object) -> str:
+    if not isinstance(command, str):
+        return ""
+    text, _ = _command_parts(command)
+    text = text.strip().strip("'\"")
     if not text:
         return ""
     windows_path = PureWindowsPath(text)
@@ -262,11 +297,8 @@ def string_list(value: object) -> list[str]:
 def command_inline_args(command: object) -> list[str]:
     if not isinstance(command, str):
         return []
-    try:
-        parts = shlex.split(command, posix=True)
-    except ValueError:
-        parts = command.split()
-    return [item for item in parts[1:] if isinstance(item, str)]
+    _, parts = _command_parts(command)
+    return [item for item in parts if isinstance(item, str)]
 
 
 def is_env_reference(value: str) -> bool:

@@ -8,7 +8,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..evidence_pack import validate_agent_policy_audit_event_binding_shape
+from ..evidence_pack import (
+    is_sanitized_repository_relative_path,
+    validate_agent_policy_audit_event_binding_shape,
+)
 from ._schema import require, require_int, require_mapping, require_sequence
 
 REVIEWED_MCP_POLICY_PATH = ".agent-guard/mcp-policy.yaml"
@@ -222,15 +225,25 @@ def _validate_manifest_artifacts(manifest: Mapping[str, Any]) -> None:
             isinstance(artifact.get("path"), str) and bool(str(artifact.get("path")).strip()),
             f"$.evidence_pack_manifest.artifacts[{index}].path must be a non-empty string",
         )
+        if manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v2":
+            require(
+                is_sanitized_repository_relative_path(artifact.get("path")),
+                f"$.evidence_pack_manifest.artifacts[{index}].path is invalid",
+            )
+            expected_fields = (
+                {"path", "role"}
+                if role == "report"
+                else {"path", "role", "content_binding"}
+            )
+            require(
+                set(artifact) == expected_fields,
+                f"$.evidence_pack_manifest.artifacts[{index}] has invalid fields",
+            )
         if role != "agent-policy-audit-event":
             continue
         audit_event_count += 1
         if manifest.get("schema_version") == "agent-guard.evidence_pack_manifest.v1":
             continue
-        require(
-            set(artifact) == {"path", "role", "content_binding"},
-            f"$.evidence_pack_manifest.artifacts[{index}] has invalid fields",
-        )
         try:
             validate_agent_policy_audit_event_binding_shape(artifact.get("content_binding"))
         except ValueError:

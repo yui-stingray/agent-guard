@@ -333,7 +333,7 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
         "--agent-policy-audit-event",
         str(event),
         "--agent-policy-audit-event-profile",
-        "agent-policy.audit_event.v1.1",
+        "agent-guard.public_agent_policy_audit_event.v1",
         "--output",
         str(output),
     )
@@ -354,7 +354,9 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     assert artifacts[0] == {"path": "evidence/agent-guard-report.json", "role": "report"}
     assert artifacts[1]["path"] == "evidence/policy-admission-event.json"
     assert artifacts[1]["role"] == "agent-policy-audit-event"
-    assert artifacts[1]["content_binding"]["event_profile"] == "agent-policy.audit_event.v1.1"
+    assert artifacts[1]["content_binding"]["event_profile"] == (
+        "agent-guard.public_agent_policy_audit_event.v1"
+    )
     serialized = json.dumps(payload, ensure_ascii=False)
     assert str(tmp_path) not in serialized
     assert content_marker not in serialized
@@ -383,7 +385,7 @@ def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -
         "--agent-policy-audit-event",
         event.relative_to(tmp_path).as_posix(),
         "--agent-policy-audit-event-profile",
-        "agent-policy.audit_event.v1.1",
+        "agent-guard.public_agent_policy_audit_event.v1",
         "--format",
         "json",
     )
@@ -397,7 +399,9 @@ def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -
     artifact = payload["evidence_pack_manifest"]["artifacts"][0]
     assert artifact["path"] == "evidence/nested/policy-admission-event.json"
     assert artifact["role"] == "agent-policy-audit-event"
-    assert artifact["content_binding"]["event_profile"] == "agent-policy.audit_event.v1.1"
+    assert artifact["content_binding"]["event_profile"] == (
+        "agent-guard.public_agent_policy_audit_event.v1"
+    )
     assert str(tmp_path) not in result.stdout
 
 
@@ -412,7 +416,7 @@ def test_report_cli_rejects_audit_event_profile_without_path(tmp_path: Path) -> 
         "--context-policy",
         str(policy),
         "--agent-policy-audit-event-profile",
-        "agent-policy.audit_event.v1.1",
+        "agent-guard.public_agent_policy_audit_event.v1",
         "--format",
         "json",
     )
@@ -441,7 +445,7 @@ def test_report_cli_error_after_valid_audit_event_remains_v1(tmp_path: Path) -> 
         "--agent-policy-audit-event",
         str(event),
         "--agent-policy-audit-event-profile",
-        "agent-policy.audit_event.v1.1",
+        "agent-guard.public_agent_policy_audit_event.v1",
         "--format",
         "json",
     )
