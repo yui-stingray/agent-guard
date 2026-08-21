@@ -253,29 +253,7 @@ _SAFE_NEGATION_RULE_IDS = frozenset(
 _SAFE_NEGATION_BOUNDARY = re.compile(
     r"(?i)(?:[,.;!?]|\b(?:and|but|however|nor|or|then|while|yet)\b)"
 )
-_SAFE_NEGATION_COORDINATOR = re.compile(r"(?i)\b(?:nor|or)\b")
 _SAFE_NEGATION_INLINE_MARKUP = r"(?:[*_]{1,3}|`)?"
-_SAFE_NEGATION_UNSAFE_QUALIFIER = (
-    rf"(?:after|as{_SAFE_NEGATION_INLINE_MARKUP}\s+"
-    rf"{_SAFE_NEGATION_INLINE_MARKUP}long{_SAFE_NEGATION_INLINE_MARKUP}\s+"
-    rf"{_SAFE_NEGATION_INLINE_MARKUP}as|before|during|except|if|"
-    rf"only{_SAFE_NEGATION_INLINE_MARKUP}\s+"
-    rf"{_SAFE_NEGATION_INLINE_MARKUP}if|provided(?:\s+that)?|unless|until|"
-    rf"when|whenever|while)"
-)
-_SAFE_NEGATION_UNSAFE_POSTFIX = re.compile(
-    rf"(?i)\b{_SAFE_NEGATION_UNSAFE_QUALIFIER}\b"
-)
-_SAFE_NEGATION_PROVIDED_BY = re.compile(
-    r"(?i)\s+(?:by|(?P<marker>\*{1,3}|_{1,3}|`)by(?P=marker))"
-    r"(?=$|[\s!\"#$%&'()+,./:;<=>?@\[\]\\^{}|~])"
-)
-_SAFE_NEGATION_PROVIDED_ARTICLE = re.compile(r"(?i)\b(?:a|an|the)\s+$")
-_SAFE_NEGATION_ADJECTIVE_BRIDGE = re.compile(r"\s*(?:[*_]{1,3}|`)?\s*")
-_SAFE_NEGATION_CLAUSE_VERB = re.compile(
-    r"(?i)\s+(?:am|are|can|could|has|have|is|may|might|must|shall|should|"
-    r"was|were|will|would)\b"
-)
 _SAFE_NEGATION_NEGATOR = (
     r"(?:never|do\s+not|don't|"
     r"(?:(?:(?:the\s+)?agents?|you)\s+)?(?:must|shall|should)\s+not)"
@@ -294,32 +272,128 @@ _SAFE_NEGATION_COMMAND_PREFIX = re.compile(
     rf"(?i){_SAFE_NEGATION_PREFIX_TEXT}(?:(?:execute|invoke|run|use)\s+)?"
     rf"{_SAFE_NEGATION_INLINE_MARKUP}"
 )
-_SAFE_NEGATION_ACTION_PATTERNS = {
-    "approval_bypass": re.compile(
-        r"(?i)\b(?:ignore|bypass|disable|skip)\b|"
-        r"\buse\b(?=\s+b\s+y\s+p\s+a\s+s\s+s\b)"
-    ),
-    "secret_prompt": re.compile(r"(?i)\b(?:provide|paste|enter|write)\b"),
-    "destructive_command": re.compile(r"(?i)\b(?:git|rm)\b"),
-    "disable_safety_tools": re.compile(
-        r"(?i)\b(?:disable|skip|bypass)\b|\bturn\s+off\b"
-    ),
-    "ignore_test_failures": re.compile(
-        r"(?i)\b(?:ignore|hide|suppress|dismiss)\b"
-    ),
-    "delegate_policy_bypass": re.compile(
-        r"(?i)\b(?:delegate|handoff|subagent)\b|"
-        r"\bask\s+another\s+agent\b|\bspawn\s+agent\b"
-    ),
-    "unsafe_tool_auto_allow": re.compile(
-        r"(?i)\b(?:always|automatically|auto)\b"
-    ),
-    "unreviewed_agent_output": re.compile(
-        r"(?i)\b(?:apply|merge|execute|trust)\b"
-    ),
-    "unsafe_background_agent": re.compile(r"(?i)\b(?:run|keep|start)\b"),
-    "unreviewed_suppression": re.compile(r"(?i)\b(?:add|insert|use)\b"),
-}
+_SAFE_NEGATION_ANALYSIS_MARKUP = re.compile(r"[*_`]")
+_SAFE_NEGATION_SENTENCE_BOUNDARY = re.compile(r"(?:[;!?]|(?<!\d)\.)")
+_SAFE_NEGATION_CLAUSE_BOUNDARY = re.compile(
+    r"(?i)(?:,\s*(?!provided\b)|\b(?:and|but|however|otherwise|then|while|yet)\b)"
+)
+_SAFE_NEGATION_ANY_ACTION = re.compile(
+    r"(?i)\b(?:ask\s+another\s+agent|turn\s+off|always|automatically|"
+    r"auto|provide|paste|enter|write|execute|invoke|run|git|rm|ignore|"
+    r"hide|suppress|dismiss|bypass|disable|skip|delegate|handoff|"
+    r"spawn\s+agent|subagent|apply|merge|trust|keep|start|add|insert|use)\b"
+)
+_SAFE_NEGATION_ATTRIBUTION_SOURCE = (
+    r'(?:[A-Za-z0-9][A-Za-z0-9_-]*|"[^"\r\n]+"|\'[^\'\r\n]+\'|'
+    r"\([^()\r\n]+\)|"
+    r"\[[^\[\]\r\n]+\])"
+)
+_SAFE_NEGATION_SAFE_LEADING = re.compile(
+    rf"(?i)(?:[\s,]*|\s*[0-9]+\.\s*|"
+    rf"\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE}\s*,\s*)"
+)
+_SAFE_NEGATION_ATTRIBUTION_CLAUSE = re.compile(
+    rf"(?i)\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE}\s*"
+)
+_SAFE_NEGATION_BENIGN_PRECEDING_CLAUSE = re.compile(
+    r"(?i)\s*run\s+(?:the\s+)?tests?\s+first\s*"
+)
+
+_SAFE_NEGATION_APPROVAL_ACTION = (
+    r"(?:(?:ignore|bypass|disable|skip)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|bypass|disable|skip))*\s+"
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:approval|permission|policy)(?:\s+(?:checks?|gates?))?|"
+    r"(?:ignore|bypass|disable|skip)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|bypass|disable|skip))*\s+"
+    r"(?:(?:a|an|the|all|any)\s+)?(?:guardrails?|safety\s+checks?)|"
+    r"use\s+b\s+y\s+p\s+a\s+s\s+s\s+(?:for\s+)?"
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:approval|permission|policy|guardrails?|safety\s+checks?))"
+)
+_SAFE_NEGATION_SECRET_OBJECT = (
+    r"(?:(?:a|an|the|any|this|that|your|our|their|plaintext|raw|"
+    r"provided|requested)\s+)*"
+    r"(?:api[_ -]?key|token|password|secret)"
+)
+_SAFE_NEGATION_SECRET_ACTION = (
+    r"(?:(?:provide|paste|enter|write)"
+    r"(?:\s+(?:or|nor)\s+(?:provide|paste|enter|write))*\s+"
+    rf"{_SAFE_NEGATION_SECRET_OBJECT}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_SECRET_OBJECT})*"
+    rf"(?:\s*,?\s*provided\s+by(?:\s+|(?=[\"(\[]))"
+    rf"{_SAFE_NEGATION_ATTRIBUTION_SOURCE})?)"
+)
+_SAFE_NEGATION_DESTRUCTIVE_ACTION = (
+    r"(?:(?:execute|invoke|run|use)\s+)?"
+    r"(?:git\s+(?:reset\s+--hard|push\s+--force\b|clean\s+-f)|"
+    r"rm\s+-rf\s+(?:/|~|/home|/mnt/c|[A-Za-z]:\\))"
+)
+_SAFE_NEGATION_DISABLE_OBJECT = (
+    r"(?:(?:a|an|the|all|any)\s+)?"
+    r"(?:agent-guard|agent-policy|safety\s+checks?|guardrails?|"
+    r"policy\s+checks?|evidence\s+gate)"
+)
+_SAFE_NEGATION_DISABLE_ACTION = (
+    r"(?:(?:disable|turn\s+off|skip|bypass)"
+    r"(?:\s+(?:or|nor)\s+(?:disable|turn\s+off|skip|bypass))*\s+"
+    rf"{_SAFE_NEGATION_DISABLE_OBJECT}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_DISABLE_OBJECT})*)"
+)
+_SAFE_NEGATION_IGNORE_FAILURE_ACTION = (
+    r"(?:(?:ignore|hide|suppress|dismiss)"
+    r"(?:\s+(?:or|nor)\s+(?:ignore|hide|suppress|dismiss))*\s+"
+    r"(?:failing|failed|broken)\s+(?:tests?|checks?|ci|lint|build))"
+)
+_SAFE_NEGATION_DELEGATE_ACTION = (
+    r"(?:(?:delegate(?:\s+to\s+(?:a|an|another|the)\s+agent)?|"
+    r"handoff(?:\s+to\s+(?:a|an|another|the)\s+agent)?|"
+    r"ask\s+another\s+agent|spawn\s+agent|subagent)"
+    r"\s+(?:to\s+)?(?:bypass|avoid|skip)\s+(?:the\s+)?"
+    r"(?:approval|policy|guardrail|review)(?:\s+(?:checks?|gates?))?)"
+)
+_SAFE_NEGATION_TOOL_ALLOW_ACTION = (
+    r"(?:(?:always|automatically|auto)\s+(?:allow|approve|permit)\s+"
+    r"(?:all|any)\s+(?:tools?|commands?|capabilities)"
+    r"(?:\s+for\s+every\s+task)?)"
+)
+_SAFE_NEGATION_AGENT_OUTPUT_ACTION = (
+    r"(?:(?:apply|merge|execute|trust)\s+"
+    r"(?:(?:a|an|the|any|ai)\s+)*(?:agent|model|llm|ai)\s+"
+    r"(?:output|patches?|changes?)\s+(?:without|no)\s+"
+    r"(?:review|verification|tests?))"
+)
+_SAFE_NEGATION_BACKGROUND_ACTION = (
+    r"(?:(?:run|keep|start)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:(?:persistent|background|daemon)\s+)*"
+    r"(?:agent|activity|job|process)(?:\s+(?:running|active))?\s+"
+    r"(?:without|no)\s+(?:approval|notice|reporting|review))"
+)
+_SAFE_NEGATION_SUPPRESSION_ACTION = (
+    r"(?:(?:add|insert|use)\s+(?:(?:a|an|the)\s+)?"
+    r"(?:agent-guard:\s*allow(?:\s+(?:allowlist|suppression))?|"
+    r"allowlist|suppression)\s+(?:without|no)\s+(?:review|approval))"
+)
+_SAFE_NEGATION_RECOGNIZED_ACTION = (
+    rf"(?:{_SAFE_NEGATION_APPROVAL_ACTION}|{_SAFE_NEGATION_SECRET_ACTION}|"
+    rf"{_SAFE_NEGATION_DESTRUCTIVE_ACTION}|{_SAFE_NEGATION_DISABLE_ACTION}|"
+    rf"{_SAFE_NEGATION_IGNORE_FAILURE_ACTION}|{_SAFE_NEGATION_DELEGATE_ACTION}|"
+    rf"{_SAFE_NEGATION_TOOL_ALLOW_ACTION}|{_SAFE_NEGATION_AGENT_OUTPUT_ACTION}|"
+    rf"{_SAFE_NEGATION_BACKGROUND_ACTION}|{_SAFE_NEGATION_SUPPRESSION_ACTION})"
+)
+_SAFE_NEGATION_STRENGTHENING_SUFFIX = (
+    r"(?:\s+(?:under\s+any\s+circumstances|for\s+any\s+reason))?"
+)
+_SAFE_NEGATION_RECOGNIZED_BODY = re.compile(
+    rf"(?i){_SAFE_NEGATION_RECOGNIZED_ACTION}"
+    rf"(?:\s+(?:or|nor)\s+{_SAFE_NEGATION_RECOGNIZED_ACTION})*"
+    rf"{_SAFE_NEGATION_STRENGTHENING_SUFFIX}\s*"
+)
+_SAFE_NEGATION_RECOGNIZED_ACTION_CLAUSE = re.compile(
+    rf"(?i)\s*{_SAFE_NEGATION_RECOGNIZED_ACTION}\s*"
+)
 
 CONTEXT_INVENTORY_SCHEMA_VERSION = "agent-guard.context_inventory.v1"
 BOUNDARY_CATEGORIES = [
@@ -1222,6 +1296,10 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
                 "severity": str(item.get("severity", "high")).strip() or "high",
                 "message": str(item.get("message", "policy violation")).strip() or "policy violation",
                 "regex": regex,
+                "default_rule": (
+                    uses_default_patterns
+                    and rule_index < len(DEFAULT_FORBIDDEN_PATTERNS)
+                ),
                 "safe_negation": (
                     uses_default_patterns
                     and rule_index < len(DEFAULT_FORBIDDEN_PATTERNS)
@@ -1582,140 +1660,127 @@ def line_allows_rule(line: str, rule_id: str) -> bool:
     return "all" in allowed or rule_id in allowed
 
 
-def _action_is_safely_negated(
-    line: str,
+def _safe_negation_prefix_is_complete(
+    segment: str,
     *,
-    unsafe_leading_qualifier: bool,
-    clause_start: int,
     action_start: int,
-    rule_id: str,
 ) -> bool:
-    if unsafe_leading_qualifier:
+    clause_start = 0
+    for boundary in _SAFE_NEGATION_BOUNDARY.finditer(
+        segment,
+        0,
+        action_start,
+    ):
+        clause_start = boundary.end()
+
+    if _SAFE_NEGATION_SAFE_LEADING.fullmatch(segment, 0, clause_start) is None:
         return False
-
-    prefix = line[clause_start:action_start]
-    prefix_pattern = (
-        _SAFE_NEGATION_COMMAND_PREFIX
-        if rule_id == "destructive_command"
-        else _SAFE_NEGATION_DIRECT_PREFIX
+    return bool(
+        _SAFE_NEGATION_DIRECT_PREFIX.fullmatch(
+            segment,
+            clause_start,
+            action_start,
+        )
+        or _SAFE_NEGATION_COMMAND_PREFIX.fullmatch(
+            segment,
+            clause_start,
+            action_start,
+        )
     )
-    return prefix_pattern.fullmatch(prefix) is not None
 
 
-def _negation_qualifier_is_unsafe(
-    line: str,
-    *,
-    qualifier: re.Match[str],
-    end: int,
-) -> bool:
-    return not (
-        qualifier.group().casefold() == "provided"
-        and _SAFE_NEGATION_PROVIDED_BY.match(
-            line,
-            qualifier.end(),
-            end,
+def _segment_is_complete_unconditional_prohibition(segment: str) -> bool:
+    action = _SAFE_NEGATION_ANY_ACTION.search(segment)
+    if action is None or not _safe_negation_prefix_is_complete(
+        segment,
+        action_start=action.start(),
+    ):
+        return False
+    return (
+        _SAFE_NEGATION_RECOGNIZED_BODY.fullmatch(
+            segment,
+            action.start(),
         )
         is not None
     )
 
 
-def _has_unsafe_negation_postfix(
-    line: str,
-    *,
-    action_end: int,
-    action_pattern: re.Pattern[str],
-    unsafe_match: re.Match[str],
-) -> bool:
-    match_end = unsafe_match.end()
-    for qualifier in _SAFE_NEGATION_UNSAFE_POSTFIX.finditer(
-        line,
-        action_end,
-        match_end,
-    ):
-        if qualifier.group().casefold() == "provided":
-            captured_starts = [
-                start
-                for start, _end in unsafe_match.regs[1:]
-                if start >= qualifier.end()
-            ]
-            captured_start = min(captured_starts) if captured_starts else -1
-            if (
-                _SAFE_NEGATION_PROVIDED_ARTICLE.search(
-                    line,
-                    action_end,
-                    qualifier.start(),
-                )
-                is not None
-                and captured_start >= 0
-                and _SAFE_NEGATION_ADJECTIVE_BRIDGE.fullmatch(
-                    line,
-                    qualifier.end(),
-                    captured_start,
-                )
-                is not None
-                and _SAFE_NEGATION_CLAUSE_VERB.match(line, match_end) is None
-            ):
-                continue
-        return True
-
-    following_action = action_pattern.search(line, match_end)
-    search_end = following_action.start() if following_action is not None else len(line)
-    cursor = match_end
-    while cursor < search_end:
-        boundary = _SAFE_NEGATION_BOUNDARY.search(line, cursor, search_end)
-        segment_end = boundary.start() if boundary is not None else search_end
-        for qualifier in _SAFE_NEGATION_UNSAFE_POSTFIX.finditer(
-            line,
-            cursor,
-            segment_end,
-        ):
-            if (
-                qualifier.group().casefold() == "provided"
-                and _SAFE_NEGATION_PROVIDED_BY.match(
-                    line,
-                    qualifier.end(),
-                )
-                is not None
-            ):
-                continue
-            return True
-        if boundary is None:
-            return False
-        if _SAFE_NEGATION_UNSAFE_POSTFIX.fullmatch(boundary.group()) is not None:
-            return True
-        if boundary.group() in {".", "!", "?"}:
-            return False
-        cursor = boundary.end()
-    return False
+def _iter_safe_negation_clauses(line: str) -> Iterable[str]:
+    for sentence in _SAFE_NEGATION_SENTENCE_BOUNDARY.split(line):
+        yield from _SAFE_NEGATION_CLAUSE_BOUNDARY.split(sentence)
 
 
-def _shared_safe_negation_end(
-    line: str,
-    *,
-    action_pattern: re.Pattern[str],
-    regex: re.Pattern[str],
-    unsafe_match: re.Match[str],
-) -> int | None:
-    for boundary in _SAFE_NEGATION_BOUNDARY.finditer(
-        line,
-        unsafe_match.start(),
-        unsafe_match.end(),
-    ):
-        coordinated_action = action_pattern.search(
-            line,
-            boundary.end(),
-            unsafe_match.end(),
-        )
-        if (
-            _SAFE_NEGATION_COORDINATOR.fullmatch(boundary.group()) is not None
-            and coordinated_action is not None
-            and not line[boundary.end() : coordinated_action.start()].strip()
-        ):
+def _is_safe_attribution_clause(clause: str) -> bool:
+    return _SAFE_NEGATION_ATTRIBUTION_CLAUSE.fullmatch(clause) is not None
+
+
+def _is_benign_preceding_clause(clause: str) -> bool:
+    return _SAFE_NEGATION_BENIGN_PRECEDING_CLAUSE.fullmatch(clause) is not None
+
+
+def _line_is_complete_unconditional_prohibitions(line: str) -> bool:
+    normalized = _SAFE_NEGATION_ANALYSIS_MARKUP.sub(
+        "",
+        line.replace("\u2019", "'"),
+    )
+    saw_prohibition = False
+    segment_cache: dict[str, bool] = {}
+    for clause in _iter_safe_negation_clauses(normalized):
+        if not clause.strip() or _is_safe_attribution_clause(clause):
             continue
-        if regex.match(line, unsafe_match.start(), boundary.start()) is not None:
-            return boundary.start()
-        return None
-    return unsafe_match.end()
+        if not saw_prohibition and _is_benign_preceding_clause(clause):
+            continue
+        is_complete = segment_cache.get(clause)
+        if is_complete is None:
+            is_complete = _segment_is_complete_unconditional_prohibition(clause)
+            segment_cache[clause] = is_complete
+        if not is_complete:
+            return False
+        saw_prohibition = True
+    return saw_prohibition
+
+
+def _safe_negation_is_complete(
+    line: str,
+    *,
+    regex: re.Pattern[str],
+) -> bool:
+    normalized = _SAFE_NEGATION_ANALYSIS_MARKUP.sub(
+        "",
+        line.replace("\u2019", "'"),
+    )
+    saw_rule_match = False
+    clause_cache: dict[str, tuple[bool, bool, bool]] = {}
+    for clause in _iter_safe_negation_clauses(normalized):
+        if not clause.strip() or _is_safe_attribution_clause(clause):
+            continue
+        if not saw_rule_match and _is_benign_preceding_clause(clause):
+            continue
+        cached = clause_cache.get(clause)
+        if cached is None:
+            has_rule_match = regex.search(clause) is not None
+            is_complete = _segment_is_complete_unconditional_prohibition(clause)
+            has_other_recognized_action = (
+                not has_rule_match
+                and _SAFE_NEGATION_RECOGNIZED_ACTION_CLAUSE.fullmatch(clause)
+                is not None
+            )
+            cached = (
+                has_rule_match,
+                is_complete,
+                has_other_recognized_action,
+            )
+            clause_cache[clause] = cached
+        has_rule_match, is_complete, has_other_recognized_action = cached
+        if has_rule_match:
+            saw_rule_match = True
+            if not is_complete:
+                return False
+            continue
+        if has_other_recognized_action or is_complete:
+            continue
+        return False
+    return saw_rule_match
 
 
 def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
@@ -1724,123 +1789,13 @@ def _rule_matches_line(line: str, rule: dict[str, object]) -> bool:
     if not bool(rule.get("safe_negation")):
         return regex.search(line) is not None
 
-    first_unsafe_match = regex.search(line)
-    if first_unsafe_match is None:
+    normalized = line.replace("\u2019", "'")
+    if regex.search(normalized) is None:
         return False
-
-    rule_id = str(rule["id"])
-    action_pattern = _SAFE_NEGATION_ACTION_PATTERNS[rule_id]
-    qualifier_iter = iter(_SAFE_NEGATION_UNSAFE_POSTFIX.finditer(line))
-    qualifier = next(qualifier_iter, None)
-    has_qualifier_candidate = qualifier is not None
-
-    def consume_unsafe_qualifiers(end: int) -> bool:
-        nonlocal qualifier
-        found = False
-        while qualifier is not None and qualifier.start() < end:
-            if _negation_qualifier_is_unsafe(
-                line,
-                qualifier=qualifier,
-                end=end,
-            ):
-                found = True
-            qualifier = next(qualifier_iter, None)
-        return found
-
-    first_action = action_pattern.match(line, first_unsafe_match.start())
-    if (
-        first_action is not None
-        and action_pattern.search(line, first_action.end()) is None
-    ):
-        clause_start = 0
-        unsafe_leading_qualifier = False
-        for boundary in _SAFE_NEGATION_BOUNDARY.finditer(
-            line,
-            0,
-            first_action.start(),
-        ):
-            clause_start = boundary.end()
-            segment_is_unsafe = (
-                consume_unsafe_qualifiers(clause_start)
-                if qualifier is not None
-                else False
-            )
-            unsafe_leading_qualifier = (
-                unsafe_leading_qualifier or segment_is_unsafe
-            )
-        if not _action_is_safely_negated(
-            line,
-            unsafe_leading_qualifier=unsafe_leading_qualifier,
-            clause_start=clause_start,
-            action_start=first_action.start(),
-            rule_id=rule_id,
-        ):
-            return True
-        if has_qualifier_candidate and _has_unsafe_negation_postfix(
-            line,
-            action_end=first_action.end(),
-            action_pattern=action_pattern,
-            unsafe_match=first_unsafe_match,
-        ):
-            return True
-        return (
-            _shared_safe_negation_end(
-                line,
-                action_pattern=action_pattern,
-                regex=regex,
-                unsafe_match=first_unsafe_match,
-            )
-            is None
-        )
-
-    boundary_iter = iter(_SAFE_NEGATION_BOUNDARY.finditer(line))
-    boundary = next(boundary_iter, None)
-    clause_start = 0
-    unsafe_leading_qualifier = False
-    safely_negated_through = 0
-    for action in action_pattern.finditer(line):
-        while boundary is not None and boundary.end() <= action.start():
-            clause_start = boundary.end()
-            segment_is_unsafe = (
-                consume_unsafe_qualifiers(clause_start)
-                if qualifier is not None
-                else False
-            )
-            unsafe_leading_qualifier = (
-                unsafe_leading_qualifier or segment_is_unsafe
-            )
-            boundary = next(boundary_iter, None)
-        unsafe_match = regex.match(line, action.start())
-        if unsafe_match is None:
-            continue
-        safely_negated = action.start() < safely_negated_through
-        if not safely_negated:
-            safely_negated = _action_is_safely_negated(
-                line,
-                unsafe_leading_qualifier=unsafe_leading_qualifier,
-                clause_start=clause_start,
-                action_start=action.start(),
-                rule_id=rule_id,
-            )
-        if not safely_negated:
-            return True
-        if has_qualifier_candidate and _has_unsafe_negation_postfix(
-            line,
-            action_end=action.end(),
-            action_pattern=action_pattern,
-            unsafe_match=unsafe_match,
-        ):
-            return True
-        shared_end = _shared_safe_negation_end(
-            line,
-            action_pattern=action_pattern,
-            regex=regex,
-            unsafe_match=unsafe_match,
-        )
-        if shared_end is None:
-            return True
-        safely_negated_through = max(safely_negated_through, shared_end)
-    return False
+    return not _safe_negation_is_complete(
+        normalized,
+        regex=regex,
+    )
 
 
 def _matching_rule_indices(
@@ -1848,7 +1803,12 @@ def _matching_rule_indices(
     rules: list[dict[str, object]],
 ) -> tuple[int, ...]:
     matches: list[int] = []
+    complete_default_prohibitions = _line_is_complete_unconditional_prohibitions(
+        line
+    )
     for index, rule in enumerate(rules):
+        if complete_default_prohibitions and bool(rule.get("default_rule")):
+            continue
         rule_id = str(rule["id"])
         if line_allows_rule(line, rule_id):
             continue
