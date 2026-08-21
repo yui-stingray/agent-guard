@@ -119,7 +119,7 @@ def add_report_parser(top) -> None:
     report.add_argument(
         "--agent-policy-audit-event-profile",
         default="",
-        help="validated public profile identifier for every attached agent-policy audit event",
+        help="recognized profile agent-policy.audit_event.v1.1 for every attached audit event",
     )
     report.add_argument(
         "--format",
