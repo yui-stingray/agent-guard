@@ -10,14 +10,20 @@ Why: keep static guard releases auditable while the package is still alpha.
   (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are
   consumed only before `x`; version-dependent post-`x` selectors such as
   `--package` fail closed as unpinned metadata.
-- Made static MCP package pin inference inspect recognized package-manager
-  operands and selectors instead of arbitrary command arguments. Full SemVer,
-  exact `uvx` requirements, and package-attached full SHA-256 pins remain
-  eligible. Trailing executed-command arguments are excluded after the package
-  operand, and recognized Windows launcher suffixes are normalized internally
-  without changing the public command basename. Ranges, npm-style
-  major/minor-only versions, short digests, option values, and ambiguous layouts
-  fail closed as unpinned metadata.
+- Made static MCP package pin and latest-tag inference inspect recognized
+  package-manager operands and selectors instead of arbitrary command arguments.
+  JavaScript launchers require npm-compatible full SemVer (total version text
+  at most 256 characters and core numeric identifiers at most
+  `Number.MAX_SAFE_INTEGER`) and do not treat synthetic package-attached SHA-256
+  selectors as pins; exact `uvx` requirements and uv's exact-only positional
+  `name@version` syntax remain eligible. Both labels use bounded, explicit
+  launcher option and alias arities; unsupported or ambiguous layouts fail
+  closed without treating arbitrary arguments as package operands. Trailing
+  executed-command arguments are excluded after the package operand, and
+  recognized Windows launcher suffixes are normalized internally without
+  changing the public command basename. Ranges, npm-style major/minor-only
+  versions, digest selectors, option values, and ambiguous layouts fail closed
+  as unpinned metadata.
 - Isolated repository-controlled context-policy regular-expression matching
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,

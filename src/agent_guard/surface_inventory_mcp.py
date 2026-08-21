@@ -23,6 +23,7 @@ from .surface_inventory_mcp_safety import (
     command_inline_args,
     contains_filesystem_root,
     extract_remote_host,
+    has_latest_package_operand,
     has_unsafe_mcp_url_scheme,
     has_instruction_like_description,
     infer_transport,
@@ -216,7 +217,7 @@ def collect_mcp_config_surfaces(
             all_strings = string_values(raw_server)
             metadata_strings = [*all_strings, *args]
             risky_patterns: set[str] = set()
-            if any("@latest" in item for item in args):
+            if has_latest_package_operand(command, args):
                 risky_patterns.add("latest_package")
             if package_manager and version_pinned is False:
                 risky_patterns.add("unpinned_package")

@@ -29,6 +29,7 @@ PACKAGE_SELECTOR_OPTIONS = {
 UVX_PACKAGE_SELECTOR_OPTIONS = frozenset({"--from", "--with", "-w"})
 BUN_GLOBAL_VALUE_OPTIONS = frozenset({"--cwd", "--shell"})
 BUNX_BOOLEAN_OPTIONS = frozenset({"--bun"})
+NPM_NPX_GLOBAL_VALUE_OPTIONS = frozenset({"-C", "--loglevel", "--prefix", "--userconfig"})
 PACKAGE_OPERAND_BOOLEAN_OPTIONS = {
     "npx": frozenset({"-q", "-y", "--quiet", "--yes"}),
     "npm": frozenset(
@@ -58,13 +59,16 @@ PACKAGE_OPERAND_BOOLEAN_OPTIONS = {
     ),
 }
 PACKAGE_OPERAND_VALUE_OPTIONS = {
-    "npx": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"}),
-    "npm": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"}),
+    "npx": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"})
+    | NPM_NPX_GLOBAL_VALUE_OPTIONS,
+    "npm": frozenset({"--allow-scripts", "--cache", "--call", "--registry", "--workspace", "-c", "-w"})
+    | NPM_NPX_GLOBAL_VALUE_OPTIONS,
     "pnpm": frozenset({"--allow-build", "--reporter"}),
     "yarn": frozenset(),
     "uvx": frozenset(
         {
             "--cache-dir",
+            "--color",
             "--directory",
             "--project",
             "--python",
@@ -73,14 +77,9 @@ PACKAGE_OPERAND_VALUE_OPTIONS = {
     ),
 }
 NPM_PACKAGE_NAME = r"(?:@[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*"
-SEMVER_NUMERIC_IDENTIFIER = r"(?:0|[1-9]\d*)"
-SEMVER_ALPHANUMERIC_IDENTIFIER = r"(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
-SEMVER_PRERELEASE_IDENTIFIER = rf"(?:{SEMVER_NUMERIC_IDENTIFIER}|{SEMVER_ALPHANUMERIC_IDENTIFIER})"
-NPM_FULL_SEMVER = (
-    r"v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
-    rf"(?:-{SEMVER_PRERELEASE_IDENTIFIER}(?:\.{SEMVER_PRERELEASE_IDENTIFIER})*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-)
+NPM_PACKAGE_NAME_RE = re.compile(NPM_PACKAGE_NAME, re.ASCII)
+NPM_SEMVER_MAX_LENGTH = 256
+NPM_SEMVER_MAX_SAFE_INTEGER = "9007199254740991"
 PYTHON_PACKAGE_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
 PYTHON_EXTRA_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
 PYTHON_EXTRAS = rf"(?:\[{PYTHON_EXTRA_NAME}(?:,{PYTHON_EXTRA_NAME})*\])?"
@@ -90,14 +89,6 @@ PYTHON_EXACT_VERSION = (
     r"(?:-(?:[0-9]+)|[._-]?(?:post|rev|r)[._-]?[0-9]*)?"
     r"(?:[._-]?dev[._-]?[0-9]*)?"
     r"(?:\+[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*)?"
-)
-NPM_PACKAGE_VERSION_PIN_RE = re.compile(
-    rf"{NPM_PACKAGE_NAME}@{NPM_FULL_SEMVER}",
-    re.ASCII,
-)
-NPM_PACKAGE_SHA256_PIN_RE = re.compile(
-    rf"{NPM_PACKAGE_NAME}@sha256:[A-Fa-f0-9]{{64}}",
-    re.ASCII,
 )
 PYTHON_PACKAGE_VERSION_PIN_RE = re.compile(
     rf"{PYTHON_PACKAGE_NAME}{PYTHON_EXTRAS}=={PYTHON_EXACT_VERSION}",
@@ -668,14 +659,104 @@ def package_operands(
     return []
 
 
+def is_semver_numeric_identifier(identifier: str) -> bool:
+    if identifier == "0":
+        return True
+    return bool(identifier) and identifier[0] in "123456789" and all(
+        "0" <= char <= "9" for char in identifier[1:]
+    )
+
+
+def is_npm_semver_core_identifier(identifier: str) -> bool:
+    if len(identifier) > len(NPM_SEMVER_MAX_SAFE_INTEGER):
+        return False
+    return is_semver_numeric_identifier(identifier) and (
+        len(identifier) < len(NPM_SEMVER_MAX_SAFE_INTEGER)
+        or identifier <= NPM_SEMVER_MAX_SAFE_INTEGER
+    )
+
+
+def is_semver_alphanumeric_identifier(identifier: str) -> bool:
+    if not identifier:
+        return False
+    has_non_numeric = False
+    for char in identifier:
+        if "0" <= char <= "9":
+            continue
+        if "A" <= char <= "Z" or "a" <= char <= "z" or char == "-":
+            has_non_numeric = True
+            continue
+        return False
+    return has_non_numeric
+
+
+def is_semver_build_identifier(identifier: str) -> bool:
+    return bool(identifier) and all(
+        "0" <= char <= "9"
+        or "A" <= char <= "Z"
+        or "a" <= char <= "z"
+        or char == "-"
+        for char in identifier
+    )
+
+
+def is_npm_full_semver(version: str) -> bool:
+    if len(version) > NPM_SEMVER_MAX_LENGTH:
+        return False
+    if version.startswith("v"):
+        version = version[1:]
+
+    core_and_prerelease, build_separator, build = version.partition("+")
+    if build_separator:
+        if "+" in build or not all(
+            is_semver_build_identifier(identifier) for identifier in build.split(".")
+        ):
+            return False
+
+    core, prerelease_separator, prerelease = core_and_prerelease.partition("-")
+    if prerelease_separator and not all(
+        is_semver_alphanumeric_identifier(identifier)
+        or is_semver_numeric_identifier(identifier)
+        for identifier in prerelease.split(".")
+    ):
+        return False
+
+    numeric_identifiers = core.split(".")
+    return len(numeric_identifiers) == 3 and all(
+        is_npm_semver_core_identifier(identifier) for identifier in numeric_identifiers
+    )
+
+
+def is_npm_exact_version_pin(operand: str) -> bool:
+    package_name, separator, version = operand.rpartition("@")
+    return (
+        bool(separator)
+        and bool(NPM_PACKAGE_NAME_RE.fullmatch(package_name))
+        and is_npm_full_semver(version)
+    )
+
+
+def has_latest_package_operand(command: str, args: list[str]) -> bool:
+    normalized_command = normalized_package_manager_command(command)
+    if not normalized_command:
+        return False
+    package_execution = package_operand_args(normalized_command, args)
+    if package_execution is None:
+        return False
+    operand_args, initial_selectors, pin_layout_valid = package_execution
+    if not pin_layout_valid:
+        return False
+    operands = package_operands(normalized_command, operand_args, initial_selectors)
+    return bool(
+        operands and any(operand.endswith("@latest") for operand, _primary in operands)
+    )
+
+
 def is_immutable_package_operand(command: str, operand: str, *, primary: bool) -> bool:
     if command == "uvx":
         pattern = UVX_COMMAND_VERSION_PIN_RE if primary else PYTHON_PACKAGE_VERSION_PIN_RE
         return bool(pattern.fullmatch(operand))
-    return bool(
-        NPM_PACKAGE_SHA256_PIN_RE.fullmatch(operand)
-        or NPM_PACKAGE_VERSION_PIN_RE.fullmatch(operand)
-    )
+    return is_npm_exact_version_pin(operand)
 
 
 def infer_version_pin(command: str, args: list[str]) -> bool | None:

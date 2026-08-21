@@ -53,7 +53,6 @@ def test_mcp_check_cli_respects_reviewed_policy_forbidden_patterns(tmp_path: Pat
     assert set(server["risky_patterns"]) == {
         "filesystem_root_reference",
         "inline_authorization_value",
-        "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
     }
@@ -61,6 +60,54 @@ def test_mcp_check_cli_respects_reviewed_policy_forbidden_patterns(tmp_path: Pat
     assert "sk-exampleSecretValue123" not in result.stdout
     assert "/home/alice/private" not in result.stdout
     assert str(tmp_path) not in result.stdout
+
+def test_mcp_check_cli_policy_rejects_invalid_npm_semver_boundaries(tmp_path: Path) -> None:
+    max_length_version = "1.2.3+" + ("a" * (256 - len("1.2.3+")))
+    over_length_version = max_length_version + "a"
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "safe-boundary": {"command": "npx", "args": [f"pkg@{max_length_version}"]},
+                    "unsafe-integer": {"command": "npx", "args": ["pkg@9007199254740992.0.0"]},
+                    "over-length": {"command": "npx", "args": [f"pkg@{over_length_version}"]},
+                }
+            }
+        ),
+    )
+    write(tmp_path / "mcp-policy.yaml", mcp_policy_text(["unpinned_package"]))
+
+    result = run_cli(
+        "mcp",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1, result.stdout
+    payload = json.loads(result.stdout)
+    findings = {
+        (item["server_name"], item["reason"])
+        for item in payload["mcp_config"]["findings"]
+    }
+    assert findings == {
+        ("unsafe-integer", "unpinned_package"),
+        ("over-length", "unpinned_package"),
+    }
+    servers = {
+        item["server_name"]: item
+        for item in payload["mcp_config"]["surfaces"]
+        if item["surface"] == "mcp_server_reference"
+    }
+    assert servers["safe-boundary"]["version_pinned"] is True
+    assert servers["unsafe-integer"]["version_pinned"] is False
+    assert servers["over-length"]["version_pinned"] is False
+    assert str(tmp_path) not in result.stdout
+
 
 def test_mcp_policy_is_resolved_relative_to_root_from_external_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

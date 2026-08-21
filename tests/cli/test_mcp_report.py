@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.cli.helpers import mcp_policy_text, run_cli, run_cli_from, write
 
 def test_report_external_mcp_policy_path_is_sanitized_and_not_conformant(tmp_path: Path) -> None:
@@ -135,6 +137,73 @@ def test_report_cli_mcp_policy_implies_mcp_config_check(tmp_path: Path) -> None:
     gates = {item["gate"]: item for item in payload["evidence_coverage"]["gates"]}
     assert gates["mcp_config"]["policy"] == {"path": "mcp-policy.yaml"}
     assert str(tmp_path) not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("command", "args", "expected_latest"),
+    [
+        ("npm", ["--loglevel=silent", "exec", "--", "pkg@latest"], True),
+        ("npm", ["-C", "exec", "exec", "--", "pkg@latest"], True),
+        ("npm", ["-C", "exec", "ignored@latest"], False),
+        ("npm", ["-C=exec", "exec", "--", "pkg@latest"], True),
+        ("npm", ["-C=exec", "ignored@latest"], False),
+        ("npm", ["--prefix=exec", "x", "--", "pkg@latest"], True),
+        ("npm", ["--userconfig=exec", "x", "--", "pkg@latest"], True),
+        ("npm", ["--userconfig", "exec", "ignored@latest"], False),
+        ("npx", ["-C", "exec", "pkg@latest"], True),
+        ("npx", ["-C=exec", "pkg@latest"], True),
+        ("npx", ["--userconfig=exec", "pkg@latest"], True),
+        ("uvx", ["--color=always", "pkg@latest"], True),
+        ("npm", ["--prefix", "exec", "exec", "--", "pkg@latest"], True),
+        ("npm", ["--unknown", "exec", "pkg@latest"], False),
+    ],
+)
+def test_report_cli_latest_policy_respects_explicit_launcher_option_arity(
+    tmp_path: Path,
+    command: str,
+    args: list[str],
+    expected_latest: bool,
+) -> None:
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    write(tmp_path / "context-policy.yaml", "{}\n")
+    write(
+        tmp_path / ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "package-manager": {
+                        "command": command,
+                        "args": args,
+                    }
+                }
+            }
+        ),
+    )
+    write(tmp_path / "mcp-policy.yaml", mcp_policy_text(["latest_package"]))
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(tmp_path),
+        "--context-policy",
+        str(tmp_path / "context-policy.yaml"),
+        "--mcp-policy",
+        str(tmp_path / "mcp-policy.yaml"),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == (1 if expected_latest else 0), result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["mcp_config"]["status"] == ("violation" if expected_latest else "ok")
+    assert payload["mcp_config"]["policy"]["forbidden_risky_patterns"] == ["latest_package"]
+    findings = {
+        (item["server_name"], item["reason"])
+        for item in payload["mcp_config"]["findings"]
+    }
+    assert findings == ({("package-manager", "latest_package")} if expected_latest else set())
+    assert str(tmp_path) not in result.stdout
+
 
 def test_report_cli_markdown_mcp_config_findings_are_sanitized(tmp_path: Path) -> None:
     context_policy = tmp_path / "context_policy.yaml"

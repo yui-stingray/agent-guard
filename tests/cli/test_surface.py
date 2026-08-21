@@ -814,7 +814,6 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
     assert set(servers["browser"]["risky_patterns"]) == {
         "filesystem_root_reference",
         "inline_authorization_value",
-        "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
     }
