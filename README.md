@@ -331,7 +331,7 @@ jobs:
             fail_preflight
           fi
       - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
+        uses: yui-stingray/agent-guard@a8c3be3fd691450a92b1526d1593807db6b092ee # v0.3.5
         timeout-minutes: 1
         with:
           conformance-profile: recommended
@@ -356,9 +356,9 @@ The pull-request preflight derives the effective context-policy path from the
 same `root` and `context-policy` values passed to the Action. It requires a
 tracked regular file at that repository-relative path, rejects symlinked path
 components, and emits no diff or path value. Keep it before the immutable
-`0.3.4` Action and keep the one-minute step limit, which is GitHub Actions'
-smallest supported positive timeout. This is a temporary bound for the
-published regex risk, not a fixed release. If a pull request changes the
+`0.3.5` Action and keep the one-minute step limit, which is GitHub Actions'
+smallest supported positive timeout. These controls remain useful as
+defense in depth after the regex isolation fix. If a pull request changes the
 effective context policy, review and merge that policy change separately before
 rerunning evidence from the trusted revision. A pull request that changes this
 workflow must receive the repository's normal workflow review; an in-repository

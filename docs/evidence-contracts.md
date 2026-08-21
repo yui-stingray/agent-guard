@@ -7,10 +7,10 @@ that maintainers can read in pull requests, store as CI artifacts, or validate
 in downstream wrappers without sending repository contents to a model.
 
 > **Version gate:** package `0.3.5` contains the v1 and v2 report/manifest
-> contracts, including the guard-owned
-> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
-> examples remain pinned to the immutable `0.3.4` Action until their separate
-> post-release pin refresh and cannot exercise the v2 package contract.
+> contracts, including the guard-owned `agent-guard.public_agent_policy_audit_event.v1`
+> profile. Copyable Action examples use the immutable `0.3.5` release commit.
+> The Action does not expose audit-event inputs; its generated report and manifest remain v1.
+> Bound v2 evidence requires explicit CLI audit-event path/profile options.
 
 ## Contracts
 
