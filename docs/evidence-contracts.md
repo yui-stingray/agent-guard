@@ -6,12 +6,11 @@ conformance, and evidence-pack commands emit small, sanitized evidence payloads
 that maintainers can read in pull requests, store as CI artifacts, or validate
 in downstream wrappers without sending repository contents to a model.
 
-> **Version gate:** the latest published package and Action are `0.3.4` and
-> contain the v1 report and manifest contracts. Bound audit-event report and
-> manifest v2, including the guard-owned
-> `agent-guard.public_agent_policy_audit_event.v1` profile, describe unreleased
-> `0.3.5.dev0` source only. Public install and Action examples remain pinned to
-> `0.3.4` and cannot be used to exercise those source-only features.
+> **Version gate:** package `0.3.5` contains the v1 and v2 report/manifest
+> contracts, including the guard-owned
+> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
+> examples remain pinned to the immutable `0.3.4` Action until their separate
+> post-release pin refresh and cannot exercise the v2 package contract.
 
 ## Contracts
 

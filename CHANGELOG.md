@@ -6,11 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-- Marked master package and generated-evidence identity as PEP 440
-  `0.3.5.dev0` while public install, Action, and provenance examples remain
-  pinned to published `0.3.4`. Added an explicit published/source feature gate
-  and a bounded known-risk notice for `0.3.4` context-policy regular
-  expressions without claiming a fixed release or lifting the release freeze.
+## 0.3.5 - 2026-08-13
+
+- The published 0.3.4 context scanner can be made unavailable by adversarial
+  repository-controlled regex, and this patch bounds that matching.
 - Kept `init --write` pinned to the latest published package, and added a
   context-policy diff preflight plus the smallest supported positive Action
   timeout to copyable pull-request workflows while the published regex risk
@@ -22,7 +21,7 @@ Why: keep static guard releases auditable while the package is still alpha.
   non-final version tags and require an exact versioned CHANGELOG heading.
 - Raised the development-only pytest requirement to `pytest>=9.0.3,<10`; runtime
   dependencies are unchanged.
-- Named the unreleased bound-event grammar
+- Named the bound-event grammar
   `agent-guard.public_agent_policy_audit_event.v1` as a guard-owned public-safe
   subset of the underlying `agent-policy` v1.1 event shape. Bound v2 producers,
   schemas, and consumers now share one non-whitespace printable-ASCII,

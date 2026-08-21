@@ -11,12 +11,12 @@ This page documents the current emitted artifacts, the schema version each one
 uses, volatile fields consumers must ignore, and the compatibility promise for
 downstream wrappers.
 
-> **Version gate:** published `0.3.4` packages the v1 report and manifest
-> schemas. The v2 report/manifest rows and bound audit-event behavior below are
-> unreleased `0.3.5.dev0` source only, including the guard-owned
-> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable public
-> install and Action examples remain pinned to `0.3.4`; a source contract is
-> not a release claim.
+> **Version gate:** package `0.3.5` includes the v1 and v2 report/manifest
+> schemas and the guard-owned
+> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
+> examples remain pinned to the immutable `0.3.4` Action until their separate
+> post-release pin refresh; those examples therefore retain the documented
+> context-policy preflight and timeout.
 
 ## Execution Platforms
 
