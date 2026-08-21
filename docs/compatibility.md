@@ -14,9 +14,8 @@ downstream wrappers.
 > **Version gate:** package `0.3.5` includes the v1 and v2 report/manifest
 > schemas and the guard-owned
 > `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
-> examples remain pinned to the immutable `0.3.4` Action until their separate
-> post-release pin refresh; those examples therefore retain the documented
-> context-policy preflight and timeout.
+> examples use the immutable `0.3.5` release commit and retain the documented
+> context-policy preflight and timeout as defense-in-depth controls.
 
 ## Execution Platforms
 

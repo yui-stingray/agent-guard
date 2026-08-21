@@ -39,8 +39,8 @@ THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
-ACTION_RELEASE_VERSION = "0.3.4"
-ACTION_RELEASE_COMMIT = "8121c703182f2a1df48223a3ff1eb1778055cd3a"
+ACTION_RELEASE_VERSION = "0.3.5"
+ACTION_RELEASE_COMMIT = "a8c3be3fd691450a92b1526d1593807db6b092ee"
 PACKAGE_RELEASE_VERSION = "0.3.5"
 
 
@@ -431,17 +431,17 @@ def test_security_policy_tracks_the_current_alpha_series() -> None:
     assert "latest published `0.1.x` release" not in security
 
 
-def test_public_docs_separate_release_package_features_from_action_pin() -> None:
+def test_public_docs_align_release_package_features_and_action_pin() -> None:
     readme = README.read_text(encoding="utf-8")
     security = SECURITY_POLICY.read_text(encoding="utf-8")
     evidence_contracts = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "immutable\n`0.3.4` Action" in readme
+    assert "immutable\n`0.3.5` Action" in readme
     assert "unreviewed" in readme
     assert "context" in readme
-    assert "published regex risk" in readme
+    assert "defense in depth" in readme
     assert "0.3.5" in readme
     assert "Published `0.3.4`" in security
     assert "unreviewed" in security
@@ -451,9 +451,14 @@ def test_public_docs_separate_release_package_features_from_action_pin() -> None
     for docs in (evidence_contracts, compatibility, quickstart):
         assert "Version gate" in docs
         assert "agent-guard.public_agent_policy_audit_event.v1" in docs
-        assert "0.3.4" in docs
         assert "0.3.5" in docs
         assert "Action" in docs
+        assert "remain pinned" not in docs
+    for docs in (evidence_contracts, quickstart):
+        normalized = " ".join(docs.split())
+        assert "The Action does not expose audit-event inputs" in normalized
+        assert "its generated report and manifest remain v1" in normalized
+        assert "Bound v2 evidence requires explicit CLI" in normalized
     for docs in (evidence_contracts, compatibility):
         normalized = " ".join(docs.split())
         assert "public-safe subset" in normalized

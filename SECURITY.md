@@ -18,10 +18,10 @@ an untrusted contribution. Upgrade to `0.3.5`, which isolates and bounds regex
 matching, or use a maintainer-reviewed policy from a trusted revision.
 
 The copyable pull-request workflows in the README and quickstart perform a
-context-policy diff preflight before invoking the immutable `0.3.4` Action and
-apply a one-minute Action step timeout. Keep both controls while those examples
-remain pinned to the `0.3.4` Action. They reduce exposure but do not replace
-normal review of workflow changes and are not an independent trust anchor.
+context-policy diff preflight before invoking the immutable `0.3.5` Action and
+apply a one-minute Action step timeout. Keep both as defense-in-depth controls.
+They do not replace normal review of workflow changes and are not an
+independent trust anchor.
 
 ## Reporting a vulnerability
 
