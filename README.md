@@ -351,15 +351,15 @@ command only after that policy is reviewed and committed.
 
 **Optional reviewed audit event.** To record a companion `agent-policy` audit
 event, add the same `--agent-policy-audit-event <reviewed-audit-event-path>` and
-`--agent-policy-audit-event-profile <reviewed-profile>` options to both the
-`report` command and the standalone `evidence-pack manifest` command. Generate
-both artifacts again after the producer has written the repo-local JSON event
-and a maintainer has reviewed it. The manifest records only a sanitized
-repository-relative path and a profile-bound canonical-content digest, not the
-event body. Audit events select evidence v2; event-free reports stay v1. If the standalone manifest is present, the public bundle consumer
-requires it to match the manifest embedded in the report. It also requires the
-event path and profile again to verify the binding. Keep the event outside
-`.agent-guard/evidence`: the seven-file public bundle allow-list rejects it.
+`--agent-policy-audit-event-profile agent-policy.audit_event.v1.1` options to
+both producer commands. Regenerate both artifacts after a maintainer reviews
+the repo-local JSON event. The manifest records a sanitized relative path and
+profile-bound digest, never the body. Producer and consumer validate the
+recognized event shape; this checks semantics, not who approved the event.
+Events select evidence v2; event-free reports stay v1. A standalone manifest
+must match the embedded one, and consumers require the event and profile again.
+Keep the event outside `.agent-guard/evidence`; the bundle allow-list rejects
+it.
 
 The following optional PR review command is available in `0.3.0`:
 
@@ -604,11 +604,11 @@ detect MCP tool-poisoning behavior, or act as an MCP runtime security validator.
 MCP 2026-07-28 protocol/runtime/OAuth changes do not justify runtime execution or live OAuth
 validation. No changelog item directly invalidates the current static committed-config labels, so
 this update does not change their taxonomy or code. With `--evidence-pack-manifest`,
-it embeds a public-safe artifact handoff manifest for pull request review. Add
-`--agent-policy-audit-event <path>` and
-`--agent-policy-audit-event-profile <profile>` to bind a reviewed repo-local
-companion `agent-policy` audit event without embedding its body. Consumers must
-receive that event separately and verify it with the same expected profile.
+it embeds a public-safe artifact handoff manifest for pull request review. Use
+`--agent-policy-audit-event <path>` with profile `agent-policy.audit_event.v1.1`
+to bind a reviewed event without its body. Consumers require that event again;
+arbitrary JSON objects and unsupported profile labels fail closed before
+binding verification.
 
 Read `recommended` as the reviewed static evidence baseline, not as the full
 pin-integrity profile. The recommended preset can emit digest and context-lock

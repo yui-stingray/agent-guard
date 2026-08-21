@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.audit_event_helpers import audit_event_payload
 from tests.cli.helpers import mcp_policy_text, sha256_text, write
 
 
@@ -398,7 +399,7 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
     repo.mkdir()
     write_contract_repo(repo)
     event_path = "reviewed/policy-admission-event.json"
-    write(repo / event_path, '{"status":"reviewed"}\n')
+    write(repo / event_path, json.dumps(audit_event_payload()) + "\n")
     report = generate_recommended_report(
         repo,
         agent_policy_audit_event=event_path,
@@ -512,7 +513,10 @@ def test_reviewed_audit_event_handoff_produces_consistent_public_bundle(
     assert wrong_profile_result.stdout == ""
     assert wrong_profile_result.stderr.strip() == "agent-guard evidence bundle invalid"
 
-    write(repo / event_path, '{"status":"replaced"}\n')
+    write(
+        repo / event_path,
+        json.dumps(audit_event_payload(context={"status": "replaced"})) + "\n",
+    )
     replaced_result = subprocess.run(
         [
             sys.executable,

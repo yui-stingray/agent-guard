@@ -8,10 +8,13 @@ import argparse
 import json
 from pathlib import Path
 
+import pytest
+
 import agent_guard.cli.api as api_cli
 from agent_guard.api_guard import ApiGuardFinding
 
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
+
 
 def test_api_cli_json_ok(tmp_path: Path) -> None:
     policy = tmp_path / "policy.yaml"
@@ -62,6 +65,61 @@ def test_api_cli_json_violation(tmp_path: Path) -> None:
     assert payload["scanner"] == "api"
     assert payload["finding_count"] == 1
     assert payload["findings"][0]["path"] == "src/bad.py"
+
+
+@pytest.mark.parametrize(
+    ("source_url", "forbidden_pattern"),
+    (
+        ("http://[::1]", r"^http://\[::1\]$"),
+        ("[http://[::1]]", r"^http://\[::1\]$"),
+        ("http://[::1].,;", r"^http://\[::1\]$"),
+        ("https://example.test/v1.,);", r"^https://example\.test/v1$"),
+        ("[https://example.test/v1]", r"^https://example\.test/v1$"),
+    ),
+    ids=(
+        "ipv6-bare",
+        "ipv6-bracketed",
+        "ipv6-punctuation",
+        "ordinary",
+        "ordinary-bracketed",
+    ),
+)
+def test_api_cli_matches_exact_endpoints_after_trailing_punctuation(
+    tmp_path: Path,
+    source_url: str,
+    forbidden_pattern: str,
+) -> None:
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        f"    - '{forbidden_pattern}'\n",
+        encoding="utf-8",
+    )
+    write(tmp_path / "src" / "endpoint.py", f'URL = "{source_url}"\n')
+
+    result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="api",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_count=1,
+        scanned_unit="files",
+    )
+    assert payload["findings"][0]["path"] == "src/endpoint.py"
+    assert payload["findings"][0]["line"] == 1
+    assert payload["findings"][0]["category"] == "forbidden_api"
+
 
 def test_api_cli_uses_count_from_the_single_scan_operation(
     tmp_path: Path,
@@ -121,7 +179,19 @@ def test_api_cli_uses_count_from_the_single_scan_operation(
     )
     assert payload["findings"][0]["path"] == "src/bad.py"
 
-def test_api_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("url", "forbidden_pattern"),
+    [
+        ("https://api.openai.com/v1/responses", r"^https://api\.openai\.com/"),
+        ("http://api.openai.com/v1/responses", r"^https?://api\.openai\.com/"),
+    ],
+    ids=["https", "http"],
+)
+def test_api_cli_outputs_public_safe_findings(
+    tmp_path: Path,
+    url: str,
+    forbidden_pattern: str,
+) -> None:
     secret_like = "sk-" + ("a" * 24)
     policy = tmp_path / "policy.yaml"
     policy.write_text(
@@ -132,12 +202,12 @@ def test_api_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
         "policy:\n"
         "  allowed_api_patterns: []\n"
         "  forbidden_api_patterns:\n"
-        "    - '^https://api\\.openai\\.com/'\n",
+        f"    - '{forbidden_pattern}'\n",
         encoding="utf-8",
     )
     write(
         tmp_path / "src" / secret_like / "bad.py",
-        f'URL = "https://api.openai.com/v1/responses?key={secret_like}"\n',
+        f'URL = "{url}?key={secret_like}"\n',
     )
 
     json_result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
@@ -151,7 +221,12 @@ def test_api_cli_outputs_public_safe_findings(tmp_path: Path) -> None:
     assert payload["findings"][0]["category"] == "forbidden_api"
     assert "url" not in payload["findings"][0]
     assert "matched_forbidden_pattern" not in payload["findings"][0]
-    for output in (json_result.stdout, text_result.stdout):
+    for output in (
+        json_result.stdout,
+        json_result.stderr,
+        text_result.stdout,
+        text_result.stderr,
+    ):
         assert secret_like not in output
         assert "matched_forbidden_pattern" not in output
         assert "api.openai.com" not in output

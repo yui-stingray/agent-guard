@@ -17,9 +17,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   sanitized configuration errors; no raw pattern or context text is emitted.
 - Content-bound optional `agent-policy` audit-event references with a
   canonical-JSON, profile-bound, public-safe digest. Producers require a
-  caller-designated repo-local JSON event and explicit profile; maintainer review
-  and event-schema validation remain external. Consumers require the separately
-  supplied event and reject missing, malformed, or replaced content. Audit-event
+  caller-designated repo-local JSON event and the recognized
+  `agent-policy.audit_event.v1.1` profile. Producers and consumers validate that
+  profile's published event shape and reject unsupported profiles, malformed
+  events, or replaced content. Maintainer review remains external. Audit-event
   binding uses report and manifest v2; the released v1
   schemas remain unchanged and their path-and-role references remain readable
   as explicitly unbound legacy metadata. The event body remains outside the
