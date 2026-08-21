@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = REPO_ROOT / "src" / "agent_guard" / "schemas"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
+EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
@@ -111,6 +112,28 @@ def test_compatibility_doc_freezes_emitted_artifacts_and_volatile_fields() -> No
     assert "| Surface delta evidence | `agent-guard.surface_delta.v1`" in docs
 
 
+def test_evidence_contracts_freeze_mcp_package_pin_grammar() -> None:
+    docs = " ".join(EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8").split())
+
+    assert (
+        "For JavaScript launchers (`npx`, `npm exec`/`npm x`, `pnpm dlx`, `yarn dlx`, "
+        "`bun x`, and direct `bunx`), every eligible package operand or selector must use "
+        "an npm-compatible full SemVer: its total version text is at most 256 characters and "
+        "each numeric core identifier is no greater than `Number.MAX_SAFE_INTEGER`."
+    ) in docs
+    assert (
+        "Synthetic package-attached `sha256` selectors are not supported by these launcher "
+        "grammars and are not treated as pins."
+    ) in docs
+    assert (
+        "`version_pinned` and `latest_package` consume only explicit recognized launcher option "
+        "and alias arities; unsupported or ambiguous layouts do not inspect arbitrary arguments "
+        "as package operands."
+    ) in docs
+    assert "For `uvx`, every selected requirement must use an exact `name[extras]==version` form" in docs
+    assert "package-attached `sha256` value with 64 hexadecimal digits" not in docs
+
+
 def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
@@ -176,8 +199,12 @@ def test_changelog_records_latest_release_entry() -> None:
     assert normalized_latest == " ".join(
         [
             "- The published 0.3.4 context scanner can be made unavailable by adversarial repository-controlled regex, and this patch bounds that matching.",
+            "- Corrected `bun x` and direct `bunx` pin inference to evaluate only the package operand (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are consumed only before `x`; version-dependent post-`x` selectors such as `--package` fail closed as unpinned metadata.",
+            "- Made static MCP package pin and latest-tag inference inspect recognized package-manager operands and selectors instead of arbitrary command arguments. JavaScript launchers require npm-compatible full SemVer (total version text at most 256 characters and core numeric identifiers at most `Number.MAX_SAFE_INTEGER`) and do not treat synthetic package-attached SHA-256 selectors as pins; exact `uvx` requirements and uv's exact-only positional `name@version` syntax remain eligible. Both labels use bounded, explicit launcher option and alias arities; unsupported or ambiguous layouts fail closed without treating arbitrary arguments as package operands. Trailing executed-command arguments are excluded after the package operand, and recognized Windows launcher suffixes are normalized internally without changing the public command basename. Ranges, npm-style major/minor-only versions, digest selectors, option values, and ambiguous layouts fail closed as unpinned metadata.",
+            "- Bounded context inventory, digest, and MCP configuration inputs by file size, file count, aggregate distinct bytes, structured-object depth, and public result size. Repository containment is bound to the opened regular file, and resource or race failures remain deterministic sanitized errors without raw policy, context, command, URL, or local-path content.",
             "- Isolated repository-controlled context-policy regular-expression matching behind the existing bounded scanner worker and added fixed pattern-count and pattern-length limits. Timeout and limit failures remain deterministic, sanitized configuration errors; no raw pattern or context text is emitted.",
-            "- Content-bound optional `agent-policy` audit-event references with a canonical-JSON, profile-bound, public-safe digest. Producers require a caller-designated repo-local JSON event and explicit profile; maintainer review and event-schema validation remain external. Consumers require the separately supplied event and reject missing, malformed, or replaced content. Audit-event binding uses report and manifest v2; the released v1 schemas remain unchanged and their path-and-role references remain readable as explicitly unbound legacy metadata. The event body remains outside the fixed seven-file public bundle.",
+            "- Tuned narrow English negation handling for built-in context rules so safe prohibitions do not become findings, while custom regular expressions, mixed unsafe clauses, double negation, and verification-skip instructions retain deterministic fail-closed behavior.",
+            "- Content-bound optional `agent-policy` audit-event references with a canonical-JSON, profile-bound, public-safe digest. Producers require a caller-designated repo-local JSON event and the recognized `agent-policy.audit_event.v1.1` profile. Producers and consumers validate that profile's published event shape and reject unsupported profiles, malformed events, or replaced content. Maintainer review remains external. Audit-event binding uses report and manifest v2; the released v1 schemas remain unchanged and their path-and-role references remain readable as explicitly unbound legacy metadata. The event body remains outside the fixed seven-file public bundle.",
             "- Defined a bounded demand-validation window through 2026-09-20 and froze feature releases pending an explicit maintainer decision after the 2026-09-21 review. Marketplace publication remains separately prohibited without explicit authorization.",
             "- Locked the release build toolchain, pinned copyable GitHub Action examples to the immutable v0.3.4 release commit, and documented the post-release pin refresh contract.",
             "- Simplified reviewed bootstrap and monorepo onboarding, added explicit Python interpreter checks, and tightened guidance for copying public-safe evidence.",

@@ -10,15 +10,43 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 - The published 0.3.4 context scanner can be made unavailable by adversarial
   repository-controlled regex, and this patch bounds that matching.
+- Corrected `bun x` and direct `bunx` pin inference to evaluate only the package operand
+  (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are
+  consumed only before `x`; version-dependent post-`x` selectors such as
+  `--package` fail closed as unpinned metadata.
+- Made static MCP package pin and latest-tag inference inspect recognized
+  package-manager operands and selectors instead of arbitrary command arguments.
+  JavaScript launchers require npm-compatible full SemVer (total version text
+  at most 256 characters and core numeric identifiers at most
+  `Number.MAX_SAFE_INTEGER`) and do not treat synthetic package-attached SHA-256
+  selectors as pins; exact `uvx` requirements and uv's exact-only positional
+  `name@version` syntax remain eligible. Both labels use bounded, explicit
+  launcher option and alias arities; unsupported or ambiguous layouts fail
+  closed without treating arbitrary arguments as package operands. Trailing
+  executed-command arguments are excluded after the package operand, and
+  recognized Windows launcher suffixes are normalized internally without
+  changing the public command basename. Ranges, npm-style major/minor-only
+  versions, digest selectors, option values, and ambiguous layouts fail closed
+  as unpinned metadata.
+- Bounded context inventory, digest, and MCP configuration inputs by file size, file
+  count, aggregate distinct bytes, structured-object depth, and public result
+  size. Repository containment is bound to the opened regular file, and
+  resource or race failures remain deterministic sanitized errors without raw
+  policy, context, command, URL, or local-path content.
 - Isolated repository-controlled context-policy regular-expression matching
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,
   sanitized configuration errors; no raw pattern or context text is emitted.
+- Tuned narrow English negation handling for built-in context rules so safe
+  prohibitions do not become findings, while custom regular expressions,
+  mixed unsafe clauses, double negation, and verification-skip instructions
+  retain deterministic fail-closed behavior.
 - Content-bound optional `agent-policy` audit-event references with a
   canonical-JSON, profile-bound, public-safe digest. Producers require a
-  caller-designated repo-local JSON event and explicit profile; maintainer review
-  and event-schema validation remain external. Consumers require the separately
-  supplied event and reject missing, malformed, or replaced content. Audit-event
+  caller-designated repo-local JSON event and the recognized
+  `agent-policy.audit_event.v1.1` profile. Producers and consumers validate that
+  profile's published event shape and reject unsupported profiles, malformed
+  events, or replaced content. Maintainer review remains external. Audit-event
   binding uses report and manifest v2; the released v1
   schemas remain unchanged and their path-and-role references remain readable
   as explicitly unbound legacy metadata. The event body remains outside the

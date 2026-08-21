@@ -440,7 +440,7 @@ def test_report_cli_recommended_preset_fails_risky_mcp_config_without_raw_leak(t
     assert payload["mcp_config"]["status"] == "violation"
     gates = {item["gate"]: item for item in payload["evidence_coverage"]["gates"]}
     assert gates["mcp_config"]["status"] == "violation"
-    assert gates["mcp_config"]["finding_count"] == 5
+    assert gates["mcp_config"]["finding_count"] == 4
     assert raw_command not in result.stdout
     assert "sk-exampleSecretValue123" not in result.stdout
     assert fake_token not in result.stdout

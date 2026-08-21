@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -12,6 +13,8 @@ from pathlib import Path
 import pytest
 
 from agent_guard import surface_inventory_metadata as surface_inventory_metadata_module
+import agent_guard.cli.common as cli_common
+import agent_guard.cli.surface as surface_cli
 from agent_guard.bounded_git import (
     BoundedGitOutputLimitError,
     BoundedGitProcessError,
@@ -45,6 +48,59 @@ def add_index_stage(repo: Path, path: str, stage: int) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def test_surface_inventory_plain_text_enforces_public_output_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    args = argparse.Namespace(
+        root=str(tmp_path),
+        context_policy=str(policy),
+        schema_version="v1",
+        json=False,
+    )
+    expected_line = "surface-inventory: OK (1 surfaces)\n"
+    monkeypatch.setattr(
+        cli_common,
+        "MAX_PUBLIC_OUTPUT_BYTES",
+        len(expected_line.encode("utf-8")) - 1,
+    )
+
+    assert surface_cli.run_surface_inventory(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_surface_inventory_plain_text_write_error_returns_exit_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    write(tmp_path / "AGENTS.md", "Require approval before shell writes.\n")
+    args = argparse.Namespace(
+        root=str(tmp_path),
+        context_policy=str(policy),
+        schema_version="v1",
+        json=False,
+    )
+
+    def fail_emit(text: str, *, error: str) -> None:
+        raise ValueError(error)
+
+    monkeypatch.setattr(surface_cli, "emit_public_output", fail_emit)
+
+    assert surface_cli.run_surface_inventory(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(tmp_path: Path) -> None:
@@ -766,7 +822,7 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
         tmp_path / ".codex" / "config.toml",
         "[mcp_servers.docs]\n"
         'command = "uvx"\n'
-        'args = ["docs-server==1.2.3"]\n'
+        'args = ["docs-server@1.2.3"]\n'
         'env = { API_KEY = "${API_KEY}" }\n',
     )
     write(
@@ -814,7 +870,6 @@ def test_surface_inventory_cli_v2_adds_agent_config_and_mcp_metadata(tmp_path: P
     assert set(servers["browser"]["risky_patterns"]) == {
         "filesystem_root_reference",
         "inline_authorization_value",
-        "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
     }

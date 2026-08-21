@@ -4,11 +4,19 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
-from agent_guard import __version__ as AGENT_GUARD_VERSION
+import pytest
 
+from agent_guard import __version__ as AGENT_GUARD_VERSION
+from agent_guard.cli import build_parser
+import agent_guard.cli.common as cli_common
+import agent_guard.cli.report as report_cli
+from agent_guard.context_guard import ContextInventory
+
+from tests.audit_event_helpers import write_audit_event
 from tests.cli.helpers import assert_shared_envelope, create_report_violation_fixture_repo, read_report_fixture, run_cli, write
 
 
@@ -34,6 +42,115 @@ def assert_stderr_summary(
 def assert_summary_does_not_leak(stderr: str, *sentinels: str) -> None:
     for sentinel in sentinels:
         assert sentinel not in stderr
+
+
+def test_emit_public_output_flushes_text_before_buffer_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BufferedTextStream:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+            self.pending = bytearray()
+
+        def write(self, text: str) -> int:
+            self.pending.extend(text.encode("utf-8"))
+            return len(text)
+
+        def flush(self) -> None:
+            self.buffer.write(self.pending)
+            self.pending.clear()
+
+    stream = BufferedTextStream()
+    stream.write("text-before\n")
+    monkeypatch.setattr(cli_common.sys, "stdout", stream)
+
+    cli_common.emit_public_output("bytes-after\n", error="fixed")
+
+    assert stream.buffer.getvalue() == b"text-before\nbytes-after\n"
+
+
+def test_report_flush_failure_returns_sanitized_exit_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingFlushStream:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+
+        def write(self, text: str) -> int:
+            return len(text)
+
+        def flush(self) -> None:
+            raise ValueError("synthetic private stream detail")
+
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            str(policy),
+            "--format",
+            "json",
+        ]
+    )
+    stream = FailingFlushStream()
+    stderr = io.StringIO()
+    monkeypatch.setattr(
+        report_cli,
+        "scan_context_files_with_inventory",
+        lambda **_kwargs: ([], 0, ContextInventory((), ())),
+    )
+    monkeypatch.setattr(cli_common.sys, "stdout", stream)
+    monkeypatch.setattr(cli_common.sys, "stderr", stderr)
+
+    assert report_cli.run_report(args) == 2
+    assert stream.buffer.getvalue() == b""
+    assert "synthetic private stream detail" not in stderr.getvalue()
+
+
+def test_report_construction_and_flush_failure_returns_sanitized_exit_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingFlushStream:
+        def __init__(self) -> None:
+            self.buffer = io.BytesIO()
+
+        def write(self, text: str) -> int:
+            return len(text)
+
+        def flush(self) -> None:
+            raise ValueError("synthetic private stream detail")
+
+    policy = tmp_path / "context_policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+    args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            str(policy),
+            "--format",
+            "json",
+        ]
+    )
+
+    def fail_scan(**_kwargs: object) -> object:
+        raise RuntimeError("synthetic private construction detail")
+
+    stream = FailingFlushStream()
+    stderr = io.StringIO()
+    monkeypatch.setattr(report_cli, "scan_context_files_with_inventory", fail_scan)
+    monkeypatch.setattr(cli_common.sys, "stdout", stream)
+    monkeypatch.setattr(cli_common.sys, "stderr", stderr)
+
+    assert report_cli.run_report(args) == 2
+    assert stream.buffer.getvalue() == b""
+    assert "synthetic private" not in stderr.getvalue()
 
 
 def test_report_cli_markdown_ok_redacts_context_content(tmp_path: Path) -> None:
@@ -202,7 +319,7 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     output = tmp_path / "evidence" / "agent-guard-report.json"
     event = tmp_path / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
 
     result = run_cli(
         "report",
@@ -255,7 +372,7 @@ def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -
     )
     event = tmp_path / "evidence" / "nested" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
 
     result = run_cli(
         "report",
@@ -313,7 +430,7 @@ def test_report_cli_error_after_valid_audit_event_remains_v1(tmp_path: Path) -> 
     event_marker = "synthetic-reviewed-event-marker"
     event = tmp_path / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text(json.dumps({"marker": event_marker}), encoding="utf-8")
+    write_audit_event(event, context={"marker": event_marker})
 
     result = run_cli(
         "report",

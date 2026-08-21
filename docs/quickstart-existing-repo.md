@@ -279,15 +279,19 @@ to both the `report` and standalone `evidence-pack manifest` commands, then
 generate both artifacts again. The event must be a repo-local regular JSON
 file. If the standalone manifest is present, the public bundle consumer
 requires it to match the manifest embedded in the report. It also requires the
-event and expected profile again to verify its canonical-content binding. Keep
-the event outside `.agent-guard/evidence`; it is not one of the seven allowed
-public bundle files, and its body is never copied into public evidence.
+event and expected profile again to verify its canonical-content binding. The
+recognized profile is exactly `agent-policy.audit_event.v1.1`; both producer
+and consumer reject JSON that does not match that profile's published event
+shape. Keep the event outside `.agent-guard/evidence`; it is not one of the
+seven allowed public bundle files, and its body is never copied into public
+evidence.
 
 ## 5. Consume Evidence Safely
 
-Downstream wrappers should read the sanitized report JSON and validate it
-against the packaged `agent-guard.report_evidence.v1` schema before making
-decisions. Fail closed on schema drift, inconsistent counts, missing
+Downstream wrappers should use the packaged consumer, which selects only the
+packaged v1 or v2 schema from the controlled `report.schema_version`. Do not
+force a bound-event v2 report through the v1 schema. Fail closed on schema
+drift, inconsistent counts, missing
 `surface_inventory`, missing `evidence_coverage`, unexplained top-level
 `status` values, non-sanitized reports, unexpected conformance profiles, or
 forbidden public-evidence fragments such as raw snippets, hash values,

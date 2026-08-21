@@ -169,9 +169,16 @@ profile to both producers. Events select v2; event-free reports stay v1. The
 manifest records a sanitized repository-relative
 path and a profile-bound digest. `agent-guard` reads and canonicalizes the
 bounded event JSON locally to compute that binding, but never embeds the event
-body. The consumer requires the event separately and fails closed when the
-event is missing, malformed, supplied under a different expected profile, or
-changed. The event itself is not part of the fixed seven-file public bundle.
+body. The only recognized profile is `agent-policy.audit_event.v1.1`; producer
+and consumer validate its required fields, exact top-level and decision fields,
+decision enums, and bounded optional strings against the published
+[agent-policy v0.1.11 schema](https://github.com/yui-stingray/agent-policy/blob/v0.1.11/src/agent_policy/schemas/agent-policy.audit_event.v1.1.schema.json).
+Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
+including escaped lone surrogates, before computing a digest.
+The consumer requires the event separately and fails closed when the event is
+missing, malformed, outside that profile schema, supplied under a different
+expected profile, or changed. The event itself is not part of the fixed
+seven-file public bundle.
 The binding does not protect an attacker who can replace both the evidence
 manifest and the event; use a signature, attestation, or immutable trusted
 storage for that threat model.
@@ -220,6 +227,35 @@ The JSON report is a compact statement of what `agent-guard` checked:
   `.agent-guard/mcp-policy.yaml`. External MCP policy files can drive scanner
   experiments, but conformance reports display them as `<external-policy>` and
   do not treat them as reviewed repository evidence.
+  `version_pinned` is emitted only for recognized package-execution forms. For
+  JavaScript launchers (`npx`, `npm exec`/`npm x`, `pnpm dlx`, `yarn dlx`,
+  `bun x`, and direct `bunx`), every eligible package operand or selector must
+  use an npm-compatible full SemVer: its total version text is at most 256
+  characters and each numeric core identifier is no greater than
+  `Number.MAX_SAFE_INTEGER`. Synthetic package-attached `sha256` selectors are
+  not supported by these launcher grammars and are not treated as pins.
+  `version_pinned` and `latest_package` consume only explicit recognized
+  launcher option and alias arities; unsupported or ambiguous layouts do not
+  inspect arbitrary arguments as package operands. For `uvx`,
+  every selected requirement must use an exact `name[extras]==version` form; a
+  positional command must use uv's exact-only `name@version` syntax and is also
+  required unless `--from` selects it.
+  For `bun x` and direct `bunx`, only the actual package operand is eligible;
+  `--bun` may precede it, while Bun global `--cwd` and `--shell` are recognized
+  only before `x` on the `bun x` form.
+  Version-dependent post-`x` selectors such as `--package` do not supply a pin,
+  because static configuration evidence does not establish the Bun version
+  that will interpret them.
+  Once a package or tool operand is selected, its trailing command arguments
+  are excluded from pin inference. Classification recognizes package-manager
+  launcher names case-insensitively and removes one known Windows launcher
+  suffix (`.cmd`, `.exe`, `.bat`, or `.ps1`) while preserving the original
+  public `command_basename`.
+  Ranges, tags such as `latest`, npm-style major/minor-only versions, digest
+  selectors, editable or requirements-file inputs, and ambiguous or unsupported
+  option layouts are conservatively not treated as pinned. This is static command
+  metadata classification; it does not resolve registries, lock files, or live
+  package identity.
 - Optional `conformance` records whether enabled evidence satisfies the chosen
   `minimal`, `recommended`, or `strict` profile. Recommended and strict
   conformance also fail when the reviewed MCP policy omits the default static

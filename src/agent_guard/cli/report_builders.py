@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..api_guard import iter_scan_files as iter_api_scan_files
+from ..bounded_repo_reader import DistinctInputBudget
 from ..api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from ..content_guard import (
     build_rules,
@@ -258,11 +259,13 @@ def build_context_lock_report(
     inventory: object,
     digest_policy: dict[str, object],
     digest_policy_arg: str,
+    _input_budget: DistinctInputBudget | None = None,
 ) -> dict[str, object]:
     coverage = check_context_digest_coverage(
         root=root,
         inventory=inventory,
         digest_policy=digest_policy,
+        _input_budget=_input_budget,
     )
     return {
         "policy": {"path": safe_policy_path(digest_policy_arg, root)},
