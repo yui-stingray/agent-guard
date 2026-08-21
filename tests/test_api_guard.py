@@ -104,15 +104,211 @@ def test_forbidden_url_fails(tmp_path: Path) -> None:
     ]
 
 
-def test_allowed_rule_wins_over_broader_forbidden_prefix(tmp_path: Path) -> None:
+def test_http_url_matches_http_or_https_forbidden_rule(tmp_path: Path) -> None:
+    forbidden_pattern = r"^https?://api\.openai\.com/"
     policy_path = policy_file(
         tmp_path,
         include=["src"],
         exclude=[],
-        allowed=[r"^https://api\.anthropic\.com/api/oauth/usage$"],
-        forbidden=[r"^https://api\.anthropic\.com/"],
+        allowed=[],
+        forbidden=[forbidden_pattern],
     )
-    write(tmp_path / "src" / "usage.py", 'URL = "https://api.anthropic.com/api/oauth/usage"\n')
+    url = "http://api.openai.com/v1/responses"
+    write(tmp_path / "src" / "bad.py", f'URL = "{url}"\n')
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == [
+        ApiGuardFinding(
+            path="src/bad.py",
+            line=1,
+            url=url,
+            matched_forbidden_pattern=forbidden_pattern,
+        )
+    ]
+
+
+def test_http_url_does_not_change_https_only_policy_semantics(tmp_path: Path) -> None:
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[],
+        forbidden=[r"^https://api\.openai\.com/"],
+    )
+    write(
+        tmp_path / "src" / "http.py",
+        'URL = "http://api.openai.com/v1/responses"\n',
+    )
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == []
+
+
+@pytest.mark.parametrize(
+    ("raw_url", "normalized_url"),
+    (
+        (
+            "HTTP://API.OPENAI.COM/V1/Responses?Token=Case",
+            "http://api.openai.com/V1/Responses?Token=Case",
+        ),
+        (
+            "HtTpS://Api.OpenAI.Com/V1/Responses?Token=Case",
+            "https://api.openai.com/V1/Responses?Token=Case",
+        ),
+    ),
+)
+def test_api_url_scheme_is_case_insensitive(
+    tmp_path: Path,
+    raw_url: str,
+    normalized_url: str,
+) -> None:
+    forbidden_pattern = r"^https?://api\.openai\.com/"
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[],
+        forbidden=[forbidden_pattern],
+    )
+    write(tmp_path / "src" / "bad.py", f'URL = "{raw_url}"\n')
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == [
+        ApiGuardFinding(
+            path="src/bad.py",
+            line=1,
+            url=raw_url,
+            matched_forbidden_pattern=forbidden_pattern,
+        )
+    ]
+    assert api_guard.normalize_url(raw_url) == normalized_url
+
+
+def test_api_url_normalization_preserves_userinfo_port_path_and_query_case() -> None:
+    assert api_guard.normalize_url(
+        "HTTP://User:Pass@API.OPENAI.COM:8443/V1/Responses?Token=Case"
+    ) == "http://User:Pass@api.openai.com:8443/V1/Responses?Token=Case"
+
+
+@pytest.mark.parametrize(
+    ("source_url", "expected_url", "forbidden_pattern"),
+    (
+        ("http://[::1]", "http://[::1]", r"^http://\[::1\]$"),
+        ("[http://[::1]]", "http://[::1]", r"^http://\[::1\]$"),
+        ("http://[::1].,;", "http://[::1]", r"^http://\[::1\]$"),
+        (
+            "https://example.test/v1.,);",
+            "https://example.test/v1",
+            r"^https://example\.test/v1$",
+        ),
+        (
+            "[https://example.test/v1]",
+            "https://example.test/v1",
+            r"^https://example\.test/v1$",
+        ),
+    ),
+    ids=(
+        "ipv6-bare",
+        "ipv6-bracketed",
+        "ipv6-punctuation",
+        "ordinary",
+        "ordinary-bracketed",
+    ),
+)
+def test_api_guard_matches_exact_endpoints_after_trailing_punctuation(
+    tmp_path: Path,
+    source_url: str,
+    expected_url: str,
+    forbidden_pattern: str,
+) -> None:
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[],
+        forbidden=[forbidden_pattern],
+    )
+    write(tmp_path / "src" / "endpoint.py", f'URL = "{source_url}"\n')
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == [
+        ApiGuardFinding(
+            path="src/endpoint.py",
+            line=1,
+            url=expected_url,
+            matched_forbidden_pattern=forbidden_pattern,
+        )
+    ]
+
+
+def test_api_url_normalization_preserves_ipv6_userinfo_port_path_and_query_case() -> None:
+    assert api_guard.normalize_url(
+        "HTTP://User:Pass@[::1]:8443/V1/Responses?Token=Case"
+    ) == "http://User:Pass@[::1]:8443/V1/Responses?Token=Case"
+
+
+def test_api_url_matching_preserves_existing_raw_hostname_policy(tmp_path: Path) -> None:
+    raw_pattern = r"^http://API\.OPENAI\.COM/"
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[],
+        forbidden=[raw_pattern],
+    )
+    raw_url = "http://API.OPENAI.COM/v1/responses"
+    write(tmp_path / "src" / "bad.py", f'URL = "{raw_url}"\n')
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == [
+        ApiGuardFinding(
+            path="src/bad.py",
+            line=1,
+            url=raw_url,
+            matched_forbidden_pattern=raw_pattern,
+        )
+    ]
+
+
+def test_raw_allow_rule_wins_over_canonical_forbidden_rule(tmp_path: Path) -> None:
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[r"^http://API\.OPENAI\.COM/reviewed$"],
+        forbidden=[r"^http://api\.openai\.com/"],
+    )
+    write(
+        tmp_path / "src" / "allowed.py",
+        'URL = "http://API.OPENAI.COM/reviewed"\n',
+    )
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == []
+
+
+@pytest.mark.parametrize("scheme", ("http", "https"))
+def test_allowed_rule_wins_over_broader_forbidden_prefix(
+    tmp_path: Path,
+    scheme: str,
+) -> None:
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[rf"^{scheme}://api\.anthropic\.com/api/oauth/usage$"],
+        forbidden=[rf"^{scheme}://api\.anthropic\.com/"],
+    )
+    write(
+        tmp_path / "src" / "usage.py",
+        f'URL = "{scheme}://api.anthropic.com/api/oauth/usage"\n',
+    )
 
     findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
 
