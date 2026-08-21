@@ -97,15 +97,14 @@ def _emit_context_payload(
             if args.json
             else f"ERROR: {ERROR_CONTEXT_SCAN_LIMIT}"
         )
-        emit_public_output(f"{rendered}\n", error=ERROR_CONTEXT_SCAN_LIMIT)
+        try:
+            emit_public_output(f"{rendered}\n", error=ERROR_CONTEXT_SCAN_LIMIT)
+        except ValueError:
+            pass
         return False
     try:
         emit_public_output(rendered, error=ERROR_CONTEXT_SCAN_LIMIT)
     except ValueError:
-        emit_public_output(
-            f"ERROR: {ERROR_CONTEXT_SCAN_LIMIT}\n",
-            error=ERROR_CONTEXT_SCAN_LIMIT,
-        )
         return False
     return True
 
@@ -293,16 +292,17 @@ def run_context_lock(args: argparse.Namespace) -> int:
             ):
                 return 2
             return 1
+        lock_input_budget = input_budget.next_read_pass()
         if args.check:
             digest_policy = load_digest_policy(
                 resolve_policy_arg(digest_policy_arg, root),
-                _input_budget=input_budget,
+                _input_budget=lock_input_budget,
             )
             coverage = check_context_digest_coverage(
                 root=root,
                 inventory=inventory,
                 digest_policy=digest_policy,
-                _input_budget=input_budget,
+                _input_budget=lock_input_budget,
             )
             coverage_findings = coverage.get("findings", [])
             finding_items = coverage_findings if isinstance(coverage_findings, list) else []
@@ -360,7 +360,7 @@ def run_context_lock(args: argparse.Namespace) -> int:
         digest_policy = build_context_digest_policy(
             root=root,
             inventory=inventory,
-            _input_budget=input_budget,
+            _input_budget=lock_input_budget,
         )
     except Exception as exc:
         error_paths = [digest_policy_arg] if digest_policy_arg else []

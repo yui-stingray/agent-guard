@@ -262,6 +262,12 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
         )
         assert validator.is_valid(value)
 
+        manifest["artifacts"][-1]["content_binding"] = binding | {
+            "event_profile": "agent-policy.audit_event.v1.2"
+        }
+        assert not validator.is_valid(value)
+        manifest["artifacts"][-1]["content_binding"] = binding
+
         manifest["artifacts"][-1]["review_metadata"] = "synthetic-public-metadata"
         assert not validator.is_valid(value)
         del manifest["artifacts"][-1]["review_metadata"]

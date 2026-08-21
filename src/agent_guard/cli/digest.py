@@ -63,15 +63,14 @@ def _emit_digest_payload(
             if args.json
             else f"ERROR: {ERROR_DIGEST_SCAN_LIMIT}"
         )
-        emit_public_output(f"{rendered}\n", error=ERROR_DIGEST_SCAN_LIMIT)
+        try:
+            emit_public_output(f"{rendered}\n", error=ERROR_DIGEST_SCAN_LIMIT)
+        except ValueError:
+            pass
         return False
     try:
         emit_public_output(rendered, error=ERROR_DIGEST_SCAN_LIMIT)
     except ValueError:
-        emit_public_output(
-            f"ERROR: {ERROR_DIGEST_SCAN_LIMIT}\n",
-            error=ERROR_DIGEST_SCAN_LIMIT,
-        )
         return False
     return True
 

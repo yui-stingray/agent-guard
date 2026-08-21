@@ -1915,9 +1915,14 @@ def main() -> int:
         audit_event_marker = "reviewed-wheel-contract-event"
         audit_event_path = report_output.parent / "policy-admission-event.json"
         audit_event_payload = {
-            "schema_version": audit_event_profile,
-            "status": "reviewed",
-            "marker": audit_event_marker,
+            "repo": "example/repo",
+            "capability": "read",
+            "context": {"marker": audit_event_marker},
+            "decision": {
+                "mode": "auto_allow",
+                "reason": "repo_policy",
+                "matched_repo": "example/repo",
+            },
         }
         audit_event_path.write_text(
             json.dumps(audit_event_payload, sort_keys=True),

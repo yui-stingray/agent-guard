@@ -11,7 +11,8 @@ import json
 import os
 import re
 import stat
-from pathlib import Path, PureWindowsPath
+import unicodedata
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from .public_redaction import contains_raw_url, sanitize_public_mapping
@@ -35,8 +36,31 @@ ERROR_AUDIT_EVENT_REPORT_VERSION = (
 ERROR_AUDIT_EVENT_BINDING_REQUIRED = (
     "report evidence v2 requires bound agent-policy audit events"
 )
+AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1 = "agent-policy.audit_event.v1.1"
+SUPPORTED_AGENT_POLICY_AUDIT_EVENT_PROFILES = frozenset(
+    {AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1}
+)
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
+_AUDIT_EVENT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:@/+~-]+$")
+_AUDIT_EVENT_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES = frozenset(
+    {"Cc", "Cf", "Cs", "Zl", "Zp"}
+)
+# Unicode 15.0 assigned these format controls after Python 3.11's UCD 14 baseline.
+_UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS = range(0x13439, 0x13440)
+_AUDIT_EVENT_DECISION_MODES = frozenset(
+    {"deny", "require_approval", "auto_allow"}
+)
+_AUDIT_EVENT_DECISION_REASONS = frozenset(
+    {
+        "hard_guardrail",
+        "repo_policy",
+        "default_mode",
+        "condition_match",
+        "no_match",
+    }
+)
 
 
 class _JSONNumber(str):
@@ -65,7 +89,10 @@ def safe_artifact_path(path: str, *, root: Path | None = None) -> str:
 
 def validate_agent_policy_audit_event_profile(profile: str) -> str:
     normalized = str(profile).strip()
-    if not _AUDIT_EVENT_PROFILE_RE.fullmatch(normalized):
+    if (
+        not _AUDIT_EVENT_PROFILE_RE.fullmatch(normalized)
+        or normalized not in SUPPORTED_AGENT_POLICY_AUDIT_EVENT_PROFILES
+    ):
         raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
     public_profile = {"event_profile": normalized}
     try:
@@ -115,6 +142,117 @@ def _canonical_json_value(value: object) -> bytes:
             )
         return b"{" + b",".join(members) + b"}"
     raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+
+
+def _is_json_string(value: object) -> bool:
+    return type(value) is str
+
+
+def _contains_control_character(value: str) -> bool:
+    return any(ord(character) <= 0x1F for character in value)
+
+
+def _contains_unsafe_audit_event_path_character(value: str) -> bool:
+    return any(
+        unicodedata.category(character)
+        in _UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES
+        or ord(character) in _UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS
+        for character in value
+    )
+
+
+def _is_sanitized_repository_relative_path(value: str) -> bool:
+    posix_path = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
+    if (
+        "\\" in value
+        or value == "."
+        or _AUDIT_EVENT_URI_SCHEME_RE.match(value)
+        or posix_path.is_absolute()
+        or posix_path.as_posix() != value
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or any(component in {".", ".."} for component in posix_path.parts)
+    ):
+        return False
+    return (
+        safe_artifact_path(value) == value
+        and sanitize_public_mapping({"path": value}) == {"path": value}
+    )
+
+
+def _validate_agent_policy_audit_event_v1_1(payload: dict[str, Any]) -> None:
+    required_fields = {"repo", "capability", "context", "decision"}
+    optional_fields = {"session_id", "command", "path"}
+    if not required_fields <= set(payload) or not set(payload) <= (
+        required_fields | optional_fields
+    ):
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+
+    for field in ("repo", "capability"):
+        value = payload.get(field)
+        if not _is_json_string(value) or not value:
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if not isinstance(payload.get("context"), dict):
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+
+    decision = payload.get("decision")
+    if not isinstance(decision, dict) or set(decision) != {
+        "mode",
+        "reason",
+        "matched_repo",
+    }:
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    mode = decision.get("mode")
+    reason = decision.get("reason")
+    matched_repo = decision.get("matched_repo")
+    if not _is_json_string(mode) or mode not in _AUDIT_EVENT_DECISION_MODES:
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if not _is_json_string(reason) or reason not in _AUDIT_EVENT_DECISION_REASONS:
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if matched_repo is not None and (
+        not _is_json_string(matched_repo)
+        or not matched_repo
+        or len(matched_repo) > 256
+    ):
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+
+    if "session_id" in payload:
+        session_id = payload["session_id"]
+        if (
+            not _is_json_string(session_id)
+            or not 1 <= len(session_id) <= 256
+            or not _AUDIT_EVENT_SESSION_ID_RE.fullmatch(session_id)
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if "command" in payload:
+        command = payload["command"]
+        if (
+            not _is_json_string(command)
+            or not 1 <= len(command) <= 4096
+            or _contains_control_character(command)
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+    if "path" in payload:
+        event_path = payload["path"]
+        if (
+            not _is_json_string(event_path)
+            or not 1 <= len(event_path) <= 1024
+            or _contains_unsafe_audit_event_path_character(event_path)
+            or not _is_sanitized_repository_relative_path(event_path)
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+
+
+def _validate_agent_policy_audit_event_payload(
+    payload: dict[str, Any],
+    *,
+    event_profile: str,
+) -> None:
+    if event_profile == AGENT_POLICY_AUDIT_EVENT_PROFILE_V1_1:
+        _validate_agent_policy_audit_event_v1_1(payload)
+        return
+    raise ValueError(ERROR_AUDIT_EVENT_PROFILE)
 
 
 def _repo_relative_audit_event_path(path: Path, repo_root: Path) -> tuple[Path, Path]:
@@ -298,7 +436,7 @@ def _read_agent_policy_audit_event(
     return raw, relative_path
 
 
-def _canonical_agent_policy_audit_event(raw: bytes) -> bytes:
+def _canonical_agent_policy_audit_event(raw: bytes, *, event_profile: str) -> bytes:
     try:
         text = raw.decode("utf-8")
         payload = json.loads(
@@ -310,6 +448,10 @@ def _canonical_agent_policy_audit_event(raw: bytes) -> bytes:
         )
         if not isinstance(payload, dict):
             raise TypeError(ERROR_AUDIT_EVENT_INVALID)
+        _validate_agent_policy_audit_event_payload(
+            payload,
+            event_profile=event_profile,
+        )
         canonical = _canonical_json_value(payload)
     except (UnicodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError):
         raise ValueError(ERROR_AUDIT_EVENT_INVALID) from None
@@ -324,7 +466,7 @@ def _build_agent_policy_audit_event_binding(
 ) -> tuple[dict[str, str], str | None]:
     profile = validate_agent_policy_audit_event_profile(event_profile)
     raw, relative_path = _read_agent_policy_audit_event(path, repo_root=repo_root)
-    canonical = _canonical_agent_policy_audit_event(raw)
+    canonical = _canonical_agent_policy_audit_event(raw, event_profile=profile)
     domain = (
         AGENT_POLICY_AUDIT_EVENT_BINDING_SCHEMA_VERSION.encode("ascii")
         + b"\0"

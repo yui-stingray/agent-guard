@@ -17,6 +17,7 @@ from agent_guard.evidence_pack import (
     build_agent_policy_audit_event_binding,
     build_evidence_pack_manifest,
 )
+from tests.audit_event_helpers import audit_event_payload, write_audit_event
 from tests.cli.helpers import run_cli
 
 AUDIT_EVENT_PROFILE = "agent-policy.audit_event.v1.1"
@@ -31,7 +32,7 @@ def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
     report = tmp_path / "report.json"
     event = tmp_path / ".agent-guard" / "evidence" / "policy-admission-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
     report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
     embedded_manifest = report_payload["evidence_pack_manifest"]
@@ -107,7 +108,7 @@ def test_evidence_pack_manifest_cli_rejects_unverified_bound_v2_report(
     report = tmp_path / "report.json"
     event = tmp_path / "reviewed" / "event.json"
     event.parent.mkdir()
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
     report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
     manifest = report_payload["evidence_pack_manifest"]
@@ -148,7 +149,7 @@ def test_evidence_pack_manifest_cli_rejects_mismatched_bound_v2_event(
     report = tmp_path / "report.json"
     event = tmp_path / "reviewed" / "event.json"
     event.parent.mkdir()
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     report_payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
     report_payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
     manifest = report_payload["evidence_pack_manifest"]
@@ -166,7 +167,7 @@ def test_evidence_pack_manifest_cli_rejects_mismatched_bound_v2_event(
     )
     report.write_text(json.dumps(report_payload), encoding="utf-8")
     private_marker = "synthetic-unreviewed-event-body"
-    event.write_text(json.dumps({"marker": private_marker}), encoding="utf-8")
+    write_audit_event(event, context={"marker": private_marker})
 
     result = run_cli(
         "evidence-pack",
@@ -287,7 +288,7 @@ def test_evidence_pack_manifest_cli_rejects_unbound_or_external_audit_event(
         encoding="utf-8",
     )
     event = tmp_path / "event.json"
-    event.write_text("{}\n", encoding="utf-8")
+    write_audit_event(event)
 
     missing_profile = run_cli(
         "evidence-pack",
@@ -328,8 +329,8 @@ def test_audit_event_artifacts_preserve_nested_paths_for_duplicate_basenames(
     second = root / "evidence" / "second" / "policy-admission-event.json"
     first.parent.mkdir(parents=True)
     second.parent.mkdir(parents=True)
-    first.write_text('{"status":"first"}\n', encoding="utf-8")
-    second.write_text('{"status":"second"}\n', encoding="utf-8")
+    write_audit_event(first, context={"status": "first"})
+    write_audit_event(second, context={"status": "second"})
 
     artifacts = build_agent_policy_audit_event_artifacts(
         [
@@ -350,15 +351,16 @@ def test_audit_event_artifacts_preserve_nested_paths_for_duplicate_basenames(
 
 def test_audit_event_binding_is_canonical_and_detects_content_change(tmp_path: Path) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"decision":{"mode":"auto_allow"},"capability":"read"}\n', encoding="utf-8")
+    payload = audit_event_payload(capability="read")
+    event.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     first = build_agent_policy_audit_event_binding(event, event_profile=AUDIT_EVENT_PROFILE)
 
     event.write_text(
-        '{\n  "capability": "read",\n  "decision": {"mode": "auto_allow"}\n}\n',
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     equivalent = build_agent_policy_audit_event_binding(event, event_profile=AUDIT_EVENT_PROFILE)
-    event.write_text('{"capability":"write","decision":{"mode":"auto_allow"}}\n', encoding="utf-8")
+    write_audit_event(event, capability="write")
     changed = build_agent_policy_audit_event_binding(event, event_profile=AUDIT_EVENT_PROFILE)
 
     assert equivalent == first
@@ -369,13 +371,23 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     tmp_path: Path,
 ) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"sequence":9007199254740992.0}\n', encoding="utf-8")
+    event.write_text(
+        '{"capability":"read","context":{"sequence":9007199254740992.0},'
+        '"decision":{"matched_repo":"example/repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"repo":"example/repo"}\n',
+        encoding="utf-8",
+    )
     first = build_agent_policy_audit_event_binding(
         event,
         event_profile=AUDIT_EVENT_PROFILE,
     )
 
-    event.write_text('{"sequence":9007199254740993.0}\n', encoding="utf-8")
+    event.write_text(
+        '{"capability":"read","context":{"sequence":9007199254740993.0},'
+        '"decision":{"matched_repo":"example/repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"repo":"example/repo"}\n',
+        encoding="utf-8",
+    )
     changed = build_agent_policy_audit_event_binding(
         event,
         event_profile=AUDIT_EVENT_PROFILE,
@@ -384,12 +396,162 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     assert changed["digest"] != first["digest"]
 
 
+@pytest.mark.parametrize(
+    "event_path",
+    (
+        "reviewed/event.json",
+        ".agent-guard/reviewed-event.json",
+        "reviewed/event:version.json",
+        "reviewed/caf\u00e9-\u8a3c\u62e0.json",
+        "reviewed/\U00013440event.json",
+    ),
+)
+def test_audit_event_binding_accepts_sanitized_repository_relative_payload_paths(
+    tmp_path: Path,
+    event_path: str,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(audit_event_payload() | {"path": event_path}),
+        encoding="utf-8",
+    )
+
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+
+    assert binding["event_profile"] == AUDIT_EVENT_PROFILE
+
+
+@pytest.mark.parametrize(
+    "event_path",
+    (
+        ".",
+        "../synthetic-event.json",
+        "reviewed/../synthetic-event.json",
+        "reviewed/./synthetic-event.json",
+        r"C:\synthetic\event.json",
+        r"\\synthetic-host\synthetic-share\event.json",
+        r"reviewed\event.json",
+        "file://synthetic.invalid/reviewed/event.json",
+        "artifact+review:/synthetic/event.json",
+        "artifact+review:synthetic-event.json",
+        "reviewed/\x01event.json",
+        "reviewed/\x7fevent.json",
+        "reviewed/\x85event.json",
+        "reviewed/\u2028event.json",
+        "reviewed/\u2029event.json",
+        "reviewed/\u202eevent.json",
+        "reviewed/\ud800event.json",
+        "reviewed/\U00013438event.json",
+        "reviewed/\U00013439event.json",
+        "reviewed/\U0001343fevent.json",
+    ),
+)
+def test_audit_event_binding_rejects_unsanitized_payload_paths_before_canonicalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    event_path: str,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(audit_event_payload() | {"path": event_path}),
+        encoding="utf-8",
+    )
+
+    def unexpected_canonicalization(_value: object) -> bytes:
+        raise AssertionError("unsafe audit-event path must not be canonicalized")
+
+    monkeypatch.setattr(
+        evidence_pack,
+        "_canonical_json_value",
+        unexpected_canonicalization,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert event_path not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"case_id": "not-an-audit-event", "expected_findings": []},
+        {
+            key: value
+            for key, value in audit_event_payload().items()
+            if key != "repo"
+        },
+        audit_event_payload() | {"extra": "not allowed"},
+        audit_event_payload() | {"capability": 7},
+        audit_event_payload()
+        | {
+            "decision": {
+                "mode": "auto_allow",
+                "reason": "repo_policy",
+                "matched_repo": "example/repo",
+                "extra": True,
+            }
+        },
+        audit_event_payload() | {"path": "/private/repository"},
+    ),
+)
+def test_audit_event_binding_rejects_payloads_outside_recognized_profile_schema(
+    tmp_path: Path,
+    payload: dict[str, object],
+) -> None:
+    marker = "not-an-audit-event"
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert marker not in str(exc_info.value)
+
+
+def test_audit_event_binding_rejects_unsupported_profile_before_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = tmp_path / "event.json"
+    write_audit_event(event)
+
+    def unexpected_digest(_value: bytes) -> object:
+        raise AssertionError("digest computation must not run")
+
+    monkeypatch.setattr(evidence_pack.hashlib, "sha256", unexpected_digest)
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event profile is invalid$",
+    ):
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile="agent-policy.audit_event.v1.2",
+        )
+
+
 def test_manifest_rejects_extra_fields_in_prebuilt_audit_event_artifact(
     tmp_path: Path,
 ) -> None:
     marker = "synthetic-private-passphrase"
     event = tmp_path / "event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     binding = build_agent_policy_audit_event_binding(
         event,
         event_profile=AUDIT_EVENT_PROFILE,
@@ -419,7 +581,7 @@ def test_manifest_rejects_invalid_prebuilt_audit_event_artifact_shape(
     tmp_path: Path,
 ) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     binding = build_agent_policy_audit_event_binding(
         event,
         event_profile=AUDIT_EVENT_PROFILE,
@@ -456,7 +618,7 @@ def test_manifest_rejects_invalid_prebuilt_audit_event_artifact_shape(
 
 def test_bound_manifest_rejects_v1_report_without_leak(tmp_path: Path) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     artifact = {
         "path": "reviewed/event.json",
         "role": "agent-policy-audit-event",
@@ -528,7 +690,7 @@ def test_audit_event_profile_rejects_public_sanitization_changes_before_digest(
     event_profile: str,
 ) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     assert evidence_pack._AUDIT_EVENT_PROFILE_RE.fullmatch(event_profile)
 
     def unexpected_digest(_value: bytes) -> object:
@@ -555,7 +717,8 @@ def test_audit_event_binding_enforces_one_mib_read_bound_before_parse(
     event = tmp_path / "event.json"
     event.write_bytes(b"x" * (evidence_pack.MAX_AGENT_POLICY_AUDIT_EVENT_BYTES + 1))
 
-    def unexpected_parse(_raw: bytes) -> bytes:
+    def unexpected_parse(_raw: bytes, *, event_profile: str) -> bytes:
+        del event_profile
         raise AssertionError("oversized event must not be parsed")
 
     monkeypatch.setattr(
@@ -583,7 +746,7 @@ def test_audit_event_binding_reads_opened_descriptor_after_final_path_swap(
     event = root / "reviewed" / "event.json"
     external = tmp_path / "external-event.json"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     external.write_text('{"status":"external"}\n', encoding="utf-8")
     expected = build_agent_policy_audit_event_binding(
         event,
@@ -630,7 +793,7 @@ def test_audit_event_binding_rejects_final_file_symlink_swap_without_leak(
     external = tmp_path / "external-event.json"
     external_marker = "synthetic-external-event-marker"
     event.parent.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     external.write_text(json.dumps({"marker": external_marker}), encoding="utf-8")
     original_open = evidence_pack._open_agent_policy_audit_event_posix
 
@@ -671,7 +834,7 @@ def test_audit_event_binding_rejects_ancestor_symlink_swap_without_leak(
     external_dir = tmp_path / "external"
     external_marker = "synthetic-external-ancestor-marker"
     event_dir.mkdir(parents=True)
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     external_dir.mkdir()
     (external_dir / "event.json").write_text(
         json.dumps({"marker": external_marker}),
@@ -763,7 +926,12 @@ def test_evidence_pack_manifest_rejects_non_unicode_audit_event_json(tmp_path: P
         encoding="utf-8",
     )
     event = tmp_path / "event.json"
-    event.write_bytes(b'{"value":"\\ud800"}\n')
+    event.write_bytes(
+        b'{"repo":"example/repo","capability":"read",'
+        b'"context":{"value":"\\ud800"},'
+        b'"decision":{"mode":"auto_allow","reason":"repo_policy",'
+        b'"matched_repo":"example/repo"}}\n'
+    )
 
     result = run_cli(
         "evidence-pack",

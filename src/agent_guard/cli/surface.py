@@ -79,7 +79,6 @@ def _emit_surface_inventory_payload(
             ),
             error=ERROR_SURFACE_INVENTORY_LIMIT,
         )
-        emit_public_output(rendered, error=ERROR_SURFACE_INVENTORY_LIMIT)
     except ValueError:
         fallback = result_payload(
             scanner="surface",
@@ -90,10 +89,17 @@ def _emit_surface_inventory_payload(
             error=ERROR_SURFACE_INVENTORY_LIMIT,
             extra={"command": "inventory"},
         )
-        emit_public_output(
-            f"{json.dumps(sanitize_public_mapping(fallback), ensure_ascii=False)}\n",
-            error=ERROR_SURFACE_INVENTORY_LIMIT,
-        )
+        try:
+            emit_public_output(
+                f"{json.dumps(sanitize_public_mapping(fallback), ensure_ascii=False)}\n",
+                error=ERROR_SURFACE_INVENTORY_LIMIT,
+            )
+        except ValueError:
+            pass
+        return False
+    try:
+        emit_public_output(rendered, error=ERROR_SURFACE_INVENTORY_LIMIT)
+    except ValueError:
         return False
     return True
 

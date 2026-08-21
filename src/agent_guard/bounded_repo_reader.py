@@ -52,15 +52,48 @@ class BoundedRepoFile:
         )
 
 
-class DistinctInputBudget:
-    """Charge each stable file version once against an aggregate byte ceiling."""
+@dataclass
+class _DistinctInputBudgetState:
+    used_bytes: int
+    read_bytes: int
+    seen: dict[object, bytes]
 
-    def __init__(self, *, max_bytes: int) -> None:
+
+class DistinctInputBudget:
+    """Charge distinct inputs once while bounding each intentional read pass."""
+
+    def __init__(
+        self,
+        *,
+        max_bytes: int,
+        _state: _DistinctInputBudgetState | None = None,
+    ) -> None:
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 0:
             raise BoundedRepoLimitError from None
         self.max_bytes = max_bytes
-        self.used_bytes = 0
-        self._seen: dict[object, bytes] = {}
+        self.read_pass_bytes = 0
+        self._state = (
+            _state
+            if _state is not None
+            else _DistinctInputBudgetState(
+                used_bytes=0,
+                read_bytes=0,
+                seen={},
+            )
+        )
+
+    @property
+    def used_bytes(self) -> int:
+        return self._state.used_bytes
+
+    @property
+    def read_bytes(self) -> int:
+        return self._state.read_bytes
+
+    def next_read_pass(self) -> DistinctInputBudget:
+        """Start another bounded pass while preserving distinct-input accounting."""
+
+        return DistinctInputBudget(max_bytes=self.max_bytes, _state=self._state)
 
     def charge(self, opened: BoundedRepoFile) -> None:
         self.charge_receipt(opened.receipt())
@@ -79,11 +112,18 @@ class DistinctInputBudget:
             or len(receipt.sha256) != hashlib.sha256().digest_size
         ):
             raise BoundedRepoReadError from None
+        self._charge_read_bytes(receipt.size_bytes)
         self._charge_digest(
             identity=identity,
             digest=receipt.sha256,
             size_bytes=receipt.size_bytes,
         )
+
+    def _charge_read_bytes(self, size_bytes: int) -> None:
+        if size_bytes > self.max_bytes - self.read_pass_bytes:
+            raise BoundedRepoLimitError from None
+        self.read_pass_bytes += size_bytes
+        self._state.read_bytes += size_bytes
 
     def _charge_digest(
         self,
@@ -92,19 +132,20 @@ class DistinctInputBudget:
         digest: bytes,
         size_bytes: int,
     ) -> None:
-        previous_digest = self._seen.get(identity)
+        previous_digest = self._state.seen.get(identity)
         if previous_digest == digest:
             return
         if previous_digest is not None:
             raise BoundedRepoReadError from None
-        if size_bytes > self.max_bytes - self.used_bytes:
+        if size_bytes > self.max_bytes - self._state.used_bytes:
             raise BoundedRepoLimitError from None
-        self._seen[identity] = digest
-        self.used_bytes += size_bytes
+        self._state.seen[identity] = digest
+        self._state.used_bytes += size_bytes
 
     def charge_bytes(self, data: bytes, *, identity: object) -> None:
         """Charge bytes using a caller-provided stable repository identity."""
 
+        self._charge_read_bytes(len(data))
         self._charge_digest(
             identity=identity,
             digest=hashlib.sha256(data).digest(),
