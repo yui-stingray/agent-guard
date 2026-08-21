@@ -11,7 +11,8 @@ import json
 import os
 import re
 import stat
-from pathlib import Path, PureWindowsPath
+import unicodedata
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from .public_redaction import contains_raw_url, sanitize_public_mapping
@@ -42,6 +43,12 @@ SUPPORTED_AGENT_POLICY_AUDIT_EVENT_PROFILES = frozenset(
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
 _AUDIT_EVENT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:@/+~-]+$")
+_AUDIT_EVENT_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES = frozenset(
+    {"Cc", "Cf", "Cs", "Zl", "Zp"}
+)
+# Unicode 15.0 assigned these format controls after Python 3.11's UCD 14 baseline.
+_UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS = range(0x13439, 0x13440)
 _AUDIT_EVENT_DECISION_MODES = frozenset(
     {"deny", "require_approval", "auto_allow"}
 )
@@ -145,6 +152,35 @@ def _contains_control_character(value: str) -> bool:
     return any(ord(character) <= 0x1F for character in value)
 
 
+def _contains_unsafe_audit_event_path_character(value: str) -> bool:
+    return any(
+        unicodedata.category(character)
+        in _UNSAFE_AUDIT_EVENT_PATH_UNICODE_CATEGORIES
+        or ord(character) in _UNSAFE_AUDIT_EVENT_PATH_SUPPLEMENTAL_CODEPOINTS
+        for character in value
+    )
+
+
+def _is_sanitized_repository_relative_path(value: str) -> bool:
+    posix_path = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
+    if (
+        "\\" in value
+        or value == "."
+        or _AUDIT_EVENT_URI_SCHEME_RE.match(value)
+        or posix_path.is_absolute()
+        or posix_path.as_posix() != value
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or any(component in {".", ".."} for component in posix_path.parts)
+    ):
+        return False
+    return (
+        safe_artifact_path(value) == value
+        and sanitize_public_mapping({"path": value}) == {"path": value}
+    )
+
+
 def _validate_agent_policy_audit_event_v1_1(payload: dict[str, Any]) -> None:
     required_fields = {"repo", "capability", "context", "decision"}
     optional_fields = {"session_id", "command", "path"}
@@ -202,8 +238,8 @@ def _validate_agent_policy_audit_event_v1_1(payload: dict[str, Any]) -> None:
         if (
             not _is_json_string(event_path)
             or not 1 <= len(event_path) <= 1024
-            or event_path.startswith("/")
-            or _contains_control_character(event_path)
+            or _contains_unsafe_audit_event_path_character(event_path)
+            or not _is_sanitized_repository_relative_path(event_path)
         ):
             raise ValueError(ERROR_AUDIT_EVENT_INVALID)
 

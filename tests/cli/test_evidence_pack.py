@@ -397,6 +397,91 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
 
 
 @pytest.mark.parametrize(
+    "event_path",
+    (
+        "reviewed/event.json",
+        ".agent-guard/reviewed-event.json",
+        "reviewed/event:version.json",
+        "reviewed/caf\u00e9-\u8a3c\u62e0.json",
+        "reviewed/\U00013440event.json",
+    ),
+)
+def test_audit_event_binding_accepts_sanitized_repository_relative_payload_paths(
+    tmp_path: Path,
+    event_path: str,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(audit_event_payload() | {"path": event_path}),
+        encoding="utf-8",
+    )
+
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+
+    assert binding["event_profile"] == AUDIT_EVENT_PROFILE
+
+
+@pytest.mark.parametrize(
+    "event_path",
+    (
+        ".",
+        "../synthetic-event.json",
+        "reviewed/../synthetic-event.json",
+        "reviewed/./synthetic-event.json",
+        r"C:\synthetic\event.json",
+        r"\\synthetic-host\synthetic-share\event.json",
+        r"reviewed\event.json",
+        "file://synthetic.invalid/reviewed/event.json",
+        "artifact+review:/synthetic/event.json",
+        "artifact+review:synthetic-event.json",
+        "reviewed/\x01event.json",
+        "reviewed/\x7fevent.json",
+        "reviewed/\x85event.json",
+        "reviewed/\u2028event.json",
+        "reviewed/\u2029event.json",
+        "reviewed/\u202eevent.json",
+        "reviewed/\ud800event.json",
+        "reviewed/\U00013438event.json",
+        "reviewed/\U00013439event.json",
+        "reviewed/\U0001343fevent.json",
+    ),
+)
+def test_audit_event_binding_rejects_unsanitized_payload_paths_before_canonicalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    event_path: str,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(audit_event_payload() | {"path": event_path}),
+        encoding="utf-8",
+    )
+
+    def unexpected_canonicalization(_value: object) -> bytes:
+        raise AssertionError("unsafe audit-event path must not be canonicalized")
+
+    monkeypatch.setattr(
+        evidence_pack,
+        "_canonical_json_value",
+        unexpected_canonicalization,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert event_path not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
     "payload",
     (
         {"case_id": "not-an-audit-event", "expected_findings": []},
