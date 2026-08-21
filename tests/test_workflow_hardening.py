@@ -8,9 +8,13 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
-from agent_guard.init_guard import GITHUB_WORKFLOW
+from agent_guard.init_guard import (
+    GITHUB_WORKFLOW,
+    PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_FILES = [
@@ -23,6 +27,146 @@ USES_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 HARD_ERROR_PRECEDENCE = (
     'if [ "$code" -ge 2 ] || { [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; }; then'
 )
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _run_published_policy_preflight(
+    repo: Path,
+    *,
+    base_sha: str,
+    root: str,
+    context_policy: str,
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "AGENT_GUARD_PR_BASE_SHA": base_sha,
+            "AGENT_GUARD_ROOT": root,
+            "AGENT_GUARD_CONTEXT_POLICY": context_policy,
+        }
+    )
+    return subprocess.run(
+        ["bash", "-c", PUBLISHED_CONTEXT_POLICY_PREFLIGHT],
+        cwd=repo,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _commit_preflight_fixture(repo: Path, path: Path) -> str:
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.name", "Fixture")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("scan:\n  include: [AGENTS.md]\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "--quiet", "-m", "fixture")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize(
+    ("root", "context_policy"),
+    (
+        (".", ".agent-guard/context-policy.yaml"),
+        ("services/api", ".agent-guard/context-policy.yaml"),
+        ("services/api", "config/reviewed-context.yaml"),
+    ),
+)
+def test_published_policy_preflight_uses_the_effective_action_policy_path(
+    tmp_path: Path,
+    root: str,
+    context_policy: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = (
+        repo / context_policy
+        if root == "."
+        else repo / root / context_policy
+    )
+    base_sha = _commit_preflight_fixture(repo, policy)
+
+    clean = _run_published_policy_preflight(
+        repo,
+        base_sha=base_sha,
+        root=root,
+        context_policy=context_policy,
+    )
+    assert clean.returncode == 0
+    assert clean.stdout == ""
+    assert clean.stderr == ""
+
+    policy.write_text("scan:\n  include: ['**/AGENTS.md']\n", encoding="utf-8")
+    changed = _run_published_policy_preflight(
+        repo,
+        base_sha=base_sha,
+        root=root,
+        context_policy=context_policy,
+    )
+    assert changed.returncode == 1
+    assert changed.stdout == (
+        "::error::published agent-guard 0.3.4 cannot evaluate a context policy "
+        "changed by a pull request\n"
+    )
+    assert changed.stderr == ""
+    assert str(repo) not in changed.stdout
+    assert context_policy not in changed.stdout
+
+
+@pytest.mark.parametrize("symlink_component", ("policy", "parent"))
+def test_published_policy_preflight_rejects_symlinked_policy_paths(
+    tmp_path: Path,
+    symlink_component: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    if symlink_component == "policy":
+        target = repo / "reviewed-context.yaml"
+        target.write_text("scan:\n  include: [AGENTS.md]\n", encoding="utf-8")
+        policy = repo / ".agent-guard" / "context-policy.yaml"
+        policy.parent.mkdir(parents=True)
+        policy.symlink_to("../reviewed-context.yaml")
+        root = "."
+        context_policy = ".agent-guard/context-policy.yaml"
+    else:
+        target = repo / "reviewed" / "api" / ".agent-guard" / "context-policy.yaml"
+        target.parent.mkdir(parents=True)
+        target.write_text("scan:\n  include: [AGENTS.md]\n", encoding="utf-8")
+        (repo / "services").symlink_to("reviewed")
+        root = "services/api"
+        context_policy = ".agent-guard/context-policy.yaml"
+
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "--quiet", "-m", "symlink fixture")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+
+    result = _run_published_policy_preflight(
+        repo,
+        base_sha=base_sha,
+        root=root,
+        context_policy=context_policy,
+    )
+    assert result.returncode == 2
+    assert result.stdout == (
+        "::error::pull request context policy preflight configuration is invalid\n"
+    )
+    assert result.stderr == ""
+    assert str(repo) not in result.stdout
+    assert context_policy not in result.stdout
 
 
 def advertised_python_versions() -> list[str]:
@@ -85,6 +229,39 @@ def test_ci_runs_packaged_action_consumer_smoke() -> None:
     assert re.search(r'"\$python_bin"\s+-I\s+-\s+[^\n]*<<', consumer_example)
     assert '"$python_bin" - <<' not in consumer_example
     assert '"$python_bin" - >/dev/null' not in consumer_example
+
+
+def test_ci_exposes_stable_required_aggregate() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    aggregate = workflow["jobs"]["required-ci"]
+
+    assert aggregate["name"] == "agent-guard required CI"
+    assert aggregate["if"] == "${{ always() }}"
+    assert aggregate["needs"] == [
+        "actionlint",
+        "release-contract",
+        "action-smoke-status",
+        "windows-cli-smoke",
+        "test",
+    ]
+    assert aggregate["runs-on"] == "ubuntu-latest"
+    step = aggregate["steps"][0]
+    assert step["env"] == {
+        "ACTIONLINT_RESULT": "${{ needs.actionlint.result }}",
+        "RELEASE_CONTRACT_RESULT": "${{ needs.release-contract.result }}",
+        "ACTION_SMOKE_RESULT": "${{ needs.action-smoke-status.result }}",
+        "WINDOWS_CLI_RESULT": "${{ needs.windows-cli-smoke.result }}",
+        "PYTEST_MATRIX_RESULT": "${{ needs.test.result }}",
+    }
+    for variable in step["env"]:
+        assert f'test "${variable}" = "success"' in step["run"]
+
+    release_criteria = (ROOT / "docs" / "release-criteria.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`agent-guard required CI`" in release_criteria
 
 
 def test_evidence_workflows_preserve_runtime_error_precedence() -> None:

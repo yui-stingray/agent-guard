@@ -703,6 +703,11 @@ def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
     ci_release_contract = ci_workflow["jobs"]["release-contract"]
     release_build = release_workflow["jobs"]["build"]
 
+    release_commands = "\n".join(
+        str(step.get("run", "")) for step in release_build["steps"]
+    )
+    assert "python scripts/check_changelog.py --release" in release_commands
+
     assert ci_release_contract["runs-on"] == "ubuntu-latest"
     ci_setup_python = next(
         step
@@ -896,7 +901,7 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "target / filename" in readme
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
-    assert f"--source-ref refs/tags/v{pyproject_version()}" in readme
+    assert "--source-ref refs/tags/v0.3.5" in readme
     assert "version tag triggers" in readme
     assert "annotated tag triggers" not in readme
     assert "proof of code correctness" in readme

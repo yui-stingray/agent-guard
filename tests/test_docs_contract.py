@@ -12,7 +12,11 @@ from pathlib import Path
 
 import yaml
 
-from agent_guard.init_guard import GITHUB_WORKFLOW
+from agent_guard.init_guard import (
+    GITHUB_WORKFLOW,
+    PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
+    PUBLISHED_PACKAGE_VERSION,
+)
 from agent_guard.profiles import profile_requirements
 from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
 from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
@@ -37,6 +41,7 @@ COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 ACTION_RELEASE_VERSION = "0.3.4"
 ACTION_RELEASE_COMMIT = "8121c703182f2a1df48223a3ff1eb1778055cd3a"
+PACKAGE_RELEASE_VERSION = "0.3.5"
 
 
 def pyproject_version() -> str:
@@ -44,8 +49,12 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_status_matches_pyproject_version() -> None:
-    assert f"**Status**: `{pyproject_version()}` alpha." in README.read_text(encoding="utf-8")
+def test_readme_identifies_the_release_candidate_version() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
+    assert "0.3.5.dev0" not in readme
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
@@ -88,8 +97,88 @@ def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
     for workflow in complete_workflows:
         assert isinstance(workflow, dict)
         assert workflow.get("on", workflow.get(True)) == ["push", "pull_request"]
+        job = workflow["jobs"]["agent-guard"]
+        steps = job["steps"]
+        checkout = next(
+            step
+            for step in steps
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        preflight = next(
+            step
+            for step in steps
+            if step.get("name") == "Reject unreviewed context policy changes"
+        )
+        action_step = next(
+            step
+            for step in steps
+            if str(step.get("uses", "")).startswith("yui-stingray/agent-guard@")
+        )
+
+        assert checkout["with"] == {"fetch-depth": 0, "persist-credentials": False}
+        assert preflight["if"] == "github.event_name == 'pull_request'"
+        action_inputs = action_step.get("with", {})
+        assert preflight["env"] == {
+            "AGENT_GUARD_PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+            "AGENT_GUARD_ROOT": action_inputs.get("root", "."),
+            "AGENT_GUARD_CONTEXT_POLICY": action_inputs.get(
+                "context-policy", ".agent-guard/context-policy.yaml"
+            ),
+        }
+        assert preflight["run"].rstrip() == PUBLISHED_CONTEXT_POLICY_PREFLIGHT
+        assert "git diff --exit-code" not in preflight["run"]
+        assert action_step["timeout-minutes"] == 1
+
+    for block in yaml_blocks:
+        if "yui-stingray/agent-guard@" in block:
+            assert block.count("timeout-minutes: 1") == block.count(
+                "yui-stingray/agent-guard@"
+            )
     assert referenced_outputs
     assert referenced_outputs <= set(action["outputs"])
+
+
+def test_documented_workflow_steps_are_executable() -> None:
+    documents = (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
+    step_lists: list[list[dict[str, object]]] = []
+
+    for document in documents:
+        blocks = re.findall(
+            r"```yaml\n(.*?)\n```",
+            document.read_text(encoding="utf-8"),
+            flags=re.DOTALL,
+        )
+        for block in blocks:
+            parsed = yaml.safe_load(block)
+            if isinstance(parsed, list) and any(
+                isinstance(item, dict) and ({"run", "uses"} & set(item))
+                for item in parsed
+            ):
+                step_lists.append(parsed)
+            elif isinstance(parsed, dict) and isinstance(parsed.get("steps"), list):
+                step_lists.append(parsed["steps"])
+            elif isinstance(parsed, dict) and isinstance(parsed.get("jobs"), dict):
+                for job in parsed["jobs"].values():
+                    if isinstance(job, dict) and isinstance(job.get("steps"), list):
+                        step_lists.append(job["steps"])
+
+    assert step_lists
+    for steps in step_lists:
+        for step in steps:
+            assert isinstance(step, dict)
+            assert "run" in step or "uses" in step
+
+
+def test_generated_workflow_uses_the_release_package_and_bounded_action_step() -> None:
+    readme = README.read_text(encoding="utf-8")
+    quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+
+    assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
+    assert f"yui-agent-guard=={PACKAGE_RELEASE_VERSION}" in GITHUB_WORKFLOW
+    assert "Reject unreviewed context policy changes" in GITHUB_WORKFLOW
+    assert "timeout-minutes: 1" in GITHUB_WORKFLOW
+    assert "workflow generated by published `0.3.4` predates" not in readme
+    assert "workflow generated by published `0.3.4` predates" not in quickstart
 
 
 def test_copyable_workflows_pin_third_party_actions_like_generated_workflow() -> None:
@@ -155,6 +244,24 @@ def test_readme_documents_python_patch_floor() -> None:
     assert "Use Python 3.11.4 or newer." in contributing
 
 
+def test_unreleased_v2_path_contract_is_consistent_in_public_docs() -> None:
+    documents = (
+        README.read_text(encoding="utf-8"),
+        EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8"),
+        COMPATIBILITY_DOC.read_text(encoding="utf-8"),
+    )
+
+    for document in documents:
+        normalized = " ".join(document.split())
+        assert "printable ASCII" in normalized
+        assert "secret-shaped" in normalized
+        assert "64-hex" in normalized
+        assert (
+            "not generic secret scanning" in normalized
+            or "not a generic secret scanner" in normalized
+        )
+
+
 def test_evidence_sample_documented_commands_match_current_docs() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
     sample_surfaces = [
@@ -216,8 +323,8 @@ def test_evidence_sample_only_describes_committed_evidence_artifacts() -> None:
     ]
 
 
-def test_onboarding_commands_pin_the_current_package_version() -> None:
-    version = pyproject_version()
+def test_onboarding_commands_pin_the_published_package_version() -> None:
+    version = PACKAGE_RELEASE_VERSION
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
     consumer_contracts = EVIDENCE_CONSUMER_CONTRACTS_DOC.read_text(encoding="utf-8")
@@ -264,7 +371,7 @@ def test_onboarding_commands_pin_the_current_package_version() -> None:
         "agent-guard init --root . --write",
         "Inspect the generated files before running the first local diagnostic",
         "agent-guard report --root .",
-        "Review and commit the starter policies and generated workflow",
+        "Review and commit the starter policies and replacement workflow",
         "Keep reports uncommitted unless curated as sanitized samples",
         "successful default-branch run",
     ]
@@ -305,7 +412,7 @@ def test_readme_opening_states_the_bounded_value_contract() -> None:
 
 
 def test_quickstart_documents_windows_without_activation() -> None:
-    version = pyproject_version()
+    version = PACKAGE_RELEASE_VERSION
     readme = README.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
@@ -322,6 +429,40 @@ def test_security_policy_tracks_the_current_alpha_series() -> None:
 
     assert "latest published `0.x` release is supported" in security
     assert "latest published `0.1.x` release" not in security
+
+
+def test_public_docs_separate_release_package_features_from_action_pin() -> None:
+    readme = README.read_text(encoding="utf-8")
+    security = SECURITY_POLICY.read_text(encoding="utf-8")
+    evidence_contracts = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
+    compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
+    quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
+
+    assert "immutable\n`0.3.4` Action" in readme
+    assert "unreviewed" in readme
+    assert "context" in readme
+    assert "published regex risk" in readme
+    assert "0.3.5" in readme
+    assert "Published `0.3.4`" in security
+    assert "unreviewed" in security
+    assert "context" in security
+    assert "regular expression" in security
+    assert "0.3.5" in security
+    for docs in (evidence_contracts, compatibility, quickstart):
+        assert "Version gate" in docs
+        assert "agent-guard.public_agent_policy_audit_event.v1" in docs
+        assert "0.3.4" in docs
+        assert "0.3.5" in docs
+        assert "Action" in docs
+    for docs in (evidence_contracts, compatibility):
+        normalized = " ".join(docs.split())
+        assert "public-safe subset" in normalized
+        assert "underlying" in normalized
+    for docs in (readme, security, evidence_contracts, compatibility, quickstart):
+        assert "0.3.5.dev0" not in docs
+    assert "does not claim validation against the generic" in " ".join(
+        compatibility.split()
+    )
 
 
 def test_readme_documents_ci_gate_recipe() -> None:
@@ -730,7 +871,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "Recommended Action Workflow" in actions
     assert "root: services/api" in actions
     assert "Policy and evidence paths are" in actions
-    assert "resolved relative to that root" in actions
+    assert "resolved relative to that root" in actions_single_line
     assert "conformance-profile: recommended" in actions
     assert "conformance-profile: strict" in actions
     assert "packaged action always generates the recommended evidence preset" in actions_single_line
@@ -1166,8 +1307,5 @@ def test_github_actions_evidence_doc_covers_surface_delta_recipe() -> None:
     assert "never emitted to SARIF" in actions or "never SARIF" in actions
     assert "currently unreleased" not in surface_delta_section
     assert "yui-stingray/agent-guard@<release-tag-with-surface-delta>" not in surface_delta_section
-    assert (
-        f"yui-stingray/agent-guard@{ACTION_RELEASE_COMMIT} "
-        f"# v{ACTION_RELEASE_VERSION}"
-        in surface_delta_section
-    )
+    assert "complete workflow" in surface_delta_section
+    assert "yui-stingray/agent-guard@" not in surface_delta_section

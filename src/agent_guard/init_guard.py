@@ -8,10 +8,98 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__ as PACKAGE_VERSION
-
-
 INIT_PLAN_SCHEMA_VERSION = "agent-guard.init_plan.v1"
+PUBLISHED_PACKAGE_VERSION = "0.3.5"
+PUBLISHED_CONTEXT_POLICY_PREFLIGHT = r'''set -euo pipefail
+
+fail_preflight() {
+  echo "::error::pull request context policy preflight configuration is invalid"
+  exit 2
+}
+
+validate_repo_relative_path() {
+  local candidate="$1"
+  local allow_root_dot="$2"
+  local part
+  local -a parts
+
+  if [ "$allow_root_dot" = "true" ] && [ "$candidate" = "." ]; then
+    return 0
+  fi
+  case "$candidate" in
+    ""|/*|*/|*//* ) fail_preflight ;;
+  esac
+  if [[ ! "$candidate" =~ ^[A-Za-z0-9._@+=,~/-]+$ ]]; then
+    fail_preflight
+  fi
+  IFS='/' read -r -a parts <<< "$candidate"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      ""|.|..) fail_preflight ;;
+    esac
+  done
+}
+
+base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
+root="${AGENT_GUARD_ROOT:-.}"
+context_policy="${AGENT_GUARD_CONTEXT_POLICY:-.agent-guard/context-policy.yaml}"
+
+case "$base_sha" in
+  ""|*[!0-9a-f]*) fail_preflight ;;
+esac
+if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+  fail_preflight
+fi
+if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+  fail_preflight
+fi
+
+validate_repo_relative_path "$root" true
+validate_repo_relative_path "$context_policy" false
+if [ "$root" = "." ]; then
+  effective_policy="$context_policy"
+else
+  effective_policy="$root/$context_policy"
+fi
+
+cursor=""
+IFS='/' read -r -a policy_parts <<< "$effective_policy"
+for part in "${policy_parts[@]}"; do
+  cursor="${cursor:+$cursor/}$part"
+  if [ -L "$cursor" ]; then
+    fail_preflight
+  fi
+done
+if [ ! -f "$effective_policy" ] || [ -L "$effective_policy" ]; then
+  fail_preflight
+fi
+
+current_entry="$(git ls-files --stage -- "$effective_policy")"
+current_mode="${current_entry%% *}"
+case "$current_mode" in
+  100644|100755) ;;
+  *) fail_preflight ;;
+esac
+
+base_entry="$(git ls-tree "$base_sha" -- "$effective_policy")"
+base_mode="${base_entry%% *}"
+base_rest="${base_entry#* }"
+base_type="${base_rest%% *}"
+case "$base_mode:$base_type" in
+  100644:blob|100755:blob) ;;
+  *) fail_preflight ;;
+esac
+
+if git diff --quiet "$base_sha" -- "$effective_policy"; then
+  :
+else
+  diff_status="$?"
+  if [ "$diff_status" -eq 1 ]; then
+    echo "::error::published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+    exit 1
+  fi
+  fail_preflight
+fi'''
 
 
 CONTEXT_POLICY = """# Where: .agent-guard/context-policy.yaml
@@ -198,13 +286,22 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Reject unreviewed context policy changes
+        if: github.event_name == 'pull_request'
+        env:
+          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AGENT_GUARD_ROOT: "."
+          AGENT_GUARD_CONTEXT_POLICY: .agent-guard/context-policy.yaml
+        run: |
+__PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install agent-guard
-        run: python -I -m pip install yui-agent-guard==__AGENT_GUARD_VERSION__
+        run: python -I -m pip install yui-agent-guard==__PUBLISHED_AGENT_GUARD_VERSION__
       - id: generate-evidence
         name: Generate evidence
+        timeout-minutes: 1
         env:
           AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}
           AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -404,7 +501,13 @@ jobs:
             ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-evidence-pack.json
             ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
-""".replace("__AGENT_GUARD_VERSION__", PACKAGE_VERSION)
+""".replace(
+    "__PUBLISHED_CONTEXT_POLICY_PREFLIGHT__",
+    "\n".join(
+        f"          {line}" if line else ""
+        for line in PUBLISHED_CONTEXT_POLICY_PREFLIGHT.splitlines()
+    ),
+).replace("__PUBLISHED_AGENT_GUARD_VERSION__", PUBLISHED_PACKAGE_VERSION)
 
 
 PREVIEW_NEXT_STEPS = [

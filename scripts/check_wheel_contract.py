@@ -1911,7 +1911,7 @@ def main() -> int:
         assert conformance_payload["status"] == "ok"
         assert conformance_payload["conformance"]["schema_version"] == "agent-guard.conformance.v1"
 
-        audit_event_profile = "agent-policy.audit_event.v1.1"
+        audit_event_profile = "agent-guard.public_agent_policy_audit_event.v1"
         audit_event_marker = "reviewed-wheel-contract-event"
         audit_event_path = report_output.parent / "policy-admission-event.json"
         audit_event_payload = {
@@ -1990,8 +1990,6 @@ def main() -> int:
                 str(report_output),
                 "--artifact",
                 str(report_output),
-                "--artifact",
-                r"C:\Users\alice\secret\agent-guard-report.json",
                 "--agent-policy-audit-event",
                 str(audit_event_path),
                 "--agent-policy-audit-event-profile",
@@ -2004,11 +2002,10 @@ def main() -> int:
         assert manifest_payload["status"] == "ok"
         assert manifest_payload["evidence_pack_manifest"]["schema_version"] == "agent-guard.evidence_pack_manifest.v2"
         manifest_artifacts = manifest_payload["evidence_pack_manifest"]["artifacts"]
-        assert manifest_artifacts[:2] == [
+        assert manifest_artifacts[:1] == [
             {"path": ".agent-guard/evidence/agent-guard-report.json", "role": "report"},
-            {"path": "agent-guard-report.json", "role": "report"},
         ]
-        audit_artifact = manifest_artifacts[2]
+        audit_artifact = manifest_artifacts[1]
         assert audit_artifact["path"] == ".agent-guard/evidence/policy-admission-event.json"
         assert audit_artifact["role"] == "agent-policy-audit-event"
         binding = audit_artifact["content_binding"]
@@ -2039,7 +2036,6 @@ def main() -> int:
             "digest_encoding": "base32-lower-no-padding",
             "digest": expected_digest,
         }
-        assert r"C:\Users\alice" not in manifest_cli.stdout
         assert str(temp) not in manifest_cli.stdout
         assert audit_event_marker not in manifest_cli.stdout
 

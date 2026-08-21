@@ -9,6 +9,20 @@ The latest published `0.x` release is supported while the project is in
 alpha. Security fixes may be released as a new patch version without preserving
 compatibility for undocumented internals.
 
+## Fixed in 0.3.5
+
+Published `0.3.4` can spend excessive CPU evaluating an unreviewed custom
+regular expression supplied through a repository-controlled context policy.
+Do not run `context check` or `report` from `0.3.4` against policy changes from
+an untrusted contribution. Upgrade to `0.3.5`, which isolates and bounds regex
+matching, or use a maintainer-reviewed policy from a trusted revision.
+
+The copyable pull-request workflows in the README and quickstart perform a
+context-policy diff preflight before invoking the immutable `0.3.4` Action and
+apply a one-minute Action step timeout. Keep both controls while those examples
+remain pinned to the `0.3.4` Action. They reduce exposure but do not replace
+normal review of workflow changes and are not an independent trust anchor.
+
 ## Reporting a vulnerability
 
 If GitHub private vulnerability reporting is available for this repository,

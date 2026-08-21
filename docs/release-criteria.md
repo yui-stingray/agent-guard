@@ -61,6 +61,9 @@ individual change is small.
 
 Before tagging, verify:
 
+- the package version and tag use the final numeric `X.Y.Z` form, without a
+  development, pre-release, or local-version suffix, and CHANGELOG has that
+  exact versioned heading rather than relying on `Unreleased`;
 - the exact candidate version is absent from PyPI;
 - full test suite passes on the supported Python versions;
 - self-dogfood `path`, `context`, `context lock`, `digest`, `content`,
@@ -77,7 +80,10 @@ Before tagging, verify:
   metadata are preflighted before Python's `tarfile` reader materializes member
   metadata; GNU sparse forms and PAX size overrides are not accepted by this
   regular-file-only release contract;
-- GitHub Actions CI is green on the release commit;
+- the stable `agent-guard required CI` check is green on the release commit;
+  it fails unless actionlint, the release toolchain contract, the packaged
+  Action smoke aggregate, the Windows CLI contract, and the complete Python
+  3.11.4 through 3.14 pytest matrix all succeed;
 - no generated private evidence, local paths, credentials, or private fixtures
   are tracked.
 

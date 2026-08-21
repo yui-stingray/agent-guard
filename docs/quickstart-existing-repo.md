@@ -3,6 +3,12 @@
 Use Python 3.11.4+ as the `agent-guard` tool interpreter. In the POSIX examples,
 `python3` must resolve to Python 3.11.4+ before it creates `.venv`.
 
+> **Version gate:** package install examples use `0.3.5`, including bound
+> audit-event report/manifest v2 and the
+> `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
+> examples remain pinned to the immutable `0.3.4` Action until their separate
+> post-release pin refresh.
+
 This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
 `AGENTS.md`, `CLAUDE.md`, or a tool-specific rule file.
@@ -115,9 +121,108 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Reject unreviewed context policy changes
+        if: github.event_name == 'pull_request'
+        env:
+          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AGENT_GUARD_ROOT: "."
+          AGENT_GUARD_CONTEXT_POLICY: .agent-guard/context-policy.yaml
+        run: |
+          set -euo pipefail
+
+          fail_preflight() {
+            echo "::error::pull request context policy preflight configuration is invalid"
+            exit 2
+          }
+
+          validate_repo_relative_path() {
+            local candidate="$1"
+            local allow_root_dot="$2"
+            local part
+            local -a parts
+
+            if [ "$allow_root_dot" = "true" ] && [ "$candidate" = "." ]; then
+              return 0
+            fi
+            case "$candidate" in
+              ""|/*|*/|*//* ) fail_preflight ;;
+            esac
+            if [[ ! "$candidate" =~ ^[A-Za-z0-9._@+=,~/-]+$ ]]; then
+              fail_preflight
+            fi
+            IFS='/' read -r -a parts <<< "$candidate"
+            for part in "${parts[@]}"; do
+              case "$part" in
+                ""|.|..) fail_preflight ;;
+              esac
+            done
+          }
+
+          base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
+          root="${AGENT_GUARD_ROOT:-.}"
+          context_policy="${AGENT_GUARD_CONTEXT_POLICY:-.agent-guard/context-policy.yaml}"
+
+          case "$base_sha" in
+            ""|*[!0-9a-f]*) fail_preflight ;;
+          esac
+          if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+            fail_preflight
+          fi
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            fail_preflight
+          fi
+
+          validate_repo_relative_path "$root" true
+          validate_repo_relative_path "$context_policy" false
+          if [ "$root" = "." ]; then
+            effective_policy="$context_policy"
+          else
+            effective_policy="$root/$context_policy"
+          fi
+
+          cursor=""
+          IFS='/' read -r -a policy_parts <<< "$effective_policy"
+          for part in "${policy_parts[@]}"; do
+            cursor="${cursor:+$cursor/}$part"
+            if [ -L "$cursor" ]; then
+              fail_preflight
+            fi
+          done
+          if [ ! -f "$effective_policy" ] || [ -L "$effective_policy" ]; then
+            fail_preflight
+          fi
+
+          current_entry="$(git ls-files --stage -- "$effective_policy")"
+          current_mode="${current_entry%% *}"
+          case "$current_mode" in
+            100644|100755) ;;
+            *) fail_preflight ;;
+          esac
+
+          base_entry="$(git ls-tree "$base_sha" -- "$effective_policy")"
+          base_mode="${base_entry%% *}"
+          base_rest="${base_entry#* }"
+          base_type="${base_rest%% *}"
+          case "$base_mode:$base_type" in
+            100644:blob|100755:blob) ;;
+            *) fail_preflight ;;
+          esac
+
+          if git diff --quiet "$base_sha" -- "$effective_policy"; then
+            :
+          else
+            diff_status="$?"
+            if [ "$diff_status" -eq 1 ]; then
+              echo "::error::published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+              exit 1
+            fi
+            fail_preflight
+          fi
       - id: agent-guard
         uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
+        timeout-minutes: 1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: >-
           always() &&
@@ -135,18 +240,27 @@ jobs:
           if-no-files-found: error
 ```
 
+Keep the pull-request preflight before the published `0.3.4` Action and keep
+the one-minute step limit. The preflight uses the same `root` and
+`context-policy` values as the Action, emits no diff or path value, and refuses
+symlinked or pull-request-modified policy files. Review and merge such a policy
+change separately, then rerun evidence from the trusted revision. This is a
+temporary bound for the published regex risk, not a fixed release or an
+independent trust anchor for workflow-file changes.
+
 ## 3. Monorepos and Subdirectories
 
 If the reviewed agent-maintained project lives below the repository root, set
 `root` to that project directory and keep policy and evidence paths relative to
 that selected root:
 
+In the complete workflow above, set `AGENT_GUARD_ROOT: services/api` on the
+preflight step and set the matching Action input:
+
 ```yaml
-      - id: agent-guard
-        uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
-        with:
-          root: services/api
-          conformance-profile: recommended
+with:
+  root: services/api
+  conformance-profile: recommended
 ```
 
 The action and CLI resolve relative policy paths such as
@@ -274,15 +388,17 @@ sections.
 
 If a reviewed `agent-policy` admission event already exists, add the same
 `--agent-policy-audit-event path/to/reviewed-policy-admission-event.json` and
-`--agent-policy-audit-event-profile agent-policy.audit_event.v1.1` options
+`--agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1`
+options
 to both the `report` and standalone `evidence-pack manifest` commands, then
 generate both artifacts again. The event must be a repo-local regular JSON
 file. If the standalone manifest is present, the public bundle consumer
 requires it to match the manifest embedded in the report. It also requires the
 event and expected profile again to verify its canonical-content binding. The
-recognized profile is exactly `agent-policy.audit_event.v1.1`; both producer
-and consumer reject JSON that does not match that profile's published event
-shape. Keep the event outside `.agent-guard/evidence`; it is not one of the
+recognized profile is exactly
+`agent-guard.public_agent_policy_audit_event.v1`; both producer and consumer
+reject JSON outside its public-safe subset of the underlying `agent-policy`
+v1.1 event shape. Keep the event outside `.agent-guard/evidence`; it is not one of the
 seven allowed public bundle files, and its body is never copied into public
 evidence.
 

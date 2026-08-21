@@ -14,6 +14,8 @@ from agent_guard.bounded_scan import run_isolated_scan
 from agent_guard.content_guard import MAX_CONTENT_LINE_CHARS
 from agent_guard.surface_inventory_mcp import collect_mcp_config_surfaces
 from agent_guard.surface_inventory_mcp_safety import (
+    command_basename,
+    command_inline_args,
     has_latest_package_operand,
     infer_version_pin,
     is_npm_full_semver,
@@ -24,6 +26,29 @@ FULL_SHA256 = "a" * 64
 NPM_SEMVER_MAX_SAFE_INTEGER = "9007199254740991"
 NPM_SEMVER_AT_LENGTH_LIMIT = "1.2.3+" + ("a" * (256 - len("1.2.3+")))
 NPM_SEMVER_OVER_LENGTH_LIMIT = "1.2.3+" + ("a" * (257 - len("1.2.3+")))
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_basename", "expected_args"),
+    (
+        (r"tools\npx.cmd", "npx.cmd", []),
+        (r"C:\Program Files\nodejs\npx.cmd", "npx.cmd", []),
+        (r"C:\Program Files\nodejs\npx.cmd --yes pkg@1.2.3", "npx.cmd", ["--yes", "pkg@1.2.3"]),
+        (r'"C:\Program Files\nodejs\npx.cmd" --yes pkg@1.2.3', "npx.cmd", ["--yes", "pkg@1.2.3"]),
+        ("npx --yes pkg@1.2.3", "npx", ["--yes", "pkg@1.2.3"]),
+        ("npx --package 'pkg@1.2.3' tool", "npx", ["--package", "pkg@1.2.3", "tool"]),
+        (r"npx foo\bar.cmd", "npx", ["foobar.cmd"]),
+        (r"env FLAG=1 tools\npx.cmd", "env", ["FLAG=1", "toolsnpx.cmd"]),
+        ("'npx'\\''shim' --yes pkg@1.2.3", "npx'shim", ["--yes", "pkg@1.2.3"]),
+    ),
+)
+def test_windows_launcher_paths_are_parsed_before_posix_shell_lexing(
+    command: str,
+    expected_basename: str,
+    expected_args: list[str],
+) -> None:
+    assert command_basename(command) == expected_basename
+    assert command_inline_args(command) == expected_args
 
 
 @pytest.mark.parametrize(
@@ -332,6 +357,17 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
         "latest-non-launcher": {"command": "node", "args": ["ignored@latest"]},
         "mixed-case-manager": {"command": "NPX", "args": ["pkg"]},
         "windows-npx-launcher": {"command": "NPX.CMD", "args": ["pkg"]},
+        "windows-relative-npx-launcher": {
+            "command": r"tools\npx.cmd",
+            "args": ["pkg"],
+        },
+        "windows-absolute-npx-launcher": {
+            "command": r"C:\Program Files\nodejs\npx.cmd",
+            "args": ["pkg@1.2.3"],
+        },
+        "windows-quoted-inline-npx-launcher": {
+            "command": r'"C:\Program Files\nodejs\npx.cmd" --yes pkg@1.2.3',
+        },
         "windows-uvx-launcher": {"command": "uvx.exe", "args": ["pkg"]},
         "pnpm": {"command": "pnpm", "args": ["dlx", "--package", "pkg", "tool"]},
         "pnpm-prefix": {"command": "pnpm", "args": ["--silent", "dlx", "pkg"]},
@@ -399,6 +435,7 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
         "uvx-package-file",
         "uvx-with-unpinned-main",
         "windows-npx-launcher",
+        "windows-relative-npx-launcher",
         "windows-uvx-launcher",
         "yarn",
     }
@@ -414,6 +451,8 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
         "pnpm-prefix-pinned",
         "uvx-with-pinned-main",
         "uvx-pinned",
+        "windows-absolute-npx-launcher",
+        "windows-quoted-inline-npx-launcher",
     }:
         assert by_server[server_name]["version_pinned"] is True
         assert "unpinned_package" not in by_server[server_name].get("risky_patterns", [])
@@ -426,7 +465,15 @@ def test_collect_mcp_config_surfaces_emits_unpinned_package_for_recognized_forms
     assert by_server["mixed-case-manager"]["package_manager"] == "npx"
     assert by_server["windows-npx-launcher"]["command_basename"] == "NPX.CMD"
     assert by_server["windows-npx-launcher"]["package_manager"] == "npx"
+    assert by_server["windows-relative-npx-launcher"]["command_basename"] == "npx.cmd"
+    assert by_server["windows-relative-npx-launcher"]["package_manager"] == "npx"
+    assert by_server["windows-absolute-npx-launcher"]["command_basename"] == "npx.cmd"
+    assert by_server["windows-absolute-npx-launcher"]["package_manager"] == "npx"
+    assert by_server["windows-quoted-inline-npx-launcher"]["command_basename"] == "npx.cmd"
+    assert by_server["windows-quoted-inline-npx-launcher"]["package_manager"] == "npx"
     assert by_server["windows-uvx-launcher"]["command_basename"] == "uvx.exe"
     assert by_server["windows-uvx-launcher"]["package_manager"] == "uvx"
+    assert r"tools\npx.cmd" not in str(surfaces)
+    assert r"C:\Program Files\nodejs\npx.cmd" not in str(surfaces)
     assert "version_pinned" not in by_server["unrelated"]
     assert "unpinned_package" not in by_server["unrelated"].get("risky_patterns", [])

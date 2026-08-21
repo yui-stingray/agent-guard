@@ -87,11 +87,12 @@ agent-guard init --root . --write
 agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary
 ```
 
-`init --write` creates starter policies and a pinned GitHub Actions workflow.
+`init --write` creates starter policies and a pinned GitHub Actions workflow
+with the context-policy preflight and one-minute Action timeout.
 The report command creates its output directory and writes the public-safe
 evidence artifact. Exit `1` means evidence was generated with findings or
 drift; exit `>=2` means setup, configuration, or execution failed.
-Review and commit the starter policies and generated workflow only after
+Review and commit the starter policies and replacement workflow only after
 resolving findings. Keep reports uncommitted unless curated as sanitized
 samples. Treat adoption as complete only after a successful default-branch run.
 The [existing-repo quickstart](docs/quickstart-existing-repo.md) covers the
@@ -230,9 +231,108 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Reject unreviewed context policy changes
+        if: github.event_name == 'pull_request'
+        env:
+          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AGENT_GUARD_ROOT: "."
+          AGENT_GUARD_CONTEXT_POLICY: .agent-guard/context-policy.yaml
+        run: |
+          set -euo pipefail
+
+          fail_preflight() {
+            echo "::error::pull request context policy preflight configuration is invalid"
+            exit 2
+          }
+
+          validate_repo_relative_path() {
+            local candidate="$1"
+            local allow_root_dot="$2"
+            local part
+            local -a parts
+
+            if [ "$allow_root_dot" = "true" ] && [ "$candidate" = "." ]; then
+              return 0
+            fi
+            case "$candidate" in
+              ""|/*|*/|*//* ) fail_preflight ;;
+            esac
+            if [[ ! "$candidate" =~ ^[A-Za-z0-9._@+=,~/-]+$ ]]; then
+              fail_preflight
+            fi
+            IFS='/' read -r -a parts <<< "$candidate"
+            for part in "${parts[@]}"; do
+              case "$part" in
+                ""|.|..) fail_preflight ;;
+              esac
+            done
+          }
+
+          base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
+          root="${AGENT_GUARD_ROOT:-.}"
+          context_policy="${AGENT_GUARD_CONTEXT_POLICY:-.agent-guard/context-policy.yaml}"
+
+          case "$base_sha" in
+            ""|*[!0-9a-f]*) fail_preflight ;;
+          esac
+          if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+            fail_preflight
+          fi
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            fail_preflight
+          fi
+
+          validate_repo_relative_path "$root" true
+          validate_repo_relative_path "$context_policy" false
+          if [ "$root" = "." ]; then
+            effective_policy="$context_policy"
+          else
+            effective_policy="$root/$context_policy"
+          fi
+
+          cursor=""
+          IFS='/' read -r -a policy_parts <<< "$effective_policy"
+          for part in "${policy_parts[@]}"; do
+            cursor="${cursor:+$cursor/}$part"
+            if [ -L "$cursor" ]; then
+              fail_preflight
+            fi
+          done
+          if [ ! -f "$effective_policy" ] || [ -L "$effective_policy" ]; then
+            fail_preflight
+          fi
+
+          current_entry="$(git ls-files --stage -- "$effective_policy")"
+          current_mode="${current_entry%% *}"
+          case "$current_mode" in
+            100644|100755) ;;
+            *) fail_preflight ;;
+          esac
+
+          base_entry="$(git ls-tree "$base_sha" -- "$effective_policy")"
+          base_mode="${base_entry%% *}"
+          base_rest="${base_entry#* }"
+          base_type="${base_rest%% *}"
+          case "$base_mode:$base_type" in
+            100644:blob|100755:blob) ;;
+            *) fail_preflight ;;
+          esac
+
+          if git diff --quiet "$base_sha" -- "$effective_policy"; then
+            :
+          else
+            diff_status="$?"
+            if [ "$diff_status" -eq 1 ]; then
+              echo "::error::published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+              exit 1
+            fi
+            fail_preflight
+          fi
       - id: agent-guard
         uses: yui-stingray/agent-guard@8121c703182f2a1df48223a3ff1eb1778055cd3a # v0.3.4
+        timeout-minutes: 1
         with:
           conformance-profile: recommended
       - name: Upload evidence
@@ -251,6 +351,18 @@ jobs:
             ${{ steps.agent-guard.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
 ```
+
+The pull-request preflight derives the effective context-policy path from the
+same `root` and `context-policy` values passed to the Action. It requires a
+tracked regular file at that repository-relative path, rejects symlinked path
+components, and emits no diff or path value. Keep it before the immutable
+`0.3.4` Action and keep the one-minute step limit, which is GitHub Actions'
+smallest supported positive timeout. This is a temporary bound for the
+published regex risk, not a fixed release. If a pull request changes the
+effective context policy, review and merge that policy change separately before
+rerunning evidence from the trusted revision. A pull request that changes this
+workflow must receive the repository's normal workflow review; an in-repository
+preflight is not an independent trust anchor.
 
 Run focused scanners when you need faster local feedback:
 
@@ -351,11 +463,16 @@ command only after that policy is reviewed and committed.
 
 **Optional reviewed audit event.** To record a companion `agent-policy` audit
 event, add the same `--agent-policy-audit-event <reviewed-audit-event-path>` and
-`--agent-policy-audit-event-profile agent-policy.audit_event.v1.1` options to
+`--agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1`
+options to
 both producer commands. Regenerate both artifacts after a maintainer reviews
 the repo-local JSON event. The manifest records a sanitized relative path and
 profile-bound digest, never the body. Producer and consumer validate the
 recognized event shape; this checks semantics, not who approved the event.
+For this guard-owned v2 contract, sanitized paths use non-whitespace printable
+ASCII only and reject absolute paths, colons, backslashes, dot segments,
+controlled secret-shaped values, and every embedded raw 64-hex hash. This is a
+public-artifact grammar, not generic secret scanning.
 Events select evidence v2; event-free reports stay v1. A standalone manifest
 must match the embedded one, and consumers require the event and profile again.
 Keep the event outside `.agent-guard/evidence`; the bundle allow-list rejects
@@ -605,7 +722,8 @@ MCP 2026-07-28 protocol/runtime/OAuth changes do not justify runtime execution o
 validation. No changelog item directly invalidates the current static committed-config labels, so
 this update does not change their taxonomy or code. With `--evidence-pack-manifest`,
 it embeds a public-safe artifact handoff manifest for pull request review. Use
-`--agent-policy-audit-event <path>` with profile `agent-policy.audit_event.v1.1`
+`--agent-policy-audit-event <path>` with profile
+`agent-guard.public_agent_policy_audit_event.v1`
 to bind a reviewed event without its body. Consumers require that event again;
 arbitrary JSON objects and unsupported profile labels fail closed before
 binding verification.

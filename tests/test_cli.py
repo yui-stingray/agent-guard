@@ -16,6 +16,10 @@ import yaml
 from agent_guard import __version__ as AGENT_GUARD_VERSION
 from agent_guard.cli import build_parser, safe_policy_path
 from agent_guard.cli_registry import AGENT_GUARD_COMMANDS
+from agent_guard.init_guard import (
+    PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
+    PUBLISHED_PACKAGE_VERSION,
+)
 
 from tests.cli.helpers import assert_shared_envelope, run_cli, run_cli_from, write
 
@@ -90,7 +94,11 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "fetch-depth: 0" in workflow
     assert "persist-credentials: false" in workflow
     assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
-    assert f"python -I -m pip install yui-agent-guard=={AGENT_GUARD_VERSION}" in workflow
+    assert AGENT_GUARD_VERSION == PUBLISHED_PACKAGE_VERSION
+    assert (
+        f"python -I -m pip install yui-agent-guard=={PUBLISHED_PACKAGE_VERSION}"
+        in workflow
+    )
     assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in workflow
     assert "- id: generate-evidence" in workflow
     assert "if: always() && steps.generate-evidence.outputs.ready == 'true'" in workflow
@@ -104,11 +112,29 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         "${{ steps.generate-evidence.outputs.evidence-dir }}/agent-surface-inventory.json",
     ]
     workflow_payload = yaml.safe_load(workflow)
-    checkout_step = workflow_payload["jobs"]["evidence"]["steps"][0]
+    workflow_steps = workflow_payload["jobs"]["evidence"]["steps"]
+    checkout_step = workflow_steps[0]
     assert checkout_step["with"] == {"fetch-depth": 0, "persist-credentials": False}
+    preflight_step = next(
+        step
+        for step in workflow_steps
+        if step.get("name") == "Reject unreviewed context policy changes"
+    )
+    assert preflight_step["if"] == "github.event_name == 'pull_request'"
+    assert preflight_step["env"] == {
+        "AGENT_GUARD_PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "AGENT_GUARD_ROOT": ".",
+        "AGENT_GUARD_CONTEXT_POLICY": ".agent-guard/context-policy.yaml",
+    }
+    assert preflight_step["run"].rstrip() == PUBLISHED_CONTEXT_POLICY_PREFLIGHT
+    assert "git cat-file -e" in preflight_step["run"]
+    assert "git diff --quiet" in preflight_step["run"]
+    assert "git diff --exit-code" not in preflight_step["run"]
+    evidence_step = next(step for step in workflow_steps if step.get("id") == "generate-evidence")
+    assert evidence_step["timeout-minutes"] == 1
     upload_step = next(
         step
-        for step in workflow_payload["jobs"]["evidence"]["steps"]
+        for step in workflow_steps
         if isinstance(step, dict) and step.get("name") == "Upload evidence"
     )
     assert upload_step["if"] == "always() && steps.generate-evidence.outputs.ready == 'true'"
@@ -142,6 +168,12 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     ]
     assert "AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}" in workflow
     assert "AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in workflow
+    assert "Reject unreviewed context policy changes" in workflow
+    assert (
+        "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+        in workflow
+    )
+    assert "timeout-minutes: 1" in workflow
     assert 'drift_base_args=(--base-ref "$base_sha")' in workflow
     assert 'report_base_args=(--drift-base-ref "$base_sha")' in workflow
     assert "pull request base SHA is unavailable" in workflow
