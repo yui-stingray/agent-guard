@@ -61,8 +61,8 @@ def test_mcp_public_outputs_redact_sensitive_command_env_and_host_metadata(tmp_p
     assert server["command_basename"] == "<redacted-command>"
     assert server["env_vars"] == ["<redacted-env>"]
     assert server["remote_host"] == "<redacted-host>"
-    assert mcp.returncode == 1
-    assert report.returncode == 1
+    assert mcp.returncode == 0
+    assert report.returncode == 0
     combined = surface.stdout + mcp.stdout + report.stdout
     for forbidden in (
         secret_command,
@@ -102,7 +102,6 @@ def test_mcp_check_cli_flags_sanitized_mcp_risky_patterns(tmp_path: Path) -> Non
     assert reasons == {
         "filesystem_root_reference",
         "inline_authorization_value",
-        "latest_package",
         "secret_shaped_inline_value",
         "unpinned_package",
     }

@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = REPO_ROOT / "src" / "agent_guard" / "schemas"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
+EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
@@ -111,6 +112,28 @@ def test_compatibility_doc_freezes_emitted_artifacts_and_volatile_fields() -> No
     assert "| Surface delta evidence | `agent-guard.surface_delta.v1`" in docs
 
 
+def test_evidence_contracts_freeze_mcp_package_pin_grammar() -> None:
+    docs = " ".join(EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8").split())
+
+    assert (
+        "For JavaScript launchers (`npx`, `npm exec`/`npm x`, `pnpm dlx`, `yarn dlx`, "
+        "`bun x`, and direct `bunx`), every eligible package operand or selector must use "
+        "an npm-compatible full SemVer: its total version text is at most 256 characters and "
+        "each numeric core identifier is no greater than `Number.MAX_SAFE_INTEGER`."
+    ) in docs
+    assert (
+        "Synthetic package-attached `sha256` selectors are not supported by these launcher "
+        "grammars and are not treated as pins."
+    ) in docs
+    assert (
+        "`version_pinned` and `latest_package` consume only explicit recognized launcher option "
+        "and alias arities; unsupported or ambiguous layouts do not inspect arbitrary arguments "
+        "as package operands."
+    ) in docs
+    assert "For `uvx`, every selected requirement must use an exact `name[extras]==version` form" in docs
+    assert "package-attached `sha256` value with 64 hexadecimal digits" not in docs
+
+
 def test_release_criteria_use_batched_contract_stability_cadence() -> None:
     docs = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
@@ -169,6 +192,8 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Corrected `bun x` and direct `bunx` pin inference to evaluate only the package operand (optionally preceded by `--bun`). Bun global `--cwd` and `--shell` are consumed only before `x`; version-dependent post-`x` selectors such as `--package` fail closed as unpinned metadata.",
+            "- Made static MCP package pin and latest-tag inference inspect recognized package-manager operands and selectors instead of arbitrary command arguments. JavaScript launchers require npm-compatible full SemVer (total version text at most 256 characters and core numeric identifiers at most `Number.MAX_SAFE_INTEGER`) and do not treat synthetic package-attached SHA-256 selectors as pins; exact `uvx` requirements and uv's exact-only positional `name@version` syntax remain eligible. Both labels use bounded, explicit launcher option and alias arities; unsupported or ambiguous layouts fail closed without treating arbitrary arguments as package operands. Trailing executed-command arguments are excluded after the package operand, and recognized Windows launcher suffixes are normalized internally without changing the public command basename. Ranges, npm-style major/minor-only versions, digest selectors, option values, and ambiguous layouts fail closed as unpinned metadata.",
             "- Bounded context inventory, digest, and MCP configuration inputs by file size, file count, aggregate distinct bytes, structured-object depth, and public result size. Repository containment is bound to the opened regular file, and resource or race failures remain deterministic sanitized errors without raw policy, context, command, URL, or local-path content.",
             "- Isolated repository-controlled context-policy regular-expression matching behind the existing bounded scanner worker and added fixed pattern-count and pattern-length limits. Timeout and limit failures remain deterministic, sanitized configuration errors; no raw pattern or context text is emitted.",
             "- Tuned narrow English negation handling for built-in context rules so safe prohibitions do not become findings, while custom regular expressions, mixed unsafe clauses, double negation, and verification-skip instructions retain deterministic fail-closed behavior.",
