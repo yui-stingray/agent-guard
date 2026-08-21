@@ -8,7 +8,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from .context_guard import collect_context_inventory
+from .bounded_repo_reader import DistinctInputBudget
+from .context_guard import (
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    ContextInventory,
+    collect_context_inventory,
+)
 from .surface_inventory_core import normalize_surface_version, schema_for_surface_version
 from .surface_inventory_directories import (
     AGENT_COMMAND_DIRS,
@@ -18,6 +23,7 @@ from .surface_inventory_directories import (
     collect_hook_surfaces,
 )
 from .surface_inventory_mcp import collect_mcp_config_surfaces
+from .surface_inventory_mcp import MAX_MCP_DISTINCT_INPUT_BYTES
 from .surface_inventory_metadata import (
     collect_committed_evidence_surfaces,
     collect_documented_guard_surfaces,
@@ -44,13 +50,21 @@ def collect_agent_surface_inventory(
     schema_version: str = "v1",
     opaque_directories: Sequence[str] = (),
     include_empty_directory_surfaces: bool = True,
+    _context_input_budget: DistinctInputBudget | None = None,
+    _mcp_input_budget: DistinctInputBudget | None = None,
+    _context_inventory: ContextInventory | None = None,
+    _mcp_surfaces: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     root = root.resolve()
     version = normalize_surface_version(schema_version)
-    context_inventory = collect_context_inventory(
+    context_input_budget = _context_input_budget or DistinctInputBudget(
+        max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+    )
+    context_inventory = _context_inventory or collect_context_inventory(
         root=root,
         policy=context_policy,
         opaque_directories=opaque_directories,
+        _input_budget=context_input_budget,
     )
     surfaces: list[dict[str, object]] = []
     for item in context_inventory.context_files:
@@ -124,9 +138,15 @@ def collect_agent_surface_inventory(
             )
         )
         surfaces.extend(
-            collect_mcp_config_surfaces(
+            _mcp_surfaces
+            if _mcp_surfaces is not None
+            else collect_mcp_config_surfaces(
                 root,
                 opaque_directories=opaque_directories,
+                _input_budget=(
+                    _mcp_input_budget
+                    or DistinctInputBudget(max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES)
+                ),
             )
         )
     directory_surfaces = {"agent_skill", "agent_profile", "agent_command"}

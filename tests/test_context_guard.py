@@ -82,6 +82,63 @@ def test_default_policy_scans_common_agent_context_files(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize(
+    ("path", "pattern", "expected"),
+    [
+        ("AGENTS.md", "**/AGENTS.md", True),
+        ("pkg/AGENTS.md", "**/AGENTS.md", True),
+        (".venv", ".venv/**", True),
+        (".venv/lib/site.py", ".venv/**", True),
+        ("pkg/.venv/lib/site.py", ".venv/**", True),
+        ("pkg/cache/generated/file.md", "**/cache/**/file.md", True),
+        ("pkg/cache/generated/file.txt", "**/cache/**/file.md", False),
+        ("rules/generated/deep/AGENTS.md", "rules/generated/*.md", False),
+        ("docs/AGENTS.txt", "**/AGENTS.md", False),
+    ],
+)
+def test_context_glob_matching_preserves_globstar_contract(
+    path: str,
+    pattern: str,
+    expected: bool,
+) -> None:
+    assert context_guard.glob_matches(Path(path), pattern) is expected
+
+
+def test_context_multi_globstar_failure_obeys_work_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(context_guard, "MAX_CONTEXT_GLOB_WORK_UNITS", 1)
+
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_LIMIT}$"):
+        context_guard.glob_matches(
+            Path("a/a/a/c"),
+            "**/a/**/b/**/c",
+        )
+
+
+def test_context_single_globstar_failure_obeys_work_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(context_guard, "MAX_CONTEXT_GLOB_WORK_UNITS", 1)
+
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_LIMIT}$"):
+        context_guard.glob_matches(
+            Path("a/a/a/a"),
+            "a/a/b/**",
+        )
+
+
+@pytest.mark.parametrize("pattern", ["a/b/c", "a/b/**"])
+def test_context_glob_length_rejection_obeys_work_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    pattern: str,
+) -> None:
+    monkeypatch.setattr(context_guard, "MAX_CONTEXT_GLOB_WORK_UNITS", 0)
+
+    with pytest.raises(ValueError, match=f"^{context_guard.ERROR_CONTEXT_SCAN_LIMIT}$"):
+        context_guard.glob_matches(Path("a"), pattern)
+
+
+@pytest.mark.parametrize(
     "exclude_pattern",
     [
         "context/private/**",
@@ -384,19 +441,22 @@ def test_context_inventory_reports_binary_and_decode_error_files(tmp_path: Path)
 def test_context_inventory_reports_read_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     write(tmp_path / "AGENTS.md", "Require approval before edits.\n")
 
-    def fail_read_bytes(path: Path) -> bytes | None:
+    original_read = context_guard._read_inventory_file
+
+    def fail_read_file(
+        path: Path,
+        *,
+        root: Path | None = None,
+        max_bytes: int,
+    ) -> object:
         if path.name == "AGENTS.md":
-            return None
-        return path.read_bytes()
+            raise ValueError("context scan target must stay under repo root")
+        return original_read(path, root=root, max_bytes=max_bytes)
 
-    monkeypatch.setattr("agent_guard.context_guard.read_inventory_bytes", fail_read_bytes)
+    monkeypatch.setattr("agent_guard.context_guard._read_inventory_file", fail_read_file)
 
-    inventory = collect_context_inventory(root=tmp_path, policy=load_context_policy(policy_file(tmp_path)))
-
-    assert inventory.context_files[0].path == "AGENTS.md"
-    assert inventory.context_files[0].read_status == "read_error"
-    assert inventory.context_files[0].size_bytes == len("Require approval before edits.\n".encode())
-    assert inventory.context_files[0].evidence == ()
+    with pytest.raises(ValueError, match="^context scan target must stay under repo root$"):
+        collect_context_inventory(root=tmp_path, policy=load_context_policy(policy_file(tmp_path)))
 
 
 def test_context_inventory_unknown_kind_for_custom_include(tmp_path: Path) -> None:

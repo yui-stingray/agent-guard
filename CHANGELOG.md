@@ -6,6 +6,11 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Bounded context inventory, digest, and MCP configuration inputs by file size, file
+  count, aggregate distinct bytes, structured-object depth, and public result
+  size. Repository containment is bound to the opened regular file, and
+  resource or race failures remain deterministic sanitized errors without raw
+  policy, context, command, URL, or local-path content.
 - Isolated repository-controlled context-policy regular-expression matching
   behind the existing bounded scanner worker and added fixed pattern-count and
   pattern-length limits. Timeout and limit failures remain deterministic,
