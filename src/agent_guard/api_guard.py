@@ -48,6 +48,7 @@ MAX_API_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 API_FINDING_RESULT_OVERHEAD_BYTES = 256
 
 URL_PATTERN = re.compile(r"https?://[^\s\"'`<>()]+", re.IGNORECASE)
+TRAILING_URL_PUNCTUATION = ".,);"
 
 
 @dataclass(frozen=True)
@@ -381,8 +382,32 @@ def _read_repo_text(path: Path, repo_root: Path) -> tuple[str | None, str]:
     return content, rel_path
 
 
+def _trim_url_trailing_punctuation(raw_url: str) -> str:
+    normalized = raw_url.rstrip(TRAILING_URL_PUNCTUATION)
+    scheme, separator, remainder = normalized.partition("://")
+    if not separator:
+        return normalized.rstrip("]")
+    authority_end = min(
+        (index for delimiter in "/?#" if (index := remainder.find(delimiter)) >= 0),
+        default=len(remainder),
+    )
+    authority = remainder[:authority_end]
+    _userinfo, at_sign, host_port = authority.rpartition("@")
+    if not at_sign:
+        host_port = authority
+
+    if (
+        authority_end == len(remainder)
+        and host_port.startswith("[")
+        and "]" in host_port
+        and host_port[host_port.index("]") + 1 :].strip("]") == ""
+    ):
+        return normalized.rstrip("]") + "]"
+    return normalized.rstrip("]")
+
+
 def normalize_url(raw_url: str) -> str:
-    normalized = raw_url.rstrip(".,);]")
+    normalized = _trim_url_trailing_punctuation(raw_url)
     scheme, separator, remainder = normalized.partition("://")
     if not separator:
         return normalized
@@ -443,7 +468,7 @@ def _scan_urls_unbounded(
                 urls_scanned += 1
                 if urls_scanned > MAX_API_URLS:
                     raise ValueError(ERROR_API_SCAN_LIMIT)
-                url = match.group(0).rstrip(".,);]")
+                url = _trim_url_trailing_punctuation(match.group(0))
                 canonical_url = normalize_url(url)
                 policy_candidates = (url, canonical_url)
 

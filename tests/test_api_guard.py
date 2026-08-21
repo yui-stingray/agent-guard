@@ -193,6 +193,64 @@ def test_api_url_normalization_preserves_userinfo_port_path_and_query_case() -> 
     ) == "http://User:Pass@api.openai.com:8443/V1/Responses?Token=Case"
 
 
+@pytest.mark.parametrize(
+    ("source_url", "expected_url", "forbidden_pattern"),
+    (
+        ("http://[::1]", "http://[::1]", r"^http://\[::1\]$"),
+        ("[http://[::1]]", "http://[::1]", r"^http://\[::1\]$"),
+        ("http://[::1].,;", "http://[::1]", r"^http://\[::1\]$"),
+        (
+            "https://example.test/v1.,);",
+            "https://example.test/v1",
+            r"^https://example\.test/v1$",
+        ),
+        (
+            "[https://example.test/v1]",
+            "https://example.test/v1",
+            r"^https://example\.test/v1$",
+        ),
+    ),
+    ids=(
+        "ipv6-bare",
+        "ipv6-bracketed",
+        "ipv6-punctuation",
+        "ordinary",
+        "ordinary-bracketed",
+    ),
+)
+def test_api_guard_matches_exact_endpoints_after_trailing_punctuation(
+    tmp_path: Path,
+    source_url: str,
+    expected_url: str,
+    forbidden_pattern: str,
+) -> None:
+    policy_path = policy_file(
+        tmp_path,
+        include=["src"],
+        exclude=[],
+        allowed=[],
+        forbidden=[forbidden_pattern],
+    )
+    write(tmp_path / "src" / "endpoint.py", f'URL = "{source_url}"\n')
+
+    findings = scan_urls(root=tmp_path, policy=load_yaml_policy(policy_path))
+
+    assert findings == [
+        ApiGuardFinding(
+            path="src/endpoint.py",
+            line=1,
+            url=expected_url,
+            matched_forbidden_pattern=forbidden_pattern,
+        )
+    ]
+
+
+def test_api_url_normalization_preserves_ipv6_userinfo_port_path_and_query_case() -> None:
+    assert api_guard.normalize_url(
+        "HTTP://User:Pass@[::1]:8443/V1/Responses?Token=Case"
+    ) == "http://User:Pass@[::1]:8443/V1/Responses?Token=Case"
+
+
 def test_api_url_matching_preserves_existing_raw_hostname_policy(tmp_path: Path) -> None:
     raw_pattern = r"^http://API\.OPENAI\.COM/"
     policy_path = policy_file(

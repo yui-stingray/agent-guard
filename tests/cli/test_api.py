@@ -66,6 +66,61 @@ def test_api_cli_json_violation(tmp_path: Path) -> None:
     assert payload["finding_count"] == 1
     assert payload["findings"][0]["path"] == "src/bad.py"
 
+
+@pytest.mark.parametrize(
+    ("source_url", "forbidden_pattern"),
+    (
+        ("http://[::1]", r"^http://\[::1\]$"),
+        ("[http://[::1]]", r"^http://\[::1\]$"),
+        ("http://[::1].,;", r"^http://\[::1\]$"),
+        ("https://example.test/v1.,);", r"^https://example\.test/v1$"),
+        ("[https://example.test/v1]", r"^https://example\.test/v1$"),
+    ),
+    ids=(
+        "ipv6-bare",
+        "ipv6-bracketed",
+        "ipv6-punctuation",
+        "ordinary",
+        "ordinary-bracketed",
+    ),
+)
+def test_api_cli_matches_exact_endpoints_after_trailing_punctuation(
+    tmp_path: Path,
+    source_url: str,
+    forbidden_pattern: str,
+) -> None:
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "scan:\n"
+        "  include:\n"
+        "    - src\n"
+        "  exclude: []\n"
+        "policy:\n"
+        "  allowed_api_patterns: []\n"
+        "  forbidden_api_patterns:\n"
+        f"    - '{forbidden_pattern}'\n",
+        encoding="utf-8",
+    )
+    write(tmp_path / "src" / "endpoint.py", f'URL = "{source_url}"\n')
+
+    result = run_cli("api", "check", "--root", str(tmp_path), "--policy", str(policy), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert_shared_envelope(
+        payload,
+        scanner="api",
+        status="violation",
+        exit_code=1,
+        finding_count=1,
+        scanned_count=1,
+        scanned_unit="files",
+    )
+    assert payload["findings"][0]["path"] == "src/endpoint.py"
+    assert payload["findings"][0]["line"] == 1
+    assert payload["findings"][0]["category"] == "forbidden_api"
+
+
 def test_api_cli_uses_count_from_the_single_scan_operation(
     tmp_path: Path,
     monkeypatch,
