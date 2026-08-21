@@ -169,9 +169,16 @@ profile to both producers. Events select v2; event-free reports stay v1. The
 manifest records a sanitized repository-relative
 path and a profile-bound digest. `agent-guard` reads and canonicalizes the
 bounded event JSON locally to compute that binding, but never embeds the event
-body. The consumer requires the event separately and fails closed when the
-event is missing, malformed, supplied under a different expected profile, or
-changed. The event itself is not part of the fixed seven-file public bundle.
+body. The only recognized profile is `agent-policy.audit_event.v1.1`; producer
+and consumer validate its required fields, exact top-level and decision fields,
+decision enums, and bounded optional strings against the published
+[agent-policy v0.1.11 schema](https://github.com/yui-stingray/agent-policy/blob/v0.1.11/src/agent_policy/schemas/agent-policy.audit_event.v1.1.schema.json).
+Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
+including escaped lone surrogates, before computing a digest.
+The consumer requires the event separately and fails closed when the event is
+missing, malformed, outside that profile schema, supplied under a different
+expected profile, or changed. The event itself is not part of the fixed
+seven-file public bundle.
 The binding does not protect an attacker who can replace both the evidence
 manifest and the event; use a signature, attestation, or immutable trusted
 storage for that threat model.

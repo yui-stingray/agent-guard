@@ -5,6 +5,8 @@ Why: keep the copyable consumer aligned with packaged report schemas.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -31,6 +33,7 @@ from agent_guard.consumer import (
 from agent_guard.consumer._bundle import MAX_MARKDOWN_BYTES
 from agent_guard.evidence_pack import build_agent_policy_audit_event_binding
 from agent_guard.report_render import emit_report_output, render_report_output
+from tests.audit_event_helpers import write_audit_event
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
@@ -101,7 +104,7 @@ def test_packaged_consumer_accepts_legacy_unbound_audit_event_reference(
     assert summary["report_schema_version"] == "agent-guard.report_evidence.v1"
 
     event = tmp_path / "synthetic-legacy-event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     with pytest.raises(
         ValueError,
         match=r"^agent-policy audit event binding is invalid$",
@@ -118,7 +121,7 @@ def test_packaged_consumer_accepts_legacy_unbound_audit_event_reference(
 
 def test_v1_content_binding_field_never_counts_as_bound(tmp_path: Path) -> None:
     event = tmp_path / "synthetic-v1-event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_pack_manifest"]["artifacts"].append(
         {
@@ -149,7 +152,7 @@ def test_packaged_consumer_rejects_extra_audit_event_artifact_fields_without_lea
 ) -> None:
     marker = "synthetic-private-passphrase"
     event = tmp_path / "event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     binding = build_agent_policy_audit_event_binding(
         event,
         event_profile=AUDIT_EVENT_PROFILE,
@@ -184,7 +187,7 @@ def test_packaged_consumer_rejects_final_audit_event_symlink_without_leak(
     event = tmp_path / "event.json"
     external = tmp_path / "external.json"
     external_marker = "synthetic-consumer-external-marker"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     report = _bound_v2_report(event)
     external.write_text(json.dumps({"marker": external_marker}), encoding="utf-8")
     event.unlink()
@@ -208,10 +211,20 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
     tmp_path: Path,
 ) -> None:
     event = tmp_path / "event.json"
-    event.write_text('{"sequence":9007199254740992.0}\n', encoding="utf-8")
+    event.write_text(
+        '{"capability":"read","context":{"sequence":9007199254740992.0},'
+        '"decision":{"matched_repo":"example/repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"repo":"example/repo"}\n',
+        encoding="utf-8",
+    )
     report = _bound_v2_report(event)
 
-    event.write_text('{"sequence":9007199254740993.0}\n', encoding="utf-8")
+    event.write_text(
+        '{"capability":"read","context":{"sequence":9007199254740993.0},'
+        '"decision":{"matched_repo":"example/repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"repo":"example/repo"}\n',
+        encoding="utf-8",
+    )
 
     with pytest.raises(
         ValueError,
@@ -226,7 +239,7 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
 
 def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> None:
     event = tmp_path / "synthetic-reviewed-event.json"
-    event.write_text('{"status":"reviewed","sequence":7}\n', encoding="utf-8")
+    write_audit_event(event, context={"sequence": 7})
     payload = _bound_v2_report(event)
 
     summary = validate_report(payload, select_report_schema(payload))
@@ -253,10 +266,72 @@ def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> 
     )
 
 
+def test_current_consumer_rejects_non_event_json_with_recognized_profile(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "synthetic-non-event.json"
+    marker = "not-an-audit-event"
+    event_payload = {"case_id": marker, "expected_findings": []}
+    event.write_text(json.dumps(event_payload), encoding="utf-8")
+    canonical = json.dumps(
+        event_payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    domain = (
+        b"agent-guard.agent_policy_audit_event_binding.v1\0"
+        + AUDIT_EVENT_PROFILE.encode("ascii")
+        + b"\0"
+        + canonical
+    )
+    forged_digest = (
+        "b"
+        + base64.b32encode(hashlib.sha256(domain).digest())
+        .decode("ascii")
+        .rstrip("=")
+        .lower()
+    )
+
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest = payload["evidence_pack_manifest"]
+    manifest["schema_version"] = "agent-guard.evidence_pack_manifest.v2"
+    manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
+    manifest["artifacts"].append(
+        {
+            "path": "reviewed/event.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": {
+                "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
+                "event_profile": AUDIT_EVENT_PROFILE,
+                "canonicalization": "canonical-json-v1",
+                "digest_algorithm": "sha256",
+                "digest_encoding": "base32-lower-no-padding",
+                "digest": forged_digest,
+            },
+        }
+    )
+
+    validate_report(payload, select_report_schema(payload))
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (event,),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert marker not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+
 def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
     event_marker = "synthetic-event-body-marker"
     event = tmp_path / "synthetic-sensitive-event-name.json"
-    event.write_text(json.dumps({"marker": event_marker}), encoding="utf-8")
+    write_audit_event(event, context={"marker": event_marker})
     payload = _bound_v2_report(event)
     mismatched_profile = "agent-policy.audit_event.v1.2"
 
@@ -299,7 +374,7 @@ def test_current_consumer_rejects_mixed_unbound_v2_entries_without_leak(
     tmp_path: Path,
 ) -> None:
     event = tmp_path / "synthetic-reviewed-event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     payload = _bound_v2_report(event)
     marker = "synthetic-private-unbound-path.json"
     payload["evidence_pack_manifest"]["artifacts"].append(
@@ -365,7 +440,7 @@ def test_report_schema_loader_is_bounded_and_v1_default_is_preserved() -> None:
 
 def test_v1_schema_consumer_fails_closed_on_v2_report(tmp_path: Path) -> None:
     event = tmp_path / "synthetic-reviewed-event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     payload = _bound_v2_report(event)
 
     with pytest.raises(
@@ -400,7 +475,7 @@ def test_evidence_pack_manifest_rejects_incompatible_version_pair(
     manifest["report"]["schema_version"] = report_version
     if manifest_version == "agent-guard.evidence_pack_manifest.v2":
         event = tmp_path / "synthetic-reviewed-event.json"
-        event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+        write_audit_event(event)
         manifest["artifacts"].append(
             {
                 "path": "reviewed/event.json",
@@ -720,7 +795,7 @@ def test_packaged_consumer_accepts_bound_v2_standalone_manifest_bundle(
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
     event = tmp_path / "synthetic-reviewed-event.json"
-    event.write_text('{"status":"reviewed"}\n', encoding="utf-8")
+    write_audit_event(event)
     payload = _bound_v2_report(event)
     report = evidence_dir / "agent-guard-report.json"
     report.write_text(json.dumps(payload), encoding="utf-8")

@@ -6,7 +6,92 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from agent_guard.bounded_repo_reader import DistinctInputBudget
+from agent_guard.cli import build_parser
+import agent_guard.cli.report as report_cli
+from agent_guard.digest_guard import MAX_DIGEST_DISTINCT_INPUT_BYTES
 from tests.cli.helpers import run_cli, sha256_text, write
+
+
+def test_report_uses_separate_context_read_pass_and_digest_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    context_policy = tmp_path / "context_policy.yaml"
+    context_policy.write_text("{}\n", encoding="utf-8")
+    agent_context = "Use project tests before reporting success.\n"
+    write(tmp_path / "AGENTS.md", agent_context)
+    digest_policy = tmp_path / "digest_policy.yaml"
+    digest_policy.write_text(
+        "checks:\n"
+        "  - id: agent_context_pin\n"
+        "    path: AGENTS.md\n"
+        f"    sha256: '{sha256_text(agent_context)}'\n",
+        encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+    original_load_context_policy = report_cli.load_context_policy
+    original_load_digest_policy = report_cli.load_digest_policy
+    original_build_context_lock_report = report_cli.build_context_lock_report
+    original_scan_digests = report_cli.scan_digests
+
+    def tracked_load_context_policy(*args: object, **kwargs: object) -> object:
+        observed["context_policy"] = kwargs.get("_input_budget")
+        return original_load_context_policy(*args, **kwargs)
+
+    def tracked_load_digest_policy(*args: object, **kwargs: object) -> object:
+        observed["digest_policy"] = kwargs.get("_input_budget")
+        return original_load_digest_policy(*args, **kwargs)
+
+    def tracked_build_context_lock_report(**kwargs: object) -> object:
+        observed["context_lock"] = kwargs.get("_input_budget")
+        return original_build_context_lock_report(**kwargs)
+
+    def tracked_scan_digests(**kwargs: object) -> object:
+        observed["digest_scan"] = kwargs.get("_input_budget")
+        return original_scan_digests(**kwargs)
+
+    monkeypatch.setattr(report_cli, "load_context_policy", tracked_load_context_policy)
+    monkeypatch.setattr(report_cli, "load_digest_policy", tracked_load_digest_policy)
+    monkeypatch.setattr(
+        report_cli,
+        "build_context_lock_report",
+        tracked_build_context_lock_report,
+    )
+    monkeypatch.setattr(report_cli, "scan_digests", tracked_scan_digests)
+    args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            str(context_policy),
+            "--digest-policy",
+            str(digest_policy),
+            "--format",
+            "json",
+        ]
+    )
+
+    assert report_cli.run_report(args) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    context_budget = observed["context_policy"]
+    context_lock_budget = observed["context_lock"]
+    digest_budget = observed["digest_policy"]
+    assert isinstance(context_budget, DistinctInputBudget)
+    assert isinstance(context_lock_budget, DistinctInputBudget)
+    assert context_lock_budget is not context_budget
+    context_used_bytes = context_budget.used_bytes
+    context_lock_budget.charge_bytes(b"x", identity="shared-pass-probe")
+    assert context_budget.used_bytes == context_used_bytes + 1
+    assert observed["digest_scan"] is digest_budget
+    assert digest_budget is not context_budget
+    assert getattr(digest_budget, "max_bytes") == MAX_DIGEST_DISTINCT_INPUT_BYTES
+
 
 def test_report_cli_markdown_digest_policy_ok(tmp_path: Path) -> None:
     context_policy = tmp_path / "context_policy.yaml"

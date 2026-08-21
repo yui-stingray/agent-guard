@@ -344,8 +344,7 @@
                 "properties": {
                   "schema_version": {"const": "agent-guard.agent_policy_audit_event_binding.v1"},
                   "event_profile": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+                    "const": "agent-policy.audit_event.v1.1"
                   },
                   "canonicalization": {"const": "canonical-json-v1"},
                   "digest_algorithm": {"const": "sha256"},

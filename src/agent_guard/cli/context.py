@@ -8,14 +8,31 @@ import argparse
 import json
 from pathlib import Path
 
-from ..context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from ..bounded_repo_reader import DistinctInputBudget
+from ..context_guard import (
+    ERROR_CONTEXT_SCAN_LIMIT,
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    collect_context_inventory,
+    load_context_policy,
+    scan_context_files,
+    scan_context_files_with_inventory,
+)
 from ..context_lock import (
     build_context_digest_policy,
     check_context_digest_coverage,
     dump_digest_policy_yaml,
 )
 from ..digest_guard import load_digest_policy
-from .common import redact_public_text, resolve_policy_arg, result_payload, safe_policy_path
+from .common import (
+    bounded_public_line,
+    bounded_public_json,
+    emit_public_output,
+    redact_public_text,
+    require_public_output_budget,
+    resolve_policy_arg,
+    result_payload,
+    safe_policy_path,
+)
 
 
 def add_context_parser(top) -> None:
@@ -41,13 +58,69 @@ def add_context_parser(top) -> None:
     context_lock.add_argument("--json", action="store_true", help="emit JSON")
 
 
+def _emit_context_payload(
+    *,
+    args: argparse.Namespace,
+    root: Path,
+    payload: dict[str, object],
+    plain_text: str,
+) -> bool:
+    try:
+        raw_output = (
+            bounded_public_json(
+                payload,
+                error=ERROR_CONTEXT_SCAN_LIMIT,
+            )
+            if args.json
+            else require_public_output_budget(
+                plain_text,
+                error=ERROR_CONTEXT_SCAN_LIMIT,
+            )
+        )
+        rendered = bounded_public_line(
+            raw_output,
+            error=ERROR_CONTEXT_SCAN_LIMIT,
+        )
+    except ValueError:
+        command = str(payload.get("command", ""))
+        fallback = result_payload(
+            scanner="context",
+            status="error",
+            exit_code=2,
+            policy_arg=args.policy,
+            root=root,
+            error=ERROR_CONTEXT_SCAN_LIMIT,
+            extra={"command": command} if command else None,
+        )
+        rendered = (
+            json.dumps(fallback, ensure_ascii=False)
+            if args.json
+            else f"ERROR: {ERROR_CONTEXT_SCAN_LIMIT}"
+        )
+        try:
+            emit_public_output(f"{rendered}\n", error=ERROR_CONTEXT_SCAN_LIMIT)
+        except ValueError:
+            pass
+        return False
+    try:
+        emit_public_output(rendered, error=ERROR_CONTEXT_SCAN_LIMIT)
+    except ValueError:
+        return False
+    return True
+
+
 def run_context_check(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     policy_path = resolve_policy_arg(args.policy, root)
 
     try:
-        policy = load_context_policy(policy_path)
-        findings, scanned_files = scan_context_files(root=root, policy=policy)
+        input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
+        policy = load_context_policy(policy_path, _input_budget=input_budget)
+        findings, scanned_files = scan_context_files(
+            root=root,
+            policy=policy,
+            _input_budget=input_budget,
+        )
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -57,10 +130,12 @@ def run_context_check(args: argparse.Namespace) -> int:
             root=root,
             error=str(exc),
         )
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
-        else:
-            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        _emit_context_payload(
+            args=args,
+            root=root,
+            payload=payload,
+            plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+        )
         return 2
 
     exit_code = 0 if not findings else 1
@@ -75,17 +150,26 @@ def run_context_check(args: argparse.Namespace) -> int:
         scanned_unit="files",
         extra={"scanned_files": scanned_files},
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    elif findings:
-        print(f"context-guard: NG ({len(findings)} findings)")
-        for item in findings:
-            print(
+    plain_lines = (
+        [
+            f"context-guard: NG ({len(findings)} findings)",
+            *[
                 f"- {item.severity} {item.rule_id} "
-                f"{redact_public_text(item.file)}:{item.line} {redact_public_text(item.message)}"
-            )
-    else:
-        print(f"context-guard: OK ({scanned_files} files scanned)")
+                f"{redact_public_text(item.file)}:{item.line} "
+                f"{redact_public_text(item.message)}"
+                for item in findings
+            ],
+        ]
+        if findings
+        else [f"context-guard: OK ({scanned_files} files scanned)"]
+    )
+    if not _emit_context_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text="\n".join(plain_lines),
+    ):
+        return 2
 
     return 0 if not findings else 1
 
@@ -96,8 +180,13 @@ def run_context_inventory(args: argparse.Namespace) -> int:
     policy_path = resolve_policy_arg(args.policy, root)
 
     try:
-        policy = load_context_policy(policy_path)
-        inventory = collect_context_inventory(root=root, policy=policy)
+        input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
+        policy = load_context_policy(policy_path, _input_budget=input_budget)
+        inventory = collect_context_inventory(
+            root=root,
+            policy=policy,
+            _input_budget=input_budget,
+        )
     except Exception as exc:
         payload = result_payload(
             scanner="context",
@@ -108,10 +197,12 @@ def run_context_inventory(args: argparse.Namespace) -> int:
             error=str(exc),
             extra={"command": "inventory"},
         )
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
-        else:
-            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        _emit_context_payload(
+            args=args,
+            root=root,
+            payload=payload,
+            plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+        )
         return 2
 
     payload = result_payload(
@@ -130,13 +221,17 @@ def run_context_inventory(args: argparse.Namespace) -> int:
             "inventory": inventory.to_dict(),
         },
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    else:
-        print(
+    if not _emit_context_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=(
             "context-inventory: OK "
-            f"({len(inventory.context_files)} files, {inventory.evidence_count} evidence records)"
-        )
+            f"({len(inventory.context_files)} files, "
+            f"{inventory.evidence_count} evidence records)"
+        ),
+    ):
+        return 2
     return 0
 
 
@@ -151,8 +246,13 @@ def run_context_lock(args: argparse.Namespace) -> int:
             raise ValueError("context lock --check requires --digest-policy")
         if digest_policy_arg and not args.check:
             raise ValueError("context lock --digest-policy requires --check")
-        policy = load_context_policy(policy_path)
-        findings, scanned_files = scan_context_files(root=root, policy=policy)
+        input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
+        policy = load_context_policy(policy_path, _input_budget=input_budget)
+        findings, scanned_files, inventory = scan_context_files_with_inventory(
+            root=root,
+            policy=policy,
+            _input_budget=input_budget,
+        )
         if findings:
             finding_items = [
                 {
@@ -174,23 +274,35 @@ def run_context_lock(args: argparse.Namespace) -> int:
                 scanned_unit="files",
                 extra={"command": "lock", "scanned_files": scanned_files},
             )
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False))
-            else:
-                print(f"context-lock: NG ({len(findings)} findings)")
-                for item in finding_items:
-                    print(
+            plain_text = "\n".join(
+                [
+                    f"context-lock: NG ({len(findings)} findings)",
+                    *[
                         f"- {item['severity']} {item['rule_id']} "
                         f"{redact_public_text(str(item['file']))}:{item['line']}"
-                    )
+                        for item in finding_items
+                    ],
+                ]
+            )
+            if not _emit_context_payload(
+                args=args,
+                root=root,
+                payload=payload,
+                plain_text=plain_text,
+            ):
+                return 2
             return 1
-        inventory = collect_context_inventory(root=root, policy=policy)
+        lock_input_budget = input_budget.next_read_pass()
         if args.check:
-            digest_policy = load_digest_policy(resolve_policy_arg(digest_policy_arg, root))
+            digest_policy = load_digest_policy(
+                resolve_policy_arg(digest_policy_arg, root),
+                _input_budget=lock_input_budget,
+            )
             coverage = check_context_digest_coverage(
                 root=root,
                 inventory=inventory,
                 digest_policy=digest_policy,
+                _input_budget=lock_input_budget,
             )
             coverage_findings = coverage.get("findings", [])
             finding_items = coverage_findings if isinstance(coverage_findings, list) else []
@@ -215,26 +327,41 @@ def run_context_lock(args: argparse.Namespace) -> int:
                     "coverage": coverage,
                 },
             )
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False))
-            elif exit_code == 0:
-                print(
+            if exit_code == 0:
+                plain_text = (
                     "context-lock: OK "
                     f"({coverage.get('covered_count', 0)}/"
                     f"{coverage.get('context_file_count', 0)} context files covered)"
                 )
             else:
-                print(
-                    "context-lock: NG "
-                    f"({coverage.get('finding_count', 0)} coverage findings)"
+                plain_text = "\n".join(
+                    [
+                        (
+                            "context-lock: NG "
+                            f"({coverage.get('finding_count', 0)} coverage findings)"
+                        ),
+                        *[
+                            f"- {item.get('severity', 'high')} "
+                            f"{item.get('rule_id', '-')} "
+                            f"{redact_public_text(str(item.get('path', '-')))} "
+                            f"{item.get('status', '-')}"
+                            for item in finding_items
+                        ],
+                    ]
                 )
-                for item in finding_items:
-                    print(
-                        f"- {item.get('severity', 'high')} {item.get('rule_id', '-')} "
-                        f"{redact_public_text(str(item.get('path', '-')))} {item.get('status', '-')}"
-                    )
+            if not _emit_context_payload(
+                args=args,
+                root=root,
+                payload=payload,
+                plain_text=plain_text,
+            ):
+                return 2
             return exit_code
-        digest_policy = build_context_digest_policy(root=root, inventory=inventory)
+        digest_policy = build_context_digest_policy(
+            root=root,
+            inventory=inventory,
+            _input_budget=lock_input_budget,
+        )
     except Exception as exc:
         error_paths = [digest_policy_arg] if digest_policy_arg else []
         payload = result_payload(
@@ -255,10 +382,12 @@ def run_context_lock(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
-        else:
-            print(f"ERROR: {payload.get('error', 'unknown error')}")
+        _emit_context_payload(
+            args=args,
+            root=root,
+            payload=payload,
+            plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+        )
         return 2
 
     checks = digest_policy.get("checks", [])
@@ -278,10 +407,11 @@ def run_context_lock(args: argparse.Namespace) -> int:
             "digest_policy": digest_policy,
         },
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    else:
-        print(dump_digest_policy_yaml(digest_policy), end="")
+    if not _emit_context_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=dump_digest_policy_yaml(digest_policy).rstrip("\n"),
+    ):
+        return 2
     return 0
-
-
