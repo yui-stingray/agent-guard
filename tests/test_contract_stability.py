@@ -195,7 +195,11 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.1 - 2026-07-17",
         "## 0.3.0 - 2026-07-17",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Clarified the standalone `agent-guard` entry, optional advanced `agent-policy` companion, and reference toolkit; copyable policy-change preflights now describe their review requirement without version-specific wording."
+        ]
+    )
     assert normalized_latest == " ".join(
         [
             "- The published 0.3.4 context scanner can be made unavailable by adversarial repository-controlled regex, and this patch bounds that matching.",

@@ -215,7 +215,7 @@ jobs:
           else
             diff_status="$?"
             if [ "$diff_status" -eq 1 ]; then
-              echo "::error::published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+              echo "::error::context policy preflight rejected a pull-request change; review and merge it separately before rerunning evidence from a trusted revision"
               exit 1
             fi
             fail_preflight
