@@ -522,6 +522,8 @@ def test_readme_documents_agent_policy_companion_boundary() -> None:
 
     assert "standalone public entry" in normalized
     assert "optional advanced runtime companion" in normalized
+    assert "standalone static publication gate" in normalized
+    assert "if a repository also needs runtime admission" in normalized.lower()
     assert "reference implementation" in normalized
     assert "one half of a small agent safety toolkit" not in readme
     assert "| Optional runtime admission | `agent-policy` |" in readme
