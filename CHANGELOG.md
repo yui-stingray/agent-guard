@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Clarified the standalone `agent-guard` entry, optional advanced `agent-policy`
+  companion, and reference toolkit; copyable policy-change preflights now
+  describe their review requirement without version-specific wording.
+
 ## 0.3.5 - 2026-08-13
 
 - The published 0.3.4 context scanner can be made unavailable by adversarial

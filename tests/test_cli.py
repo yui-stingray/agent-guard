@@ -170,9 +170,11 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in workflow
     assert "Reject unreviewed context policy changes" in workflow
     assert (
-        "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request"
+        "context policy preflight rejected a pull-request change; review and merge it separately "
+        "before rerunning evidence from a trusted revision"
         in workflow
     )
+    assert "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request" not in workflow
     assert "timeout-minutes: 1" in workflow
     assert 'drift_base_args=(--base-ref "$base_sha")' in workflow
     assert 'report_base_args=(--drift-base-ref "$base_sha")' in workflow

@@ -116,8 +116,8 @@ def test_published_policy_preflight_uses_the_effective_action_policy_path(
     )
     assert changed.returncode == 1
     assert changed.stdout == (
-        "::error::published agent-guard 0.3.4 cannot evaluate a context policy "
-        "changed by a pull request\n"
+        "::error::context policy preflight rejected a pull-request change; review and merge it "
+        "separately before rerunning evidence from a trusted revision\n"
     )
     assert changed.stderr == ""
     assert str(repo) not in changed.stdout
