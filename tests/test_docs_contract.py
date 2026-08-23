@@ -43,6 +43,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.6"
 ACTION_RELEASE_COMMIT = "f6359683bdf4b4eee8366c40e01c56eb3056d430"
 PACKAGE_RELEASE_VERSION = "0.3.6"
+SOURCE_PACKAGE_VERSION = "0.3.7.dev0"
 
 
 def pyproject_version() -> str:
@@ -50,11 +51,12 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_release_package_identity() -> None:
+def test_readme_matches_source_and_published_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
-    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
+    assert "examples remain pinned to immutable `0.3.6` releases" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
@@ -63,7 +65,7 @@ def test_release_identity_contains_the_executable_change_notes() -> None:
         "## 0.3.5 - 2026-08-13", maxsplit=1
     )[0]
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
     assert "Bound every supplied v2 consumer audit event" in release_notes
     assert "Standalone report loading now applies" in release_notes

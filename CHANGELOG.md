@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Started `0.3.7.dev0` development with a PyPI-specific long description that
+  directs readers to current GitHub documentation rather than embedding a
+  self-Action pin whose final release commit is not yet known.
+
 ## 0.3.6 - 2026-08-23
 
 - Bound every supplied v2 consumer audit event to an explicit repository root

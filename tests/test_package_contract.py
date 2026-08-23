@@ -32,6 +32,7 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 PACKAGE_DIR = REPO_ROOT / "src" / "agent_guard"
 SCHEMA_DIR = PACKAGE_DIR / "schemas"
+PYPI_README = REPO_ROOT / "README.pypi.md"
 
 
 def _write_raw_wheel_metadata(
@@ -66,13 +67,44 @@ def _write_wheel_metadata(
     )
 
 
+def _package_metadata_payload(version: str, description: str) -> bytes:
+    return (
+        "Metadata-Version: 2.4\n"
+        "Name: yui-agent-guard\n"
+        f"Version: {version}\n"
+        "Description-Content-Type: text/markdown\n"
+        "\n"
+        f"{description}"
+    ).encode("utf-8")
+
+
+def _write_sdist_package_metadata(sdist: Path, version: str, payload: bytes) -> None:
+    metadata_name = f"yui_agent_guard-{version}/PKG-INFO"
+    with tarfile.open(sdist, "w:gz") as archive:
+        member = tarfile.TarInfo(metadata_name)
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+
+
 def pyproject_version() -> str:
     with PYPROJECT.open("rb") as fh:
         return tomllib.load(fh)["project"]["version"]
 
 
 def test_package_version_matches_pyproject() -> None:
+    assert pyproject_version() == "0.3.7.dev0"
     assert agent_guard.__version__ == pyproject_version()
+
+
+def test_package_long_description_uses_pypi_readme_without_action_pin() -> None:
+    with PYPROJECT.open("rb") as fh:
+        pyproject = tomllib.load(fh)
+    description = PYPI_README.read_text(encoding="utf-8")
+
+    assert pyproject["project"]["readme"] == "README.pypi.md"
+    assert "https://github.com/yui-stingray/agent-guard#readme" in description
+    assert "docs/release-criteria.md" in description
+    assert "uses: yui-stingray/agent-guard@" not in description
 
 
 def test_package_requires_safe_tar_filter_runtime() -> None:
@@ -755,6 +787,132 @@ def test_wheel_contract_rejects_unsupported_runtime_metadata_compression(
         )
 
 
+def test_wheel_contract_accepts_current_package_description_metadata(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    description = (
+        "Install with `yui-agent-guard==1.2.3`.\n\n"
+        "Alternative: `yui.agent.guard [ dev, docs ]==1.2.3`.\n\n"
+        "**Status**: `1.2.3` alpha.\n\n"
+        "Release 1.2.2 remains documented in the project history.\n"
+    )
+    wheel = tmp_path / "package.whl"
+    _write_raw_wheel_metadata(
+        wheel,
+        version,
+        _package_metadata_payload(version, description),
+    )
+
+    wheel_contract.validate_wheel_package_description(wheel, version)
+
+
+@pytest.mark.parametrize(
+    ("metadata_version", "description"),
+    [
+        (
+            "1.2.3",
+            "Old snippet: uses: yui-stingray/agent-guard@0123456789012345678901234567890123456789 # v1.2.2\n",
+        ),
+        (
+            "1.2.3",
+            'Old snippet: uses: "yui-stingray/agent-guard@0123456789012345678901234567890123456789"\n',
+        ),
+        (
+            "1.2.3",
+            "Old snippet: uses: 'yui-stingray/agent-guard@0123456789012345678901234567890123456789'\n",
+        ),
+        (
+            "1.2.3",
+            'Old snippet: "uses": yui-stingray/agent-guard@0123456789012345678901234567890123456789\n',
+        ),
+        (
+            "1.2.3",
+            "Old snippet: 'uses': yui-stingray/agent-guard@0123456789012345678901234567890123456789\n",
+        ),
+        ("1.2.3", "Install with `yui-agent-guard==1.2.2`.\n"),
+        ("1.2.3", "Install with `yui-agent-guard[dev]==1.2.2`.\n"),
+        ("1.2.3", "Install with `yui-agent-guard [ dev, docs ]==1.2.2`.\n"),
+        ("1.2.3", "Install with `yui.agent.guard==1.2.2`.\n"),
+        ("1.2.3", "**Status**: `1.2.2` alpha.\n"),
+        ("1.2.3", "**Status**: source `1.2.2` development build.\n"),
+        ("1.2.2", "Install yui-agent-guard.\n"),
+    ],
+)
+def test_wheel_contract_rejects_copyable_or_stale_package_description(
+    metadata_version: str,
+    description: str,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    wheel = tmp_path / "package.whl"
+    _write_raw_wheel_metadata(
+        wheel,
+        version,
+        _package_metadata_payload(metadata_version, description),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="^wheel package description does not match contract$",
+    ):
+        wheel_contract.validate_wheel_package_description(wheel, version)
+
+
+def test_wheel_contract_accepts_current_sdist_package_description(
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    description = (
+        "Install `yui-agent-guard==1.2.3` or "
+        "`yui.agent.guard [ dev, docs ]==1.2.3`. "
+        "Release 1.2.2 is historical.\n"
+    )
+    sdist = tmp_path / "package.tar.gz"
+    _write_sdist_package_metadata(
+        sdist,
+        version,
+        _package_metadata_payload(version, description),
+    )
+
+    wheel_contract.validate_sdist_package_description(sdist, version)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Old snippet: uses: yui-stingray/agent-guard@0123456789012345678901234567890123456789 # v1.2.2\n",
+        'Old snippet: uses: "yui-stingray/agent-guard@0123456789012345678901234567890123456789"\n',
+        "Old snippet: uses: 'yui-stingray/agent-guard@0123456789012345678901234567890123456789'\n",
+        'Old snippet: "uses": yui-stingray/agent-guard@0123456789012345678901234567890123456789\n',
+        "Old snippet: 'uses': yui-stingray/agent-guard@0123456789012345678901234567890123456789\n",
+        "Install with `yui-agent-guard==1.2.2`.\n",
+        "Install with `yui-agent-guard[dev]==1.2.2`.\n",
+        "Install with `yui-agent-guard [ dev, docs ]==1.2.2`.\n",
+        "Install with `yui.agent.guard==1.2.2`.\n",
+        "**Status**: `1.2.2` alpha.\n",
+        "**Status**: source `1.2.2` development build.\n",
+    ],
+)
+def test_wheel_contract_rejects_copyable_or_stale_sdist_package_description(
+    description: str,
+    tmp_path: Path,
+) -> None:
+    version = "1.2.3"
+    sdist = tmp_path / "package.tar.gz"
+    _write_sdist_package_metadata(
+        sdist,
+        version,
+        _package_metadata_payload(version, description),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="^sdist package description does not match contract$",
+    ):
+        wheel_contract.validate_sdist_package_description(sdist, version)
+
+
 def test_wheel_contract_rejects_member_limit_before_zipfile_construction(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1189,6 +1347,7 @@ def test_wheel_contract_expected_members_follow_tracked_release_files() -> None:
         "src/agent_guard/__init__.py",
         "LICENSE",
         "README.md",
+        "README.pypi.md",
         "execution-notes.md",
         "dist/old.whl",
     }
@@ -1205,6 +1364,7 @@ def test_wheel_contract_expected_members_follow_tracked_release_files() -> None:
         "yui_agent_guard-1.2.3/src/agent_guard/__init__.py",
         "yui_agent_guard-1.2.3/LICENSE",
         "yui_agent_guard-1.2.3/README.md",
+        "yui_agent_guard-1.2.3/README.pypi.md",
         "yui_agent_guard-1.2.3/PKG-INFO",
     }
 
