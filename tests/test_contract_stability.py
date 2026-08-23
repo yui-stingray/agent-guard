@@ -162,21 +162,24 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.6 - 2026-08-23", maxsplit=1
+    )[0]
+    latest_release = changelog.split("## 0.3.6 - 2026-08-23", maxsplit=1)[1].split(
         "## 0.3.5 - 2026-08-13", maxsplit=1
     )[0]
-    latest_release = changelog.split("## 0.3.5 - 2026-08-13", maxsplit=1)[1].split(
+    previous_release = changelog.split("## 0.3.5 - 2026-08-13", maxsplit=1)[1].split(
         "## 0.3.4 - 2026-08-01", maxsplit=1
     )[0]
-    previous_release = changelog.split("## 0.3.4 - 2026-08-01", maxsplit=1)[1].split(
+    earlier_release = changelog.split("## 0.3.4 - 2026-08-01", maxsplit=1)[1].split(
         "## 0.3.3 - 2026-07-27", maxsplit=1
     )[0]
-    earlier_release = changelog.split("## 0.3.3 - 2026-07-27", maxsplit=1)[1].split(
+    older_release = changelog.split("## 0.3.3 - 2026-07-27", maxsplit=1)[1].split(
         "## 0.3.2 - 2026-07-19", maxsplit=1
     )[0]
-    older_release = changelog.split("## 0.3.2 - 2026-07-19", maxsplit=1)[1].split(
+    oldest_release = changelog.split("## 0.3.2 - 2026-07-19", maxsplit=1)[1].split(
         "## 0.3.1 - 2026-07-17", maxsplit=1
     )[0]
-    oldest_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
+    legacy_release = changelog.split("## 0.3.1 - 2026-07-17", maxsplit=1)[1].split(
         "## 0.3.0 - 2026-07-17", maxsplit=1
     )[0]
     normalized_latest = " ".join(latest_release.split())
@@ -184,25 +187,27 @@ def test_changelog_records_latest_release_entry() -> None:
     normalized_earlier = " ".join(earlier_release.split())
     normalized_older = " ".join(older_release.split())
     normalized_oldest = " ".join(oldest_release.split())
+    normalized_legacy = " ".join(legacy_release.split())
     normalized_unreleased = " ".join(unreleased.split())
 
     assert headings[:7] == [
         "## Unreleased",
+        "## 0.3.6 - 2026-08-23",
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
         "## 0.3.3 - 2026-07-27",
         "## 0.3.2 - 2026-07-19",
         "## 0.3.1 - 2026-07-17",
-        "## 0.3.0 - 2026-07-17",
     ]
-    assert normalized_unreleased == " ".join(
+    assert normalized_unreleased == ""
+    assert normalized_latest == " ".join(
         [
             "- Bound every supplied v2 consumer audit event to an explicit repository root and its exact manifest artifact path before profile and canonical-content verification. Canonical relative and absolute in-root paths remain supported; path aliases, outside-root files, symlink escapes, same-content relocation, reordered identical-content events, and path replacement during the bounded descriptor read fail closed with fixed diagnostics. Programmatic v2 consumer paths must be raw strings because `Path` objects cannot retain erased alias spelling. Standalone report loading now applies the bundle's 1 MiB JSON limit.",
-            "- Marked the unreleased source package identity as PEP 440 `0.3.6.dev0` while generated workflows and public install examples remain pinned to published `0.3.5`; release checks continue to reject development versions.",
+            "- Kept development builds on PEP 440 `0.3.6.dev0`, distinct from public `0.3.5`, until this final `0.3.6` release; generated install pins now target `0.3.6`, while release checks continue to reject development versions.",
             "- Clarified the standalone `agent-guard` entry, optional advanced `agent-policy` companion, and reference toolkit; copyable policy-change preflights now describe their review requirement without version-specific wording."
         ]
     )
-    assert normalized_latest == " ".join(
+    assert normalized_previous == " ".join(
         [
             "- The published 0.3.4 context scanner can be made unavailable by adversarial repository-controlled regex, and this patch bounds that matching.",
             "- Kept `init --write` pinned to the latest published package, and added a context-policy diff preflight plus the smallest supported positive Action timeout to copyable pull-request workflows while the published regex risk remains. The preflight now validates the Action's exact root-relative policy, requires tracked regular files in the current and base revisions, and rejects symlinked path components. These controls do not claim a fixed release or bypass workflow review.",
@@ -224,26 +229,26 @@ def test_changelog_records_latest_release_entry() -> None:
             "- Aligned self-dogfood CI with the canonical public evidence filenames and required fail-closed bundle validation before artifact upload.",
         ]
     )
-    assert "Bound API, content, and path policy inputs and scan work" in normalized_previous
-    assert "bounded packaged public-bundle consumer mode" in normalized_previous
-    assert "fresh runner-temporary staging" in normalized_previous
-    assert "bounded P0 public-artifact hygiene patch" in normalized_earlier
-    assert "standalone evidence-pack command recursively sanitizes" in normalized_earlier
-    assert "recognized HTTP(S)- or file-scheme artifact inputs" in normalized_earlier
-    assert "mixed-case URLs" in normalized_earlier
-    assert "mapping-key collisions fail closed" in normalized_earlier
-    assert "explicit repository-root commands" in normalized_earlier
-    assert "Released ahead of the default batch" in normalized_older
-    assert "repository-root containment fixes" in normalized_older
-    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_older
-    assert "top-level `--version` command" in normalized_older
-    assert "write-capable GitHub Release job" in normalized_older
-    assert "credentials in its working copy" in normalized_older
-    assert "dedicated least-privilege job" in normalized_older
-    assert "Hardened the packaged evidence consumer" in normalized_oldest
-    assert "AWS access-key-ID-shaped" in normalized_oldest
-    assert "lower-bound token" in normalized_oldest
-    assert "WSL-mounted Windows user paths" in normalized_oldest
+    assert "Bound API, content, and path policy inputs and scan work" in normalized_earlier
+    assert "bounded packaged public-bundle consumer mode" in normalized_earlier
+    assert "fresh runner-temporary staging" in normalized_earlier
+    assert "bounded P0 public-artifact hygiene patch" in normalized_older
+    assert "standalone evidence-pack command recursively sanitizes" in normalized_older
+    assert "recognized HTTP(S)- or file-scheme artifact inputs" in normalized_older
+    assert "mixed-case URLs" in normalized_older
+    assert "mapping-key collisions fail closed" in normalized_older
+    assert "explicit repository-root commands" in normalized_older
+    assert "Released ahead of the default batch" in normalized_oldest
+    assert "repository-root containment fixes" in normalized_oldest
+    assert "Agent-Guard Bench fail closed on guard runner errors" in normalized_oldest
+    assert "top-level `--version` command" in normalized_oldest
+    assert "write-capable GitHub Release job" in normalized_oldest
+    assert "credentials in its working copy" in normalized_oldest
+    assert "dedicated least-privilege job" in normalized_oldest
+    assert "Hardened the packaged evidence consumer" in normalized_legacy
+    assert "AWS access-key-ID-shaped" in normalized_legacy
+    assert "lower-bound token" in normalized_legacy
+    assert "WSL-mounted Windows user paths" in normalized_legacy
     assert "minimum supported Python version from 3.11 to 3.11.4" in changelog
     assert "surface delta --base-ref <ref>" in changelog
     assert "Recursively sanitized standalone Surface Inventory output" in changelog

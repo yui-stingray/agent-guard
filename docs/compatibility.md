@@ -11,14 +11,14 @@ This page documents the current emitted artifacts, the schema version each one
 uses, volatile fields consumers must ignore, and the compatibility promise for
 downstream wrappers.
 
-> **Version gate:** package `0.3.5` includes the v1 and v2 report/manifest
+> **Version gate:** package `0.3.6` includes the v1 and v2 report/manifest
 > schemas and the guard-owned
 > `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
 > examples use the immutable `0.3.5` release commit and retain the documented
 > context-policy preflight and timeout as defense-in-depth controls.
-> Unreleased source `0.3.6.dev0` additionally binds each supplied v2 consumer
-> event to an explicit `--repo-root` and exact manifest artifact path. Public
-> install and Action examples remain pinned to `0.3.5`.
+> Package `0.3.6` binds each supplied v2 consumer event to an explicit
+> `--repo-root` and exact manifest artifact path. Copyable Action examples
+> remain pinned to the immutable `0.3.5` Action commit.
 
 ## Execution Platforms
 

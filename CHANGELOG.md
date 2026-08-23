@@ -6,6 +6,8 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.6 - 2026-08-23
+
 - Bound every supplied v2 consumer audit event to an explicit repository root
   and its exact manifest artifact path before profile and canonical-content
   verification. Canonical relative and absolute in-root paths remain supported;
@@ -14,10 +16,9 @@ Why: keep static guard releases auditable while the package is still alpha.
   descriptor read fail closed with fixed diagnostics. Programmatic v2 consumer
   paths must be raw strings because `Path` objects cannot retain erased alias
   spelling. Standalone report loading now applies the bundle's 1 MiB JSON limit.
-- Marked the unreleased source package identity as PEP 440
-  `0.3.6.dev0` while generated workflows and public install examples remain
-  pinned to published `0.3.5`; release checks continue to reject development
-  versions.
+- Kept development builds on PEP 440 `0.3.6.dev0`, distinct from public
+  `0.3.5`, until this final `0.3.6` release; generated install pins now target
+  `0.3.6`, while release checks continue to reject development versions.
 - Clarified the standalone `agent-guard` entry, optional advanced `agent-policy`
   companion, and reference toolkit; copyable policy-change preflights now
   describe their review requirement without version-specific wording.

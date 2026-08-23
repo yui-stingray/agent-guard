@@ -42,8 +42,7 @@ SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.5"
 ACTION_RELEASE_COMMIT = "a8c3be3fd691450a92b1526d1593807db6b092ee"
-PACKAGE_RELEASE_VERSION = "0.3.5"
-SOURCE_DEVELOPMENT_VERSION = "0.3.6.dev0"
+PACKAGE_RELEASE_VERSION = "0.3.6"
 
 
 def pyproject_version() -> str:
@@ -51,25 +50,23 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_distinguishes_unreleased_source_from_published_release() -> None:
+def test_readme_matches_release_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == SOURCE_DEVELOPMENT_VERSION
-    assert f"**Source status**: `{SOURCE_DEVELOPMENT_VERSION}` alpha (unreleased)." in readme
-    assert f"latest published release\nis `{PACKAGE_RELEASE_VERSION}`" in readme
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
 
 
-def test_unreleased_executable_change_has_distinct_source_identity() -> None:
+def test_release_identity_contains_the_executable_change_notes() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+    release_notes = changelog.split("## 0.3.6 - 2026-08-23", maxsplit=1)[1].split(
         "## 0.3.5 - 2026-08-13", maxsplit=1
     )[0]
 
-    assert pyproject_version() == SOURCE_DEVELOPMENT_VERSION
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
-    assert SOURCE_DEVELOPMENT_VERSION != PUBLISHED_PACKAGE_VERSION
-    assert "Bound every supplied v2 consumer audit event" in unreleased
-    assert "Standalone report loading now applies" in unreleased
+    assert "Bound every supplied v2 consumer audit event" in release_notes
+    assert "Standalone report loading now applies" in release_notes
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
@@ -328,6 +325,14 @@ def test_evidence_sample_tool_versions_match_published_package() -> None:
     }
 
 
+def test_evidence_sample_uses_the_tracked_release_tree_path_count() -> None:
+    payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
+
+    # Measured by regenerating the sample in a tracked-only temporary worktree.
+    assert payload["path"]["checked_count"] == 328
+    assert payload["summary"]["path_checked_count"] == 328
+
+
 def test_evidence_sample_only_describes_committed_evidence_artifacts() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
     evidence_artifacts = [
@@ -475,8 +480,7 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     for docs in (evidence_contracts, compatibility, quickstart):
         assert "Version gate" in docs
         assert "agent-guard.public_agent_policy_audit_event.v1" in docs
-        assert "0.3.5" in docs
-        assert SOURCE_DEVELOPMENT_VERSION in docs
+        assert PACKAGE_RELEASE_VERSION in docs
         assert "Action" in docs
         assert "remain pinned" in docs
     for docs in (evidence_contracts, quickstart):
@@ -488,8 +492,7 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
         normalized = " ".join(docs.split())
         assert "public-safe subset" in normalized
         assert "underlying" in normalized
-    assert SOURCE_DEVELOPMENT_VERSION in readme
-    assert SOURCE_DEVELOPMENT_VERSION not in security
+    assert PACKAGE_RELEASE_VERSION in readme
     assert "does not claim validation against the generic" in " ".join(
         compatibility.split()
     )
