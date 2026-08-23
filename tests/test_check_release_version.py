@@ -39,14 +39,15 @@ def run_script(tag_name: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_matching_final_tag_is_releasable() -> None:
+def test_matching_development_tag_is_not_releasable() -> None:
     version = project_version()
 
     result = run_script(f"v{version}")
 
-    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(version)
-    assert result.returncode == 0
-    assert f"release tag/version match: {version}" in result.stdout
+    assert version == "0.3.6.dev0"
+    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(version) is None
+    assert result.returncode == 1
+    assert "release tag must name a final numeric x.y.z version" in result.stderr
 
 
 def test_final_release_version_grammar_is_bounded() -> None:

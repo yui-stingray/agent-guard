@@ -20,7 +20,9 @@ from ._redaction import validate_public_evidence_shape, validate_public_text_sha
 from ._report import validate_report
 from ._schema import (
     DuplicateJSONKeyError,
+    MAX_REPORT_JSON_BYTES,
     load_json_text,
+    read_limited_bytes,
     require,
     require_int,
     require_mapping,
@@ -54,7 +56,6 @@ ERROR_PUBLIC_BUNDLE_INVALID = "public evidence bundle is invalid"
 ERROR_PUBLIC_BUNDLE_LIMIT = "public evidence bundle exceeds configured limits"
 
 MAX_EVIDENCE_DIRECTORY_ENTRIES = len(ALLOWED_EVIDENCE_ARTIFACT_NAMES)
-MAX_REPORT_JSON_BYTES = 1 * 1024 * 1024
 MAX_SARIF_JSON_BYTES = 4 * 1024 * 1024
 MAX_ENVELOPE_JSON_BYTES = 1 * 1024 * 1024
 MAX_MARKDOWN_BYTES = 1 * 1024 * 1024
@@ -62,14 +63,12 @@ MAX_ANNOTATIONS_BYTES = 1 * 1024 * 1024
 
 
 def _read_limited_bytes(path: Path, *, limit: int) -> bytes:
-    try:
-        with path.open("rb") as handle:
-            raw = handle.read(limit + 1)
-    except OSError:
-        raise ValueError(ERROR_PUBLIC_BUNDLE_INVALID) from None
-    if len(raw) > limit:
-        raise ValueError(ERROR_PUBLIC_BUNDLE_LIMIT)
-    return raw
+    return read_limited_bytes(
+        path,
+        limit=limit,
+        read_error=ERROR_PUBLIC_BUNDLE_INVALID,
+        limit_error=ERROR_PUBLIC_BUNDLE_LIMIT,
+    )
 
 
 def _read_limited_text(path: Path, *, limit: int) -> str:
@@ -314,8 +313,9 @@ def _validate_evidence_bundle(
     evidence_dir: Path,
     report_path: Path,
     *,
-    agent_policy_audit_event_paths: tuple[Path, ...] = (),
+    agent_policy_audit_event_paths: tuple[str, ...] = (),
     agent_policy_audit_event_profile: str = "",
+    repo_root: Path | str | None = None,
 ) -> tuple[dict[str, Any], bytes | None]:
     """Validate a bundle and retain the exact annotation bytes read during validation."""
 
@@ -332,6 +332,7 @@ def _validate_evidence_bundle(
         report,
         agent_policy_audit_event_paths,
         event_profile=agent_policy_audit_event_profile,
+        repo_root=repo_root,
     )
 
     bundle_report_path = evidence_dir / "agent-guard-report.json"
@@ -453,8 +454,9 @@ def validate_evidence_bundle(
     evidence_dir: Path,
     report_path: Path,
     *,
-    agent_policy_audit_event_paths: tuple[Path, ...] = (),
+    agent_policy_audit_event_paths: tuple[str, ...] = (),
     agent_policy_audit_event_profile: str = "",
+    repo_root: Path | str | None = None,
 ) -> dict[str, Any]:
     """Validate an allowlisted public evidence directory against a report file."""
 
@@ -463,5 +465,6 @@ def validate_evidence_bundle(
         report_path,
         agent_policy_audit_event_paths=agent_policy_audit_event_paths,
         agent_policy_audit_event_profile=agent_policy_audit_event_profile,
+        repo_root=repo_root,
     )
     return summary

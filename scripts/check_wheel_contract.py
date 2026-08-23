@@ -1964,6 +1964,8 @@ def main() -> int:
             isolated_module_command(
                 python,
                 "agent_guard.consumer",
+                "--repo-root",
+                str(repo),
                 "--agent-policy-audit-event",
                 str(audit_event_path),
                 "--agent-policy-audit-event-profile",

@@ -37,8 +37,9 @@ def test_current_project_version_has_changelog_entry() -> None:
     root = Path(__file__).resolve().parents[1]
     version = MODULE.load_project_version(root / "pyproject.toml")
 
-    assert MODULE.changelog_heading(version) == version
-    assert MODULE._extract_heading_notes(root / "CHANGELOG.md", version)
+    assert version == "0.3.6.dev0"
+    assert MODULE.changelog_heading(version) == "Unreleased"
+    assert MODULE._extract_heading_notes(root / "CHANGELOG.md", "Unreleased")
 
 
 def test_development_version_maps_to_unreleased_without_becoming_release_heading() -> None:
@@ -46,7 +47,7 @@ def test_development_version_maps_to_unreleased_without_becoming_release_heading
     assert MODULE.changelog_heading("0.3.5") == "0.3.5"
 
 
-def test_release_mode_accepts_current_final_version() -> None:
+def test_release_mode_rejects_current_development_version() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--release"],
@@ -56,8 +57,18 @@ def test_release_mode_accepts_current_final_version() -> None:
         check=False,
     )
 
-    assert result.returncode == 0
-    assert "CHANGELOG.md contains 0.3.5 notes for version 0.3.5" in result.stdout
+    assert result.returncode == 1
+    assert "requires a final versioned heading for release 0.3.6.dev0" in result.stderr
+
+
+def test_unreleased_executable_changes_do_not_reuse_published_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    version = MODULE.load_project_version(root / "pyproject.toml")
+    notes = MODULE._extract_heading_notes(root / "CHANGELOG.md", "Unreleased")
+
+    assert "v2 consumer audit event" in notes
+    assert MODULE.DEVELOPMENT_VERSION_RE.fullmatch(version)
+    assert version != "0.3.5"
 
 
 def test_extract_release_notes_returns_selected_body(tmp_path: Path) -> None:

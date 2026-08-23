@@ -36,13 +36,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--agent-policy-audit-event",
         action="append",
         default=[],
-        type=Path,
         help="Audit-event file to verify against a bound manifest entry; repeat in manifest order",
     )
     parser.add_argument(
         "--agent-policy-audit-event-profile",
         default="",
         help="Expected recognized profile agent-guard.public_agent_policy_audit_event.v1 for every supplied event",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        help="Repository or snapshot root required to bind v2 audit-event paths",
     )
     args = parser.parse_args(argv)
     if args.emit_annotations and args.evidence_dir is None:
@@ -61,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.report,
                 agent_policy_audit_event_paths=event_paths,
                 agent_policy_audit_event_profile=event_profile,
+                repo_root=args.repo_root,
             )
         except Exception:
             print(BUNDLE_VALIDATION_ERROR, file=sys.stderr)
@@ -84,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             report,
             event_paths,
             event_profile=event_profile,
+            repo_root=args.repo_root,
         )
     except Exception as exc:
         print(f"agent-guard evidence invalid: {exc}", file=sys.stderr)

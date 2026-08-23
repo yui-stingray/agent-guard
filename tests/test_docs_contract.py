@@ -39,9 +39,11 @@ THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
 COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
+CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.5"
 ACTION_RELEASE_COMMIT = "a8c3be3fd691450a92b1526d1593807db6b092ee"
 PACKAGE_RELEASE_VERSION = "0.3.5"
+SOURCE_DEVELOPMENT_VERSION = "0.3.6.dev0"
 
 
 def pyproject_version() -> str:
@@ -49,12 +51,25 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_identifies_the_release_candidate_version() -> None:
+def test_readme_distinguishes_unreleased_source_from_published_release() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
-    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
-    assert "0.3.5.dev0" not in readme
+    assert pyproject_version() == SOURCE_DEVELOPMENT_VERSION
+    assert f"**Source status**: `{SOURCE_DEVELOPMENT_VERSION}` alpha (unreleased)." in readme
+    assert f"latest published release\nis `{PACKAGE_RELEASE_VERSION}`" in readme
+
+
+def test_unreleased_executable_change_has_distinct_source_identity() -> None:
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.5 - 2026-08-13", maxsplit=1
+    )[0]
+
+    assert pyproject_version() == SOURCE_DEVELOPMENT_VERSION
+    assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
+    assert SOURCE_DEVELOPMENT_VERSION != PUBLISHED_PACKAGE_VERSION
+    assert "Bound every supplied v2 consumer audit event" in unreleased
+    assert "Standalone report loading now applies" in unreleased
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
@@ -272,7 +287,14 @@ def test_evidence_sample_documented_commands_match_current_docs() -> None:
         if item.get("surface") == "documented_guard_command"
     ]
 
-    assert sample_surfaces == collect_documented_guard_surfaces(REPO_ROOT)
+    current_surfaces = collect_documented_guard_surfaces(REPO_ROOT)
+    assert [
+        {key: value for key, value in item.items() if key != "line"}
+        for item in sample_surfaces
+    ] == [
+        {key: value for key, value in item.items() if key != "line"}
+        for item in current_surfaces
+    ]
 
 
 def test_evidence_sample_workflow_surfaces_match_current_workflows() -> None:
@@ -295,9 +317,9 @@ def test_evidence_sample_workflow_surfaces_match_current_workflows() -> None:
     assert sample_surfaces == expected_surfaces
 
 
-def test_evidence_sample_tool_versions_match_current_package() -> None:
+def test_evidence_sample_tool_versions_match_published_package() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
-    version = pyproject_version()
+    version = PACKAGE_RELEASE_VERSION
 
     assert payload["tool"] == {"name": "agent-guard", "version": version}
     assert payload["evidence_pack_manifest"]["tool"] == {
@@ -454,19 +476,20 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
         assert "Version gate" in docs
         assert "agent-guard.public_agent_policy_audit_event.v1" in docs
         assert "0.3.5" in docs
+        assert SOURCE_DEVELOPMENT_VERSION in docs
         assert "Action" in docs
-        assert "remain pinned" not in docs
+        assert "remain pinned" in docs
     for docs in (evidence_contracts, quickstart):
         normalized = " ".join(docs.split())
         assert "The Action does not expose audit-event inputs" in normalized
         assert "its generated report and manifest remain v1" in normalized
-        assert "Bound v2 evidence requires explicit CLI" in normalized
+        assert "requires consumer `--repo-root`" in normalized
     for docs in (evidence_contracts, compatibility):
         normalized = " ".join(docs.split())
         assert "public-safe subset" in normalized
         assert "underlying" in normalized
-    for docs in (readme, security, evidence_contracts, compatibility, quickstart):
-        assert "0.3.5.dev0" not in docs
+    assert SOURCE_DEVELOPMENT_VERSION in readme
+    assert SOURCE_DEVELOPMENT_VERSION not in security
     assert "does not claim validation against the generic" in " ".join(
         compatibility.split()
     )
@@ -613,7 +636,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
     docs_single_line = " ".join(docs.split())
 
     assert EVIDENCE_SAMPLE_REPORT.is_file()
-    assert "generated from the current package version" in docs
+    assert "generated from the latest published package version" in docs_single_line
     assert "Adoption Path: Minimal First, Then Recommended" in docs
     assert "| `minimal` |" in docs
     assert "| `recommended` |" in docs

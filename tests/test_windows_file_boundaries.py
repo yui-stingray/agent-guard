@@ -176,8 +176,20 @@ def test_windows_repo_bound_readers_accept_in_root_regular_files(tmp_path: Path)
                 "artifacts": artifacts,
             }
         },
-        (audit_event_path,),
+        (str(audit_event_path),),
         event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=repo,
+    )
+    validate_agent_policy_audit_event_files(
+        {
+            "evidence_pack_manifest": {
+                "schema_version": "agent-guard.evidence_pack_manifest.v2",
+                "artifacts": artifacts,
+            }
+        },
+        ("reviewed/policy-admission-event.json",),
+        event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=repo,
     )
 
 

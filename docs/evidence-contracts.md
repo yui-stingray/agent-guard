@@ -10,7 +10,8 @@ in downstream wrappers without sending repository contents to a model.
 > contracts, including the guard-owned `agent-guard.public_agent_policy_audit_event.v1`
 > profile. Copyable Action examples use the immutable `0.3.5` release commit.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
-> Bound v2 evidence requires explicit CLI audit-event path/profile options.
+> Unreleased source `0.3.6.dev0` additionally requires consumer `--repo-root`
+> for bound v2 evidence; public install examples remain pinned to `0.3.5`.
 
 ## Contracts
 
@@ -49,7 +50,8 @@ and workflow bodies remain outside the contract.
 
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
-is intentionally public-safe, generated from the current package version, and
+is intentionally public-safe, generated from the latest published package
+version, and
 validated by the test suite against the packaged schema.
 [`examples/evidence_consumer.py`](../examples/evidence_consumer.py) shows a
 small downstream wrapper pattern that loads the packaged report schema and
@@ -165,6 +167,7 @@ agent-guard evidence-pack manifest --root . \
 python examples/evidence_consumer.py \
   .agent-guard/evidence/agent-guard-report.json \
   --evidence-dir .agent-guard/evidence \
+  --repo-root . \
   --agent-policy-audit-event path/to/reviewed-policy-admission-event.json \
   --agent-policy-audit-event-profile agent-guard.public_agent_policy_audit_event.v1
 ```
@@ -188,10 +191,19 @@ public-artifact contract, not a generic secret scanner or a claim that the
 producer-owned `agent-policy` JSON Schema uses the same narrower grammar.
 Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
 including escaped lone surrogates, before computing a digest.
-The consumer requires the event separately and fails closed when the event is
-missing, malformed, outside that profile schema, supplied under a different
-expected profile, or changed. The event itself is not part of the fixed
-seven-file public bundle.
+The source `0.3.6.dev0` consumer requires the event separately and an explicit
+repository root. Each positional event must be a canonical relative path or a
+canonical absolute in-root path, and its derived repository-relative path must
+exactly equal the same-position manifest artifact path before profile and
+digest verification. It fails closed when the root is missing, a path uses dot
+or parent aliases, a path escapes through location or symlink, events are
+reordered, or an event is malformed, outside that profile schema, supplied
+under a different expected profile, changed, or replaced during the bounded
+descriptor read. CLI parsing retains the raw path spelling. Programmatic v2
+callers must pass the same unmodified spelling as a `str`; `Path` objects are
+rejected because dot or parent aliases may already have been normalized away.
+Event-free v1 consumption is unchanged. The event itself is not part of the
+fixed seven-file public bundle.
 The binding does not protect an attacker who can replace both the evidence
 manifest and the event; use a signature, attestation, or immutable trusted
 storage for that threat model.

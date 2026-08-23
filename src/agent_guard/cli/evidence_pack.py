@@ -63,14 +63,11 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
         if audit_event_paths or is_v2_report:
             validate_report(payload, select_report_schema(payload))
         if is_v2_report:
-            verification_paths = tuple(
-                path if path.is_absolute() else root / path
-                for path in (Path(raw_path) for raw_path in audit_event_paths)
-            )
             validate_agent_policy_audit_event_files(
                 payload,
-                verification_paths,
+                tuple(audit_event_paths),
                 event_profile=str(args.agent_policy_audit_event_profile),
+                repo_root=root,
             )
         manifest = build_evidence_pack_manifest(
             report_payload=payload,
