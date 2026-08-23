@@ -7,9 +7,8 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Source status**: `0.3.6.dev0` alpha (unreleased). The latest published release
-is `0.3.5`. Vendor-neutral, static-only, Python 3.11.4+, with one runtime
-dependency (`PyYAML`).
+**Status**: `0.3.6` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
+runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -66,7 +65,7 @@ If `uv` is available, preview the current alpha without a persistent install or
 target-repository writes:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.5 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.6 agent-guard init --root . --print
 ```
 
 This pinned command may populate caches outside the repository, but it does not
@@ -80,7 +79,7 @@ starter files, and generate the recommended sanitized evidence. The scanned
 repository can use any runtime:
 
 ```bash
-python -m pip install yui-agent-guard==0.3.5
+python -m pip install yui-agent-guard==0.3.6
 agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write
@@ -391,7 +390,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.3.5"},
+  "tool": {"name": "agent-guard", "version": "0.3.6"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -546,7 +545,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.3.5
+    rev: v0.3.6
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path
@@ -1206,7 +1205,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-version = "0.3.5"
+version = "0.3.6"
 target = Path(sys.argv[1])
 request_timeout_seconds = 20
 metadata_url = f"https://pypi.org/pypi/yui-agent-guard/{version}/json"
@@ -1259,14 +1258,14 @@ for filename in sorted(expected):
         with (target / filename).open("xb") as destination:
             shutil.copyfileobj(response, destination)
 PY
-gh attestation verify "$verify_dir/yui_agent_guard-0.3.5-py3-none-any.whl" \
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.6-py3-none-any.whl" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.5
-gh attestation verify "$verify_dir/yui_agent_guard-0.3.5.tar.gz" \
+  --source-ref refs/tags/v0.3.6
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.6.tar.gz" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.5
+  --source-ref refs/tags/v0.3.6
 )
 ```
 

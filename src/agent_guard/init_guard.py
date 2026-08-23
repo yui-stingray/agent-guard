@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 INIT_PLAN_SCHEMA_VERSION = "agent-guard.init_plan.v1"
-PUBLISHED_PACKAGE_VERSION = "0.3.5"
+PUBLISHED_PACKAGE_VERSION = "0.3.6"
 PUBLISHED_CONTEXT_POLICY_PREFLIGHT = r'''set -euo pipefail
 
 fail_preflight() {

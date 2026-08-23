@@ -15,8 +15,8 @@ remains available wherever the Python CLI is supported; the shell wrapper's
 host constraint is not a restriction on repository languages or scanned file
 content.
 
-The install examples remain pinned to published `0.3.5`. Unreleased source
-`0.3.6.dev0` adds exact path binding for supplied v2 audit events: pass
+The install examples use published `0.3.6`, which adds exact path binding for
+supplied v2 audit events: pass
 `--repo-root <repo>` together with the event and profile options. Canonical
 relative and canonical absolute in-root event paths are accepted only when the
 derived repository-relative path exactly matches the same-position manifest
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - run: python -m pip install yui-agent-guard==0.3.5
+      - run: python -m pip install yui-agent-guard==0.3.6
       - name: Consume sanitized evidence
         run: sh examples/evidence_contracts_ci.sh consume
 ```
@@ -168,7 +168,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - run: python -m pip install yui-agent-guard==0.3.5
+      - run: python -m pip install yui-agent-guard==0.3.6
       - name: Strict release gate
         run: sh examples/evidence_contracts_ci.sh strict-release
 ```
