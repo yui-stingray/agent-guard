@@ -7,8 +7,9 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.5` alpha. Vendor-neutral, static-only, Python 3.11.4+, with one
-runtime dependency (`PyYAML`).
+**Source status**: `0.3.6.dev0` alpha (unreleased). The latest published release
+is `0.3.5`. Vendor-neutral, static-only, Python 3.11.4+, with one runtime
+dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -470,6 +471,15 @@ both producer commands. Regenerate both artifacts after a maintainer reviews
 the repo-local JSON event. The manifest records a sanitized relative path and
 profile-bound digest, never the body. Producer and consumer validate the
 recognized event shape; this checks semantics, not who approved the event.
+When consuming source-tree v2 evidence, also pass `--repo-root <repo>` to the
+consumer. Each supplied event must use a canonical repository-relative path or
+a canonical absolute in-root path whose derived relative path exactly matches
+the same-position manifest artifact; dot/parent aliases and path escapes fail
+closed. The CLI retains the raw spelling. Programmatic v2 callers must likewise
+pass raw `str` values; `Path` objects are rejected because alias spelling may
+already have been erased. The bounded descriptor must remain metadata-stable
+and identify the current no-follow path after the read. Event-free v1
+consumption does not require this option.
 For this guard-owned v2 contract, sanitized paths use non-whitespace printable
 ASCII only and reject absolute paths, colons, backslashes, dot segments,
 controlled secret-shaped values, and every embedded raw 64-hex hash. This is a
@@ -726,8 +736,12 @@ it embeds a public-safe artifact handoff manifest for pull request review. Use
 `--agent-policy-audit-event <path>` with profile
 `agent-guard.public_agent_policy_audit_event.v1`
 to bind a reviewed event without its body. Consumers require that event again;
-arbitrary JSON objects and unsupported profile labels fail closed before
-binding verification.
+source-tree v2 consumers also require `--repo-root <repo>` and exact positional
+artifact-path equality. Arbitrary JSON objects, path aliases or escapes, and
+unsupported profile labels fail closed before binding verification. The
+programmatic v2 validator accepts only raw path strings, not normalized `Path`
+objects, and rejects replacement of the repository path during its bounded
+descriptor read.
 
 Read `recommended` as the reviewed static evidence baseline, not as the full
 pin-integrity profile. The recommended preset can emit digest and context-lock

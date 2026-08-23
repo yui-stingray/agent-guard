@@ -430,6 +430,79 @@ def _open_agent_policy_audit_event(
     return file_fd, relative_path.as_posix()
 
 
+def _same_audit_event_file_identity(
+    first: os.stat_result,
+    second: os.stat_result,
+) -> bool:
+    try:
+        return os.path.samestat(first, second)
+    except (AttributeError, OSError, ValueError):
+        return (int(first.st_dev), int(first.st_ino)) == (
+            int(second.st_dev),
+            int(second.st_ino),
+        )
+
+
+def _stable_audit_event_metadata(
+    value: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    return (
+        int(value.st_mode),
+        int(value.st_size),
+        int(value.st_mtime_ns),
+        int(value.st_ctime_ns),
+        int(value.st_nlink),
+    )
+
+
+def _cross_handle_audit_event_metadata(value: os.stat_result) -> tuple[int, ...]:
+    if os.name == "nt":
+        return (
+            stat.S_IFMT(int(value.st_mode)),
+            int(value.st_size),
+            int(value.st_mtime_ns),
+        )
+    return _stable_audit_event_metadata(value)
+
+
+def _read_open_agent_policy_audit_event(file_fd: int) -> bytes:
+    with os.fdopen(file_fd, "rb", closefd=False) as handle:
+        return handle.read(MAX_AGENT_POLICY_AUDIT_EVENT_BYTES + 1)
+
+
+def _validate_current_agent_policy_audit_event_path(
+    path: Path,
+    *,
+    repo_root: Path | None,
+    relative_path: str | None,
+    file_stat: os.stat_result,
+) -> None:
+    current_fd: int | None = None
+    try:
+        current_fd, current_relative_path = _open_agent_policy_audit_event(
+            path,
+            repo_root=repo_root,
+        )
+        current_stat = os.fstat(current_fd)
+        if (
+            current_relative_path != relative_path
+            or not _same_audit_event_file_identity(file_stat, current_stat)
+            or _cross_handle_audit_event_metadata(file_stat)
+            != _cross_handle_audit_event_metadata(current_stat)
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_PATH)
+    except ValueError:
+        raise ValueError(ERROR_AUDIT_EVENT_PATH) from None
+    except OSError:
+        raise ValueError(ERROR_AUDIT_EVENT_PATH) from None
+    finally:
+        if current_fd is not None:
+            try:
+                os.close(current_fd)
+            except OSError:
+                pass
+
+
 def _read_agent_policy_audit_event(
     path: Path,
     *,
@@ -437,20 +510,38 @@ def _read_agent_policy_audit_event(
 ) -> tuple[bytes, str | None]:
     file_fd, relative_path = _open_agent_policy_audit_event(path, repo_root=repo_root)
     try:
-        handle = os.fdopen(file_fd, "rb")
+        before_read_stat = os.fstat(file_fd)
+        if before_read_stat.st_size > MAX_AGENT_POLICY_AUDIT_EVENT_BYTES:
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+        raw = _read_open_agent_policy_audit_event(file_fd)
+        after_read_stat = os.fstat(file_fd)
+        if (
+            not _same_audit_event_file_identity(before_read_stat, after_read_stat)
+            or _stable_audit_event_metadata(before_read_stat)
+            != _stable_audit_event_metadata(after_read_stat)
+        ):
+            raise ValueError(ERROR_AUDIT_EVENT_PATH)
+        if len(raw) > MAX_AGENT_POLICY_AUDIT_EVENT_BYTES:
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+        if len(raw) != after_read_stat.st_size:
+            raise ValueError(ERROR_AUDIT_EVENT_PATH)
+        _validate_current_agent_policy_audit_event_path(
+            path,
+            repo_root=repo_root,
+            relative_path=relative_path,
+            file_stat=after_read_stat,
+        )
+    except ValueError:
+        raise
+    except (MemoryError, OverflowError):
+        raise ValueError(ERROR_AUDIT_EVENT_INVALID) from None
     except OSError:
+        raise ValueError(ERROR_AUDIT_EVENT_PATH) from None
+    finally:
         try:
             os.close(file_fd)
         except OSError:
             pass
-        raise ValueError(ERROR_AUDIT_EVENT_PATH) from None
-    try:
-        with handle:
-            raw = handle.read(MAX_AGENT_POLICY_AUDIT_EVENT_BYTES + 1)
-    except OSError:
-        raise ValueError(ERROR_AUDIT_EVENT_PATH) from None
-    if len(raw) > MAX_AGENT_POLICY_AUDIT_EVENT_BYTES:
-        raise ValueError(ERROR_AUDIT_EVENT_INVALID)
     return raw, relative_path
 
 

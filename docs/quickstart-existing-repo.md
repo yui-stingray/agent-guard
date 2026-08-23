@@ -7,7 +7,8 @@ Use Python 3.11.4+ as the `agent-guard` tool interpreter. In the POSIX examples,
 > audit-event report/manifest v2 and the `agent-guard.public_agent_policy_audit_event.v1`
 > profile. Copyable Action examples use the immutable `0.3.5` release commit.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
-> Bound v2 evidence requires explicit CLI audit-event path/profile options.
+> Unreleased source `0.3.6.dev0` additionally requires consumer `--repo-root`
+> for bound v2 evidence; public install examples remain pinned to `0.3.5`.
 
 This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
@@ -394,7 +395,11 @@ to both the `report` and standalone `evidence-pack manifest` commands, then
 generate both artifacts again. The event must be a repo-local regular JSON
 file. If the standalone manifest is present, the public bundle consumer
 requires it to match the manifest embedded in the report. It also requires the
-event and expected profile again to verify its canonical-content binding. The
+event, expected profile, and explicit `--repo-root <repo>` again to verify its
+exact repository-relative artifact path before its canonical-content binding.
+Canonical relative and absolute in-root event paths are accepted; dot/parent
+aliases, outside-root paths, symlink escapes, and positional path mismatches
+fail closed. Event-free v1 consumption does not require a repository root. The
 recognized profile is exactly
 `agent-guard.public_agent_policy_audit_event.v1`; both producer and consumer
 reject JSON outside its public-safe subset of the underlying `agent-policy`

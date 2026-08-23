@@ -16,7 +16,9 @@ from pathlib import Path
 
 import pytest
 
+import agent_guard.consumer._bindings as consumer_bindings
 import agent_guard.consumer._bundle as consumer_bundle
+import agent_guard.evidence_pack as evidence_pack
 from agent_guard.consumer import (
     LOCAL_PATH_RE,
     RAW_URL_RE,
@@ -30,7 +32,7 @@ from agent_guard.consumer import (
 from agent_guard.consumer import (
     main as packaged_consumer_main,
 )
-from agent_guard.consumer._bundle import MAX_MARKDOWN_BYTES
+from agent_guard.consumer._bundle import MAX_MARKDOWN_BYTES, MAX_REPORT_JSON_BYTES
 from agent_guard.evidence_pack import build_agent_policy_audit_event_binding
 from agent_guard.report_render import emit_report_output, render_report_output
 from tests.audit_event_helpers import write_audit_event
@@ -42,7 +44,11 @@ SAMPLE = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-report.json"
 AUDIT_EVENT_PROFILE = "agent-guard.public_agent_policy_audit_event.v1"
 
 
-def _bound_v2_report(event: Path) -> dict[str, object]:
+def _bound_v2_report(
+    event: Path,
+    *,
+    artifact_path: str | None = None,
+) -> dict[str, object]:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["report"]["schema_version"] = "agent-guard.report_evidence.v2"
     manifest = payload["evidence_pack_manifest"]
@@ -50,7 +56,7 @@ def _bound_v2_report(event: Path) -> dict[str, object]:
     manifest["report"]["schema_version"] = "agent-guard.report_evidence.v2"
     manifest["artifacts"].append(
         {
-            "path": "reviewed/event.json",
+            "path": artifact_path or event.name,
             "role": "agent-policy-audit-event",
             "content_binding": build_agent_policy_audit_event_binding(
                 event,
@@ -111,7 +117,7 @@ def test_packaged_consumer_accepts_legacy_unbound_audit_event_reference(
     ) as exc_info:
         validate_agent_policy_audit_event_files(
             payload,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
         )
 
@@ -142,7 +148,7 @@ def test_v1_content_binding_field_never_counts_as_bound(tmp_path: Path) -> None:
     ):
         validate_agent_policy_audit_event_files(
             payload,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
         )
 
@@ -274,8 +280,9 @@ def test_packaged_consumer_rejects_final_audit_event_symlink_without_leak(
     ) as exc_info:
         validate_agent_policy_audit_event_files(
             report,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
         )
 
     assert external_marker not in str(exc_info.value)
@@ -307,21 +314,33 @@ def test_packaged_consumer_rejects_large_number_audit_event_substitution(
     ):
         validate_agent_policy_audit_event_files(
             report,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
         )
 
 
 def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> None:
-    event = tmp_path / "synthetic-reviewed-event.json"
+    event = tmp_path / "reviewed" / "synthetic-reviewed-event.json"
+    event.parent.mkdir()
     write_audit_event(event, context={"sequence": 7})
-    payload = _bound_v2_report(event)
+    payload = _bound_v2_report(
+        event,
+        artifact_path="reviewed/synthetic-reviewed-event.json",
+    )
 
     summary = validate_report(payload, select_report_schema(payload))
     validate_agent_policy_audit_event_files(
         payload,
-        (event,),
+        (str(event),),
         event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=tmp_path,
+    )
+    validate_agent_policy_audit_event_files(
+        payload,
+        ("reviewed/synthetic-reviewed-event.json",),
+        event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=tmp_path,
     )
 
     assert summary["report_schema_version"] == "agent-guard.report_evidence.v2"
@@ -332,6 +351,8 @@ def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> 
         str(event),
         "--agent-policy-audit-event-profile",
         AUDIT_EVENT_PROFILE,
+        "--repo-root",
+        str(tmp_path),
         str(report_path),
     )
 
@@ -341,10 +362,366 @@ def test_current_consumer_accepts_matching_bound_v2_evidence(tmp_path: Path) -> 
     )
 
 
+def test_bound_v2_consumer_accepts_reordered_json_keys_at_exact_path(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event, context={"sequence": 7})
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    event_payload = json.loads(event.read_text(encoding="utf-8"))
+    event.write_text(
+        json.dumps(dict(reversed(tuple(event_payload.items())))),
+        encoding="utf-8",
+    )
+
+    validate_agent_policy_audit_event_files(
+        payload,
+        (str(event),),
+        event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=tmp_path,
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires atomic replacement of an open file")
+def test_bound_v2_consumer_rejects_path_replacement_during_descriptor_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    replacement = tmp_path / "replacement.json"
+    event.parent.mkdir()
+    write_audit_event(event, context={"sequence": 1})
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+
+    validate_agent_policy_audit_event_files(
+        payload,
+        ("reviewed/event.json",),
+        event_profile=AUDIT_EVENT_PROFILE,
+        repo_root=tmp_path,
+    )
+
+    marker = "synthetic-replacement-during-read-marker"
+    write_audit_event(replacement, context={"marker": marker})
+    original_read = evidence_pack._read_open_agent_policy_audit_event
+    replaced = False
+
+    def replace_path_then_read(file_fd: int) -> bytes:
+        nonlocal replaced
+        os.replace(replacement, event)
+        replaced = True
+        return original_read(file_fd)
+
+    monkeypatch.setattr(
+        evidence_pack,
+        "_read_open_agent_policy_audit_event",
+        replace_path_then_read,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            ("reviewed/event.json",),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+    assert replaced
+    assert marker not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+
+def test_bound_v2_consumer_requires_explicit_repo_root_without_leak(
+    tmp_path: Path,
+) -> None:
+    marker = "synthetic-root-required-marker"
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event, context={"marker": marker})
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (str(event),),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert marker not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    result = run_packaged_consumer_cli(
+        "--agent-policy-audit-event",
+        str(event),
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        str(report),
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == (
+        "agent-guard evidence invalid: agent-policy audit event binding is invalid\n"
+    )
+    assert marker not in result.stderr
+    assert str(event) not in result.stderr
+
+
+def test_bound_v2_consumer_rejects_same_content_at_wrong_location(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "snapshot"
+    expected = root / "reviewed" / "event.json"
+    relocated = root / "other" / "event.json"
+    outside = tmp_path / "outside" / "event.json"
+    expected.parent.mkdir(parents=True)
+    relocated.parent.mkdir()
+    outside.parent.mkdir()
+    write_audit_event(expected)
+    relocated.write_bytes(expected.read_bytes())
+    outside.write_bytes(expected.read_bytes())
+    payload = _bound_v2_report(expected, artifact_path="reviewed/event.json")
+
+    for candidate in (relocated, outside):
+        with pytest.raises(
+            ValueError,
+            match=r"^agent-policy audit event binding is invalid$",
+        ) as exc_info:
+            validate_agent_policy_audit_event_files(
+                payload,
+                (str(candidate),),
+                event_profile=AUDIT_EVENT_PROFILE,
+                repo_root=root,
+            )
+
+        assert str(expected) not in str(exc_info.value)
+        assert str(candidate) not in str(exc_info.value)
+
+
+def test_bound_v2_path_mismatch_precedes_profile_and_digest_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = tmp_path / "reviewed" / "event.json"
+    wrong_path = tmp_path / "other" / "event.json"
+    expected.parent.mkdir()
+    wrong_path.parent.mkdir()
+    write_audit_event(expected)
+    wrong_path.write_bytes(expected.read_bytes())
+    payload = _bound_v2_report(expected, artifact_path="reviewed/event.json")
+
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("profile or digest validation ran before path binding")
+
+    monkeypatch.setattr(
+        consumer_bindings,
+        "validate_agent_policy_audit_event_profile",
+        fail_if_called,
+    )
+    monkeypatch.setattr(
+        consumer_bindings,
+        "validate_agent_policy_audit_event_binding_shape",
+        fail_if_called,
+    )
+    monkeypatch.setattr(
+        consumer_bindings,
+        "build_agent_policy_audit_event_binding",
+        fail_if_called,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(
+            payload,
+            (str(wrong_path),),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "alias",
+    (
+        "./reviewed/event.json",
+        "reviewed/./event.json",
+        "reviewed/../reviewed/event.json",
+        "reviewed//event.json",
+    ),
+)
+def test_bound_v2_consumer_rejects_noncanonical_input_aliases(
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event)
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (alias,),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+    assert alias not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+
+def test_bound_v2_consumer_rejects_path_objects_after_alias_normalization(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event)
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    normalized_alias = Path("./reviewed/event.json")
+    assert str(normalized_alias) == "reviewed/event.json"
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (normalized_alias,),  # type: ignore[arg-type]
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+    assert str(event) not in str(exc_info.value)
+
+
+def test_bound_v2_consumer_rejects_absolute_parent_alias(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event)
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    alias = event.parent / ".." / "reviewed" / event.name
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            (str(alias),),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+    assert str(alias) not in str(exc_info.value)
+
+
+def test_packaged_consumer_cli_preserves_and_rejects_dot_alias(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event)
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_packaged_consumer_cli(
+        "--repo-root",
+        str(tmp_path),
+        "--agent-policy-audit-event",
+        "./reviewed/event.json",
+        "--agent-policy-audit-event-profile",
+        AUDIT_EVENT_PROFILE,
+        str(report),
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == (
+        "agent-guard evidence invalid: agent-policy audit event binding is invalid\n"
+    )
+
+
+def test_bound_v2_consumer_rejects_reordered_identical_content(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "reviewed" / "first.json"
+    second = tmp_path / "reviewed" / "second.json"
+    first.parent.mkdir()
+    write_audit_event(first)
+    second.write_bytes(first.read_bytes())
+    payload = _bound_v2_report(first, artifact_path="reviewed/first.json")
+    payload["evidence_pack_manifest"]["artifacts"].append(
+        {
+            "path": "reviewed/second.json",
+            "role": "agent-policy-audit-event",
+            "content_binding": build_agent_policy_audit_event_binding(
+                second,
+                event_profile=AUDIT_EVENT_PROFILE,
+            ),
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ):
+        validate_agent_policy_audit_event_files(
+            payload,
+            (str(second), str(first)),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="exercises POSIX ancestor no-follow")
+def test_bound_v2_consumer_rejects_ancestor_symlink_escape_without_leak(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "snapshot"
+    root.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    event = external / "event.json"
+    marker = "synthetic-symlink-escape-marker"
+    write_audit_event(event, context={"marker": marker})
+    (root / "reviewed").symlink_to(external, target_is_directory=True)
+    payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^agent-policy audit event binding is invalid$",
+    ) as exc_info:
+        validate_agent_policy_audit_event_files(
+            payload,
+            ("reviewed/event.json",),
+            event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=root,
+        )
+
+    assert marker not in str(exc_info.value)
+    assert str(event) not in str(exc_info.value)
+
+
 def test_current_consumer_rejects_non_event_json_with_recognized_profile(
     tmp_path: Path,
 ) -> None:
-    event = tmp_path / "synthetic-non-event.json"
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
     marker = "not-an-audit-event"
     event_payload = {"case_id": marker, "expected_findings": []}
     event.write_text(json.dumps(event_payload), encoding="utf-8")
@@ -395,8 +772,9 @@ def test_current_consumer_rejects_non_event_json_with_recognized_profile(
     ) as exc_info:
         validate_agent_policy_audit_event_files(
             payload,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
         )
 
     assert marker not in str(exc_info.value)
@@ -413,7 +791,7 @@ def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
     failures: list[ValueError] = []
     for paths, profile in (
         ((), ""),
-        ((event,), mismatched_profile),
+        ((str(event),), mismatched_profile),
     ):
         with pytest.raises(
             ValueError,
@@ -423,6 +801,7 @@ def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
                 payload,
                 paths,
                 event_profile=profile,
+                repo_root=tmp_path,
             )
         failures.append(exc_info.value)
 
@@ -433,8 +812,9 @@ def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
     ) as exc_info:
         validate_agent_policy_audit_event_files(
             payload,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
         )
     failures.append(exc_info.value)
 
@@ -483,8 +863,9 @@ def test_current_consumer_rejects_non_repository_audit_event_artifact_path(
     ) as binding_error:
         validate_agent_policy_audit_event_files(
             payload,
-            (event,),
+            (str(event),),
             event_profile=AUDIT_EVENT_PROFILE,
+            repo_root=tmp_path,
         )
 
     assert marker not in str(report_error.value)
@@ -915,6 +1296,8 @@ def test_packaged_consumer_accepts_bound_v2_standalone_manifest_bundle(
         str(event),
         "--agent-policy-audit-event-profile",
         AUDIT_EVENT_PROFILE,
+        "--repo-root",
+        str(tmp_path),
         str(report),
     )
 
@@ -1464,6 +1847,63 @@ def test_packaged_consumer_cli_sanitizes_oversized_bundle_artifact_failure(tmp_p
     assert result.stderr == "agent-guard evidence bundle invalid\n"
     assert sentinel not in result.stderr
     assert str(tmp_path) not in result.stderr
+
+
+@pytest.mark.parametrize("report_version", ("v1", "v2"))
+def test_packaged_consumer_cli_rejects_oversized_standalone_report(
+    tmp_path: Path,
+    report_version: str,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    event.parent.mkdir()
+    write_audit_event(event)
+    payload = (
+        _bound_v2_report(event, artifact_path="reviewed/event.json")
+        if report_version == "v2"
+        else json.loads(SAMPLE.read_text(encoding="utf-8"))
+    )
+    raw = json.dumps(payload).encode("utf-8")
+    assert len(raw) < MAX_REPORT_JSON_BYTES
+    report = tmp_path / f"oversized-{report_version}-private-name.json"
+    report.write_bytes(raw + (b" " * (MAX_REPORT_JSON_BYTES + 1 - len(raw))))
+    args = (
+        (
+            "--repo-root",
+            str(tmp_path),
+            "--agent-policy-audit-event",
+            str(event),
+            "--agent-policy-audit-event-profile",
+            AUDIT_EVENT_PROFILE,
+        )
+        if report_version == "v2"
+        else ()
+    )
+
+    result = run_packaged_consumer_cli(*args, str(report))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == (
+        "agent-guard evidence invalid: public evidence exceeds configured limits\n"
+    )
+    assert report.name not in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_packaged_consumer_cli_accepts_standalone_report_at_size_limit(
+    tmp_path: Path,
+) -> None:
+    raw = SAMPLE.read_bytes()
+    assert len(raw) < MAX_REPORT_JSON_BYTES
+    report = tmp_path / "report.json"
+    report.write_bytes(raw + (b" " * (MAX_REPORT_JSON_BYTES - len(raw))))
+
+    result = run_packaged_consumer_cli(str(report))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["report_schema_version"] == (
+        "agent-guard.report_evidence.v1"
+    )
 
 
 def test_packaged_consumer_cli_rejects_unsafe_annotations_without_echoing_them(

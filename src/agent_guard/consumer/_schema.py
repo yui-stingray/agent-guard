@@ -30,8 +30,10 @@ _EVIDENCE_PACK_SCHEMAS = {
 }
 ERROR_DUPLICATE_JSON_KEYS = "public evidence JSON contains duplicate object keys"
 ERROR_PUBLIC_EVIDENCE_READ = "public evidence could not be read"
+ERROR_PUBLIC_EVIDENCE_LIMIT = "public evidence exceeds configured limits"
 ERROR_REPORT_SCHEMA_UNSUPPORTED = "report evidence schema version is not supported"
 ERROR_EVIDENCE_PACK_SCHEMA_UNSUPPORTED = "evidence-pack schema version is not supported"
+MAX_REPORT_JSON_BYTES = 1 * 1024 * 1024
 
 
 class DuplicateJSONKeyError(ValueError):
@@ -49,6 +51,27 @@ def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, An
 
 def load_json_text(text: str) -> Any:
     return json.loads(text, object_pairs_hook=_object_without_duplicate_keys)
+
+
+def read_limited_bytes(
+    path: Path,
+    *,
+    limit: int,
+    read_error: str,
+    limit_error: str,
+) -> bytes:
+    """Read one file through a fixed byte ceiling without exposing its path."""
+
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(limit + 1)
+    except OSError:
+        raise ValueError(read_error) from None
+    except (MemoryError, OverflowError):
+        raise ValueError(limit_error) from None
+    if len(raw) > limit:
+        raise ValueError(limit_error)
+    return raw
 
 
 def _load_packaged_schema(name: str) -> dict[str, Any]:
@@ -97,8 +120,13 @@ def select_evidence_pack_schema(manifest: Mapping[str, Any]) -> dict[str, Any]:
 
 def load_payload(path: Path) -> dict[str, Any]:
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
+        text = read_limited_bytes(
+            path,
+            limit=MAX_REPORT_JSON_BYTES,
+            read_error=ERROR_PUBLIC_EVIDENCE_READ,
+            limit_error=ERROR_PUBLIC_EVIDENCE_LIMIT,
+        ).decode("utf-8")
+    except UnicodeError:
         raise ValueError(ERROR_PUBLIC_EVIDENCE_READ) from None
     payload = load_json_text(text)
     if not isinstance(payload, dict):

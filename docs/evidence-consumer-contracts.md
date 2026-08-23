@@ -15,6 +15,18 @@ remains available wherever the Python CLI is supported; the shell wrapper's
 host constraint is not a restriction on repository languages or scanned file
 content.
 
+The install examples remain pinned to published `0.3.5`. Unreleased source
+`0.3.6.dev0` adds exact path binding for supplied v2 audit events: pass
+`--repo-root <repo>` together with the event and profile options. Canonical
+relative and canonical absolute in-root event paths are accepted only when the
+derived repository-relative path exactly matches the same-position manifest
+artifact. Dot/parent aliases, path or symlink escapes, and reordered paths fail
+closed. The CLI retains raw event-path spellings. Programmatic v2 callers must
+pass raw `str` paths; normalized `Path` objects are rejected because their alias
+spelling cannot be recovered. A bounded read also revalidates descriptor
+metadata and current-path identity. The event-free v1 commands below remain
+unchanged.
+
 ## Fail-Closed Evidence Consumer
 
 Use this on a job that consumes a committed, downloaded, or previously

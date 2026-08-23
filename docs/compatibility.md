@@ -16,6 +16,9 @@ downstream wrappers.
 > `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
 > examples use the immutable `0.3.5` release commit and retain the documented
 > context-policy preflight and timeout as defense-in-depth controls.
+> Unreleased source `0.3.6.dev0` additionally binds each supplied v2 consumer
+> event to an explicit `--repo-root` and exact manifest artifact path. Public
+> install and Action examples remain pinned to `0.3.5`.
 
 ## Execution Platforms
 

@@ -94,11 +94,12 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "fetch-depth: 0" in workflow
     assert "persist-credentials: false" in workflow
     assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
-    assert AGENT_GUARD_VERSION == PUBLISHED_PACKAGE_VERSION
+    assert AGENT_GUARD_VERSION.endswith(".dev0")
     assert (
         f"python -I -m pip install yui-agent-guard=={PUBLISHED_PACKAGE_VERSION}"
         in workflow
     )
+    assert AGENT_GUARD_VERSION not in workflow
     assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1" in workflow
     assert "- id: generate-evidence" in workflow
     assert "if: always() && steps.generate-evidence.outputs.ready == 'true'" in workflow

@@ -851,7 +851,7 @@ def test_audit_event_binding_enforces_one_mib_read_bound_before_parse(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="exercises POSIX descriptor traversal")
-def test_audit_event_binding_reads_opened_descriptor_after_final_path_swap(
+def test_audit_event_binding_rejects_opened_descriptor_after_final_path_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -880,19 +880,16 @@ def test_audit_event_binding_reads_opened_descriptor_after_final_path_swap(
         open_then_swap,
     )
 
-    artifacts = build_agent_policy_audit_event_artifacts(
-        ["reviewed/event.json"],
-        event_profile=AUDIT_EVENT_PROFILE,
-        root=root,
-    )
-
-    assert artifacts == [
-        {
-            "path": "reviewed/event.json",
-            "role": "agent-policy-audit-event",
-            "content_binding": expected,
-        }
-    ]
+    assert expected["event_profile"] == AUDIT_EVENT_PROFILE
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event must be a repository file$",
+    ):
+        build_agent_policy_audit_event_artifacts(
+            ["reviewed/event.json"],
+            event_profile=AUDIT_EVENT_PROFILE,
+            root=root,
+        )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="exercises POSIX no-follow traversal")

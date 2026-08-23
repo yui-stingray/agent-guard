@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 import agent_guard
+from agent_guard.init_guard import PUBLISHED_PACKAGE_VERSION
 from packaging.requirements import Requirement
 import pytest
 import scripts.check_wheel_contract as wheel_contract
@@ -1228,11 +1229,11 @@ def test_execution_notes_are_not_tracked_or_packaged() -> None:
     assert "/execution-notes.md" in pyproject["tool"]["hatch"]["build"]["exclude"]
 
 
-def test_public_sample_report_matches_pyproject_version() -> None:
+def test_public_sample_report_matches_published_package_version() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
 
     assert payload["tool"]["name"] == "agent-guard"
-    assert payload["tool"]["version"] == pyproject_version()
+    assert payload["tool"]["version"] == PUBLISHED_PACKAGE_VERSION
 
 
 def test_schema_resources_are_present_in_package_tree() -> None:
