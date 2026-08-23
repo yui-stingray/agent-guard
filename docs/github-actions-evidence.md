@@ -127,7 +127,7 @@ jobs:
             fail_preflight
           fi
       - id: agent-guard
-        uses: yui-stingray/agent-guard@a8c3be3fd691450a92b1526d1593807db6b092ee # v0.3.5
+        uses: yui-stingray/agent-guard@f6359683bdf4b4eee8366c40e01c56eb3056d430 # v0.3.6
         timeout-minutes: 1
         with:
           conformance-profile: recommended

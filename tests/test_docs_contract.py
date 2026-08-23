@@ -40,8 +40,8 @@ COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
-ACTION_RELEASE_VERSION = "0.3.5"
-ACTION_RELEASE_COMMIT = "a8c3be3fd691450a92b1526d1593807db6b092ee"
+ACTION_RELEASE_VERSION = "0.3.6"
+ACTION_RELEASE_COMMIT = "f6359683bdf4b4eee8366c40e01c56eb3056d430"
 PACKAGE_RELEASE_VERSION = "0.3.6"
 
 
@@ -467,22 +467,28 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "immutable\n`0.3.5` Action" in readme
+    assert "immutable\n`0.3.6` Action" in readme
     assert "unreviewed" in readme
     assert "context" in readme
     assert "defense in depth" in readme
-    assert "0.3.5" in readme
+    assert ACTION_RELEASE_VERSION in readme
     assert "Published `0.3.4`" in security
     assert "unreviewed" in security
     assert "context" in security
     assert "regular expression" in security
     assert "0.3.5" in security
     for docs in (evidence_contracts, compatibility, quickstart):
+        normalized = " ".join(docs.split())
         assert "Version gate" in docs
         assert "agent-guard.public_agent_policy_audit_event.v1" in docs
         assert PACKAGE_RELEASE_VERSION in docs
         assert "Action" in docs
-        assert "remain pinned" in docs
+        assert (
+            f"immutable `{ACTION_RELEASE_VERSION}` release commit" in normalized
+        )
+    assert re.findall(r"published `([^`]+)` Action", quickstart) == [
+        ACTION_RELEASE_VERSION
+    ]
     for docs in (evidence_contracts, quickstart):
         normalized = " ".join(docs.split())
         assert "The Action does not expose audit-event inputs" in normalized
