@@ -199,7 +199,11 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.2 - 2026-07-19",
         "## 0.3.1 - 2026-07-17",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Started `0.3.7.dev0` development with a PyPI-specific long description that directs readers to current GitHub documentation rather than embedding a self-Action pin whose final release commit is not yet known."
+        ]
+    )
     assert normalized_latest == " ".join(
         [
             "- Bound every supplied v2 consumer audit event to an explicit repository root and its exact manifest artifact path before profile and canonical-content verification. Canonical relative and absolute in-root paths remain supported; path aliases, outside-root files, symlink escapes, same-content relocation, reordered identical-content events, and path replacement during the bounded descriptor read fail closed with fixed diagnostics. Programmatic v2 consumer paths must be raw strings because `Path` objects cannot retain erased alias spelling. Standalone report loading now applies the bundle's 1 MiB JSON limit.",

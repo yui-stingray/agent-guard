@@ -13,6 +13,7 @@ from importlib import metadata
 import json
 import os
 import queue
+import re
 import shutil
 import signal
 import stat
@@ -51,6 +52,20 @@ EXPECTED_EXPORTS = {
     "scan_workflow_policy",
     "WorkflowGuardFinding",
 }
+COPYABLE_SELF_ACTION_REFERENCE_RE = re.compile(
+    r"(?i)[\"']?\buses\b[\"']?\s*:\s*"
+    r"[\"']?yui-stingray/agent-guard@[^\s#`\"']+"
+)
+SELF_PACKAGE_VERSION_PIN_RE = re.compile(
+    r"(?i)\byui[-_.]+agent[-_.]+guard"
+    r"(?:[ \t]*\[[ \t]*[A-Za-z0-9._-]+"
+    r"(?:[ \t]*,[ \t]*[A-Za-z0-9._-]+)*[ \t]*\])?"
+    r"\s*==\s*(?P<version>[0-9A-Za-z.+!_-]+)"
+)
+SOURCE_VERSION_LABEL_RE = re.compile(
+    r"(?im)^\*\*Status\*\*:\s*(?:source\s+)?`?v?"
+    r"(?P<version>[0-9][0-9A-Za-z.+!_-]*)`?"
+)
 MAX_ARCHIVE_FILE_BYTES = 64 * 1024 * 1024
 MAX_ARCHIVE_CENTRAL_DIRECTORY_BYTES = 16 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 20_000
@@ -1146,6 +1161,65 @@ def validate_wheel_runtime_requirement(
         )
 
 
+def _validate_package_description_payload(payload: bytes, version: str) -> None:
+    """Require metadata long description labels and pins to match source identity."""
+
+    message = BytesParser(policy=compat32).parsebytes(payload)
+    if message.defects or message.get("Version") != version:
+        raise ValueError
+    description = message.get_payload()
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError
+    if COPYABLE_SELF_ACTION_REFERENCE_RE.search(description):
+        raise ValueError
+    for pattern in (SELF_PACKAGE_VERSION_PIN_RE, SOURCE_VERSION_LABEL_RE):
+        if any(match["version"] != version for match in pattern.finditer(description)):
+            raise ValueError
+
+
+def validate_wheel_package_description(wheel: Path, version: str) -> None:
+    """Require wheel long-description metadata to match the package contract."""
+
+    metadata_name = f"yui_agent_guard-{version}.dist-info/METADATA"
+    try:
+        with wheel.open("rb") as archive_file:
+            _preflight_wheel_archive(archive_file)
+            archive_file.seek(0)
+            with zipfile.ZipFile(archive_file) as archive:
+                members = [
+                    member
+                    for member in archive.infolist()
+                    if member.filename == metadata_name
+                ]
+                if len(members) != 1:
+                    raise ValueError
+                member = members[0]
+                mode = member.external_attr >> 16
+                if (
+                    member.is_dir()
+                    or stat.S_IFMT(mode) not in {0, stat.S_IFREG}
+                    or member.flag_bits & 0x1
+                    or member.compress_type
+                    not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                    or member.file_size > MAX_ARCHIVE_MEMBER_BYTES
+                ):
+                    raise ValueError
+                payload = archive.read(member)
+        _validate_package_description_payload(payload, version)
+    except (
+        EOFError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        zlib.error,
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+    ):
+        raise RuntimeError("wheel package description does not match contract") from None
+
+
 def validate_sdist_members(sdist: Path, expected: set[str]) -> None:
     observed: set[str] = set()
     total_size = 0
@@ -1180,6 +1254,55 @@ def validate_sdist_members(sdist: Path, expected: set[str]) -> None:
         raise RuntimeError("release archive could not be verified") from None
     if observed != expected:
         raise RuntimeError("release archive members do not match contract")
+
+
+def validate_sdist_package_description(sdist: Path, version: str) -> None:
+    """Require sdist PKG-INFO long description to match the package contract."""
+
+    metadata_name = f"yui_agent_guard-{version}/PKG-INFO"
+    try:
+        with sdist.open("rb") as source_file, tempfile.TemporaryFile() as archive_file:
+            _copy_archive_snapshot(source_file, archive_file)
+            _preflight_sdist_archive(archive_file)
+            archive_file.seek(0)
+            with tarfile.open(fileobj=archive_file, mode="r:gz") as archive:
+                metadata_member: tarfile.TarInfo | None = None
+                for index, member in enumerate(archive, start=1):
+                    if index > MAX_ARCHIVE_MEMBERS:
+                        raise ValueError
+                    _validate_member_name(member.name)
+                    if member.name != metadata_name:
+                        continue
+                    if (
+                        metadata_member is not None
+                        or not member.isfile()
+                        or member.size > MAX_ARCHIVE_MEMBER_BYTES
+                    ):
+                        raise ValueError
+                    metadata_member = member
+                if metadata_member is None:
+                    raise ValueError
+                metadata_file = archive.extractfile(metadata_member)
+                if metadata_file is None:
+                    raise ValueError
+                with metadata_file:
+                    payload = metadata_file.read(MAX_ARCHIVE_MEMBER_BYTES + 1)
+                if len(payload) != metadata_member.size:
+                    raise ValueError
+        _validate_package_description_payload(payload, version)
+    except (
+        EOFError,
+        OSError,
+        OverflowError,
+        RecursionError,
+        RuntimeError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        tarfile.TarError,
+        zlib.error,
+    ):
+        raise RuntimeError("sdist package description does not match contract") from None
 
 
 def venv_python_path(venv_dir: Path, *, platform_name: str = os.name) -> Path:
@@ -1294,7 +1417,9 @@ def main() -> int:
         version,
         project_runtime_requirement("PyYAML"),
     )
+    validate_wheel_package_description(wheel, version)
     validate_sdist_members(sdist, expected_sdist_members(version, tracked))
+    validate_sdist_package_description(sdist, version)
     with tempfile.TemporaryDirectory(prefix="agent-guard-wheel-") as temp_dir:
         temp = Path(temp_dir)
         venv_dir = temp / "venv"
