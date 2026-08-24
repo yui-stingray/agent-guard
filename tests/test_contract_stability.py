@@ -162,6 +162,9 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.7 - 2026-08-24", maxsplit=1
+    )[0]
+    newest_release = changelog.split("## 0.3.7 - 2026-08-24", maxsplit=1)[1].split(
         "## 0.3.6 - 2026-08-23", maxsplit=1
     )[0]
     latest_release = changelog.split("## 0.3.6 - 2026-08-23", maxsplit=1)[1].split(
@@ -188,20 +191,22 @@ def test_changelog_records_latest_release_entry() -> None:
     normalized_older = " ".join(older_release.split())
     normalized_oldest = " ".join(oldest_release.split())
     normalized_legacy = " ".join(legacy_release.split())
+    normalized_newest = " ".join(newest_release.split())
     normalized_unreleased = " ".join(unreleased.split())
 
     assert headings[:7] == [
         "## Unreleased",
+        "## 0.3.7 - 2026-08-24",
         "## 0.3.6 - 2026-08-23",
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
         "## 0.3.3 - 2026-07-27",
         "## 0.3.2 - 2026-07-19",
-        "## 0.3.1 - 2026-07-17",
     ]
-    assert normalized_unreleased == " ".join(
+    assert normalized_unreleased == ""
+    assert normalized_newest == " ".join(
         [
-            "- Started `0.3.7.dev0` development with a PyPI-specific long description that directs readers to current GitHub documentation rather than embedding a self-Action pin whose final release commit is not yet known."
+            "- Kept development builds on PEP 440 `0.3.7.dev0` until this final `0.3.7` release. The immutable PyPI `0.3.6` long description retains a copyable Action reference to the older `v0.3.5` commit. The PyPI-specific long description for `0.3.7` links to current GitHub documentation instead of freezing a self-Action pin before the release commit is known."
         ]
     )
     assert normalized_latest == " ".join(

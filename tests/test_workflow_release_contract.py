@@ -861,11 +861,11 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "trap 'rm -rf -- \"$verify_dir\"' EXIT" in readme
     assert 'python - "$verify_dir"' in readme
     assert (
-        'gh attestation verify "$verify_dir/yui_agent_guard-0.3.6-py3-none-any.whl"'
+        'gh attestation verify "$verify_dir/yui_agent_guard-0.3.7-py3-none-any.whl"'
         in readme
     )
-    assert 'gh attestation verify "$verify_dir/yui_agent_guard-0.3.6.tar.gz"' in readme
-    assert "--source-ref refs/tags/v0.3.6\n)\n```" in readme
+    assert 'gh attestation verify "$verify_dir/yui_agent_guard-0.3.7.tar.gz"' in readme
+    assert "--source-ref refs/tags/v0.3.7\n)\n```" in readme
     assert "https://pypi.org/pypi/yui-agent-guard/" in readme
     assert 'f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel"' in readme
     assert 'f"yui_agent_guard-{version}.tar.gz": "sdist"' in readme
@@ -901,7 +901,7 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "target / filename" in readme
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
-    assert "--source-ref refs/tags/v0.3.6" in readme
+    assert "--source-ref refs/tags/v0.3.7" in readme
     assert "version tag triggers" in readme
     assert "annotated tag triggers" not in readme
     assert "proof of code correctness" in readme
@@ -1149,8 +1149,27 @@ def test_generated_init_workflow_uses_isolated_consumer_for_real_violation_bundl
     github_output = tmp_path / "github-output.txt"
     github_output.write_text("", encoding="utf-8")
     shadow_marker = tmp_path / "shadow-executed.txt"
+    wheel_dir = tmp_path / "wheelhouse"
+    build_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--wheel",
+            "--no-isolation",
+            "--outdir",
+            str(wheel_dir),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert build_result.returncode == 0, build_result.stdout + build_result.stderr
     env = os.environ.copy()
     env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
+    env["PIP_FIND_LINKS"] = str(wheel_dir)
+    env["PIP_NO_INDEX"] = "1"
     env["RUNNER_TEMP"] = str(runner_temp)
     env["GITHUB_OUTPUT"] = str(github_output)
     env["AGENT_GUARD_EVENT_NAME"] = "push"

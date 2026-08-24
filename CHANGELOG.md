@@ -6,9 +6,13 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-- Started `0.3.7.dev0` development with a PyPI-specific long description that
-  directs readers to current GitHub documentation rather than embedding a
-  self-Action pin whose final release commit is not yet known.
+## 0.3.7 - 2026-08-24
+
+- Kept development builds on PEP 440 `0.3.7.dev0` until this final `0.3.7`
+  release. The immutable PyPI `0.3.6` long description retains a copyable Action
+  reference to the older `v0.3.5` commit. The PyPI-specific long description
+  for `0.3.7` links to current GitHub documentation instead of freezing a
+  self-Action pin before the release commit is known.
 
 ## 0.3.6 - 2026-08-23
 

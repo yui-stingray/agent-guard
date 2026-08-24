@@ -3,11 +3,11 @@
 Use Python 3.11.4+ as the `agent-guard` tool interpreter. In the POSIX examples,
 `python3` must resolve to Python 3.11.4+ before it creates `.venv`.
 
-> **Version gate:** package install examples use `0.3.6`, including bound
+> **Version gate:** package install examples use `0.3.7`, including bound
 > audit-event report/manifest v2 and the `agent-guard.public_agent_policy_audit_event.v1`
 > profile. Copyable Action examples use the immutable `0.3.6` release commit.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
-> Package `0.3.6` requires consumer `--repo-root` for bound v2 evidence.
+> Package `0.3.7` requires consumer `--repo-root` for bound v2 evidence.
 
 This guide adds a small `agent-guard` evidence gate to an existing repository.
 It assumes the repository already has at least one agent context file such as
@@ -19,7 +19,7 @@ If `uv` is available, preview the starter plan without installing a persistent
 tool or changing the repository:
 
 ```console
-uvx --python 3.12 --from yui-agent-guard==0.3.6 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.7 agent-guard init --root . --print
 ```
 
 This pinned `uvx` path is for evaluation and human review without a persistent
@@ -36,7 +36,7 @@ recommended conformance and its evidence-pack manifest:
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) else "agent-guard requires Python 3.11.4+")' && \
 python3 -m venv .venv && \
   . .venv/bin/activate && \
-  python -m pip install yui-agent-guard==0.3.6
+  python -m pip install yui-agent-guard==0.3.7
 agent-guard init --root . --print
 # Review the proposed starter policies and workflow before writing them.
 agent-guard init --root . --write
@@ -63,7 +63,7 @@ reviewed write, and sanitized report sequence is:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.6
+.\.venv\Scripts\python.exe -m pip install yui-agent-guard==0.3.7
 .\.venv\Scripts\agent-guard.exe init --root . --print
 # Review the proposed starter policies and workflow before writing them.
 .\.venv\Scripts\agent-guard.exe init --root . --write

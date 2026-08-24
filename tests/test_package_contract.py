@@ -92,7 +92,7 @@ def pyproject_version() -> str:
 
 
 def test_package_version_matches_pyproject() -> None:
-    assert pyproject_version() == "0.3.7.dev0"
+    assert pyproject_version() == "0.3.7"
     assert agent_guard.__version__ == pyproject_version()
 
 
@@ -1376,6 +1376,7 @@ def test_dev_extra_includes_benchmark_schema_tools() -> None:
     dev_deps = pyproject["project"]["optional-dependencies"]["dev"]
 
     assert "pytest>=9.0.3,<10" in dev_deps
+    assert "hatchling>=1.21,<2" in dev_deps
     assert any(dep.startswith("pytest-cov") for dep in dev_deps)
     assert any(dep.startswith("jsonschema") for dep in dev_deps)
 
