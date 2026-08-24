@@ -11,9 +11,6 @@ import sys
 import tomllib
 from pathlib import Path
 
-import pytest
-
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_release_version.py"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -41,23 +38,15 @@ def run_script(tag_name: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_matching_final_tag_is_releasable(monkeypatch: pytest.MonkeyPatch) -> None:
-    version = "0.3.6"
-    monkeypatch.setattr(MODULE, "load_project_version", lambda _path: version)
-
-    assert MODULE.main([str(SCRIPT), f"v{version}"]) == 0
-    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(version)
-
-
-def test_current_development_source_version_is_not_releasable() -> None:
+def test_matching_final_tag_is_releasable() -> None:
     version = project_version()
 
     result = run_script(f"v{version}")
 
-    assert version == "0.3.7.dev0"
-    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(version) is None
-    assert result.returncode == 1
-    assert "release tag must name a final numeric x.y.z version" in result.stderr
+    assert version == "0.3.7"
+    assert MODULE.FINAL_RELEASE_VERSION_RE.fullmatch(version)
+    assert result.returncode == 0
+    assert result.stderr == ""
 
 
 def test_final_release_version_grammar_is_bounded() -> None:
