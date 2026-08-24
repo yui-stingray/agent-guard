@@ -40,8 +40,8 @@ COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
-ACTION_RELEASE_VERSION = "0.3.6"
-ACTION_RELEASE_COMMIT = "f6359683bdf4b4eee8366c40e01c56eb3056d430"
+ACTION_RELEASE_VERSION = "0.3.7"
+ACTION_RELEASE_COMMIT = "67d8828ccf5b199d0cf9e99007de53436ac47f7a"
 PACKAGE_RELEASE_VERSION = "0.3.7"
 
 
@@ -467,7 +467,7 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "immutable\n`0.3.6` Action" in readme
+    assert "immutable\n`0.3.7` Action" in readme
     assert "unreviewed" in readme
     assert "context" in readme
     assert "defense in depth" in readme

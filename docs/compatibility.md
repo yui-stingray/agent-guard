@@ -14,7 +14,7 @@ downstream wrappers.
 > **Version gate:** package `0.3.7` includes the v1 and v2 report/manifest
 > schemas and the guard-owned
 > `agent-guard.public_agent_policy_audit_event.v1` profile. Copyable Action
-> examples use the immutable `0.3.6` release commit and retain the documented
+> examples use the immutable `0.3.7` release commit and retain the documented
 > context-policy preflight and timeout as defense-in-depth controls.
 > Package `0.3.7` binds each supplied v2 consumer event to an explicit
 > `--repo-root` and exact manifest artifact path.

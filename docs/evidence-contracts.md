@@ -8,7 +8,7 @@ in downstream wrappers without sending repository contents to a model.
 
 > **Version gate:** package `0.3.7` contains the v1 and v2 report/manifest
 > contracts, including the guard-owned `agent-guard.public_agent_policy_audit_event.v1`
-> profile. Copyable Action examples use the immutable `0.3.6` release commit.
+> profile. Copyable Action examples use the immutable `0.3.7` release commit.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
 > Package `0.3.7` requires consumer `--repo-root` for bound v2 evidence.
 
