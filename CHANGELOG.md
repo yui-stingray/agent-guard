@@ -10,6 +10,11 @@ Why: keep static guard releases auditable while the package is still alpha.
   remain pinned to the published `0.3.7` release.
 - Made required workflow-command matching parse and normalize native
   `agent-guard` options, rejecting duplicate or meaning-changing overrides.
+- Bound generated drift baselines directly to the pull-request base SHA or the
+  push event's previous SHA, so shell-variable reassignment and push
+  self-comparison cannot satisfy the required-command contract. Generated
+  installs remain pinned to public `0.3.7`; cross-invocation conflict detection
+  therefore remains gated on the next published package pin.
 - Isolated surface and drift Git inspection behind the bounded Git runner and
   applied file, count, byte, output, and deadline budgets to repository
   inventory, YAML loading, and surface materialization.

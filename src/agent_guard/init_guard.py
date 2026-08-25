@@ -10,6 +10,10 @@ from pathlib import Path
 
 INIT_PLAN_SCHEMA_VERSION = "agent-guard.init_plan.v1"
 PUBLISHED_PACKAGE_VERSION = "0.3.7"
+GITHUB_EVENT_BASE_SHA_EXPRESSION = (
+    "${{ github.event_name == 'pull_request' && "
+    "github.event.pull_request.base.sha || github.event.before }}"
+)
 PUBLISHED_CONTEXT_POLICY_PREFLIGHT = r'''set -euo pipefail
 
 fail_preflight() {
@@ -254,9 +258,9 @@ workflow_checks:
       - id: workflow_guard
         command: agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: drift_guard
-        command: agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha"
+        command: ( agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json 2>/dev/null > "$raw_dir/drift.json" )
       - id: evidence_report_with_drift
-        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha"
+        command: ( agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --format json --output "$report_json" > /dev/null 2>&1 )
       - id: conformance_check
         command: agent-guard conformance check --root . --evidence "$report_json" --profile recommended
       - id: evidence_pack_manifest
@@ -304,7 +308,6 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
         timeout-minutes: 1
         env:
           AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}
-          AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set +e
           status=0
@@ -314,33 +317,34 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
               status="$code"
             fi
           }
-          base_sha=""
+          base_sha="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
+          baseline_label=""
           case "${AGENT_GUARD_EVENT_NAME:-}" in
             pull_request)
-              base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
-              if [ -z "$base_sha" ]; then
-                echo "::error::pull request base SHA is unavailable"
-                exit 2
-              fi
-              case "$base_sha" in
-                *[!0-9a-f]*)
-                  echo "::error::pull request base SHA is invalid"
-                  exit 2
-                  ;;
-              esac
-              if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
-                echo "::error::pull request base SHA is invalid"
-                exit 2
-              fi
+              baseline_label="pull request base"
               ;;
             push)
-              base_sha=HEAD
+              baseline_label="push before"
               ;;
             *)
               echo "::error::workflow event type is unsupported"
               exit 2
               ;;
           esac
+          if [ -z "$base_sha" ]; then
+            echo "::error::${baseline_label} SHA is unavailable"
+            exit 2
+          fi
+          case "$base_sha" in
+            *[!0-9a-f]*)
+              echo "::error::${baseline_label} SHA is invalid"
+              exit 2
+              ;;
+          esac
+          if [ "${#base_sha}" -ne 40 ] && [ "${#base_sha}" -ne 64 ]; then
+            echo "::error::${baseline_label} SHA is invalid"
+            exit 2
+          fi
           runner_temp="${RUNNER_TEMP:-/tmp}"
           if ! mkdir -p "$runner_temp" 2>/dev/null; then
             echo "::error::evidence staging setup failed"
@@ -400,10 +404,10 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json 2>/dev/null > "$raw_dir/workflow.json"
           validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
-          agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha" --json 2>/dev/null > "$raw_dir/drift.json"
+          ( agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json 2>/dev/null > "$raw_dir/drift.json" )
           validate_raw_result "$?" "$raw_dir/drift.json"
           record_status "$?"
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha" --format json --output "$report_json" > /dev/null 2>&1
+          ( agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --format json --output "$report_json" > /dev/null 2>&1 )
           record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json 2>/dev/null > "$surface_inventory_json"
           validate_raw_result "$?" "$surface_inventory_json"

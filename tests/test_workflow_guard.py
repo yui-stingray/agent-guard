@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from agent_guard import workflow_guard
+from agent_guard.init_guard import GITHUB_EVENT_BASE_SHA_EXPRESSION
 from agent_guard.workflow_guard import (
     command_line_matches_required,
     iter_active_shell_lines,
@@ -826,6 +827,261 @@ def test_command_match_allows_the_same_quoted_scalar_value() -> None:
         required.replace('"$report_json"', "$report_json"),
         required,
     )
+
+
+def test_command_match_binds_generated_baseline_to_exact_github_event_expression() -> None:
+    required = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"'
+    )
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert command_line_matches_required(
+        required.replace(
+            f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+            f'--base-ref="{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        )
+        + " --json",
+        required,
+    )
+    for replacement in (
+        '"$base_sha"',
+        "HEAD",
+        '"${{ github.sha }}"',
+        '"${{ github.event.pull_request.head.sha }}"',
+    ):
+        assert not command_line_matches_required(
+            required.replace(f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"', replacement),
+            required,
+        )
+
+    reassigned = (
+        "base_sha=HEAD; "
+        + required.replace(
+            f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+            '"$base_sha"',
+        )
+    )
+    assert not command_line_matches_required(reassigned, required)
+
+
+def test_command_match_preserves_closed_subshell_execution_boundary() -> None:
+    inner = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
+        '--json 2>/dev/null > "$raw_dir/drift.json"'
+    )
+    required = f"( {inner} )"
+
+    assert command_line_matches_required(required, required)
+    assert not command_line_matches_required(inner, required)
+    assert not command_line_matches_required(
+        required.replace(" --json ", " --base-ref HEAD --json "),
+        required,
+    )
+    assert not command_line_matches_required(
+        f"{required} --base-ref HEAD",
+        required,
+    )
+
+
+@pytest.mark.parametrize(
+    "weaker",
+    [
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD; true )",
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD && true )",
+        "( ( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD ) )",
+        "{ agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD; }",
+        "command -- agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "command -p agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        'env FOO="$BAR" agent-guard drift check --root . '
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "env -uFOO agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env python -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "env -S 'agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD'",
+        "env -S 'agent-guard' drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env -Sagent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env -S 'python' -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        r"env -S 'agent-guard\_drift\_check\_--root\_.\_--profile\_recommended"
+        r"\_--schema-version\_v2\_--base-ref\_HEAD'",
+        "env --split-string='agent-guard drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD'",
+        "python -u -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "python -magent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "/usr/bin/python3 -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+    ],
+)
+def test_scan_rejects_weaker_route_beside_inline_trusted_baseline(
+    tmp_path: Path,
+    weaker: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    inline = required.replace(
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        f'--base-ref="{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+    )
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {inline}\n"
+        f"          {weaker}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+@pytest.mark.parametrize(
+    "non_execution",
+    [
+        "env echo 'agent-guard drift check --base-ref HEAD'",
+        "python -cpass -m agent_guard.cli drift check --base-ref HEAD",
+        "python - -m agent_guard.cli drift check --base-ref HEAD",
+        "python --version -m agent_guard.cli drift check --base-ref HEAD",
+        "env -0 agent-guard drift check --base-ref HEAD",
+        "env --help agent-guard drift check --base-ref HEAD",
+        "command FOO=x agent-guard drift check --base-ref HEAD",
+        " ".join(
+            ["command"] * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1)
+            + ["echo safe"]
+        ),
+        "{ " * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1)
+        + "echo safe; }" * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1),
+    ],
+)
+def test_scan_does_not_treat_wrapped_argument_text_as_guard_invocation(
+    tmp_path: Path,
+    non_execution: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {required}\n"
+        f"          {non_execution}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert findings == []
+
+
+@pytest.mark.parametrize(
+    "depth",
+    [
+        workflow_guard.MAX_WORKFLOW_SHELL_NESTING,
+        workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1,
+    ],
+)
+@pytest.mark.parametrize("wrapper", ["command", "brace"])
+def test_scan_rejects_weaker_route_at_and_beyond_wrapper_bound(
+    tmp_path: Path,
+    depth: int,
+    wrapper: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    weaker_core = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD"
+    )
+    if wrapper == "command":
+        weaker = " ".join(["command"] * depth + [weaker_core])
+    else:
+        weaker = "{ " * depth + weaker_core + "; }" * depth
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {required}\n"
+        f"          {weaker}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
 
 
 def test_command_match_rejects_array_expansion_and_dynamic_option_override() -> None:
