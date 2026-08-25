@@ -314,8 +314,8 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
               status="$code"
             fi
           }
-          drift_base_args=()
-          report_base_args=()
+          base_sha=""
+          use_base_ref=false
           case "${AGENT_GUARD_EVENT_NAME:-}" in
             pull_request)
               base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
@@ -333,8 +333,7 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
                 echo "::error::pull request base SHA is invalid"
                 exit 2
               fi
-              drift_base_args=(--base-ref "$base_sha")
-              report_base_args=(--drift-base-ref "$base_sha")
+              use_base_ref=true
               ;;
             push)
               ;;
@@ -402,10 +401,18 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json 2>/dev/null > "$raw_dir/workflow.json"
           validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
-          agent-guard drift check --root . --profile recommended --schema-version v2 "${drift_base_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"
+          if [ "$use_base_ref" = "true" ]; then
+            agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha" --json 2>/dev/null > "$raw_dir/drift.json"
+          else
+            agent-guard drift check --root . --profile recommended --schema-version v2 --json 2>/dev/null > "$raw_dir/drift.json"
+          fi
           validate_raw_result "$?" "$raw_dir/drift.json"
           record_status "$?"
-          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" --format json --output "$report_json" > /dev/null 2>&1
+          if [ "$use_base_ref" = "true" ]; then
+            agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha" --format json --output "$report_json" > /dev/null 2>&1
+          else
+            agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output "$report_json" > /dev/null 2>&1
+          fi
           record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json 2>/dev/null > "$surface_inventory_json"
           validate_raw_result "$?" "$surface_inventory_json"

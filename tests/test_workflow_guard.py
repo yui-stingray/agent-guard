@@ -811,6 +811,36 @@ def test_command_match_rejects_unknown_native_tail(tail: str) -> None:
     assert not command_line_matches_required(f"{required} {tail}", required)
 
 
+def test_command_match_allows_the_same_quoted_scalar_value() -> None:
+    required = (
+        'agent-guard conformance check --root . --evidence "$report_json" '
+        '--profile recommended'
+    )
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert not command_line_matches_required(
+        required.replace("$report_json", "$other_report"),
+        required,
+    )
+    assert not command_line_matches_required(
+        required.replace('"$report_json"', "$report_json"),
+        required,
+    )
+
+
+def test_command_match_rejects_array_expansion_and_dynamic_option_override() -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(
+        f'{required} "${{extra_args[@]}}"',
+        required,
+    )
+    assert not command_line_matches_required(
+        f'{required} --policy "$other_policy"',
+        required,
+    )
+
+
 def test_command_match_does_not_fall_back_for_unsupported_native_launcher() -> None:
     required = (
         "python -X dev -m agent_guard.cli context check --policy reviewed.yaml"

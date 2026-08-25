@@ -153,19 +153,24 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
     assert (
         'agent-guard drift check --root . --profile recommended --schema-version v2 '
-        '"${drift_base_args[@]}" --json'
+        '--base-ref "$base_sha" --json'
         in workflow
     )
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
+        '--drift-base-ref "$base_sha" '
         '--format json --output "$report_json" > /dev/null 2>&1'
         in workflow
     )
     report_lines = [line.strip() for line in workflow.splitlines() if line.strip().startswith("agent-guard report")]
     assert report_lines == [
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
+        '--drift-base-ref "$base_sha" '
+        '--format json --output "$report_json" > /dev/null 2>&1',
+        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
         '--format json --output "$report_json" > /dev/null 2>&1'
     ]
     assert "AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}" in workflow
@@ -178,8 +183,9 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     )
     assert "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request" not in workflow
     assert "timeout-minutes: 1" in workflow
-    assert 'drift_base_args=(--base-ref "$base_sha")' in workflow
-    assert 'report_base_args=(--drift-base-ref "$base_sha")' in workflow
+    assert 'use_base_ref=true' in workflow
+    assert 'drift_base_args=' not in workflow
+    assert 'report_base_args=' not in workflow
     assert "pull request base SHA is unavailable" in workflow
     assert "render_report_output" not in workflow
     assert "record_status() {" in workflow
@@ -221,7 +227,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
             )
         )
     ]
-    assert len(raw_scanner_lines) == 6
+    assert len(raw_scanner_lines) == 7
     assert all('2>/dev/null > "$raw_dir/' in line for line in raw_scanner_lines)
     assert (
         "if ! raw_dir=\"$(mktemp -d \"$raw_parent/agent-guard-raw.XXXXXX\" 2>/dev/null)\"; then"

@@ -86,6 +86,9 @@ _AGENT_GUARD_LOOKING_EXPANSION_RE = re.compile(
     r"|%[^%\r\n]+%|![^!\r\n]+!"
 )
 _CMD_EXPANSION_RE = re.compile(r"%[^%\r\n]+%|%[0-9*~]|![^!\r\n]+!")
+_SIMPLE_QUOTED_SHELL_SCALAR_RE = re.compile(
+    r'"\$([A-Za-z_][A-Za-z0-9_]*)"'
+)
 
 _ARRAY_TOKEN_START = 0
 _ARRAY_TOKEN_NAME = 1
@@ -1605,7 +1608,12 @@ def has_preceding_same_list_or(segments: list[tuple[str, str | None]], *, start_
 
 @dataclass(frozen=True)
 class _NormalizedAgentGuardCommand:
-    arguments: tuple[tuple[str, ...], ...]
+    arguments: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
+class _DynamicShellScalar:
+    name: str
 
 
 def _looks_like_agent_guard_command(command: str) -> bool:
@@ -1648,7 +1656,17 @@ def _consume_static_agent_guard_word(
     index: int,
     reject_dynamic: bool,
     shell: str | None,
-) -> tuple[str, int, bool] | None:
+) -> tuple[str | _DynamicShellScalar, int, bool] | None:
+    if reject_dynamic and shell in {None, "bash", "sh"}:
+        dynamic_scalar = _SIMPLE_QUOTED_SHELL_SCALAR_RE.match(command, index)
+        if dynamic_scalar is not None:
+            end = dynamic_scalar.end()
+            if (
+                end == len(command)
+                or command[end].isspace()
+                or _agent_guard_redirection_operator(command, index=end) is not None
+            ):
+                return _DynamicShellScalar(dynamic_scalar.group(1)), end, False
     characters: list[str] = []
     started = False
     plain = True
@@ -1731,7 +1749,7 @@ def _static_agent_guard_argv(
     command: str,
     *,
     shell: str | None,
-) -> list[str] | None:
+) -> list[str | _DynamicShellScalar] | None:
     """Return static native argv while excluding shell redirections."""
     if "${{" in command:
         return None
@@ -1740,7 +1758,7 @@ def _static_agent_guard_argv(
     if shell in {"pwsh", "powershell"} and "`" in command:
         return None
 
-    argv: list[str] = []
+    argv: list[str | _DynamicShellScalar] = []
     index = 0
     while index < len(command):
         while index < len(command) and command[index].isspace():
@@ -1793,10 +1811,16 @@ def _agent_guard_cli_parser() -> argparse.ArgumentParser:
     return build_parser()
 
 
-def _agent_guard_entrypoint_size(argv: list[str]) -> int | None:
+def _agent_guard_entrypoint_size(
+    argv: list[str | _DynamicShellScalar],
+) -> int | None:
     if argv[:1] == ["agent-guard"]:
         return 1
-    if argv and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0]):
+    if (
+        argv
+        and isinstance(argv[0], str)
+        and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0])
+    ):
         module_index = 2 if argv[1:2] == ["-I"] else 1
         if argv[module_index : module_index + 2] == ["-m", "agent_guard.cli"]:
             return module_index + 2
@@ -1804,7 +1828,7 @@ def _agent_guard_entrypoint_size(argv: list[str]) -> int | None:
 
 
 def _agent_guard_leaf_parser(
-    argv: list[str],
+    argv: list[str | _DynamicShellScalar],
 ) -> tuple[list[str], argparse.ArgumentParser, int] | None:
     parser = _agent_guard_cli_parser()
     route: list[str] = []
@@ -1822,10 +1846,13 @@ def _agent_guard_leaf_parser(
             return route, parser, index
         if index >= len(argv):
             return None
-        subparser = subparsers.choices.get(argv[index])
+        route_value = argv[index]
+        if not isinstance(route_value, str):
+            return None
+        subparser = subparsers.choices.get(route_value)
         if subparser is None:
             return None
-        route.append(argv[index])
+        route.append(route_value)
         parser = subparser
         index += 1
 
@@ -1853,12 +1880,12 @@ def _resolve_agent_guard_option(
 
 
 def _agent_guard_option_values(
-    argv: list[str],
+    argv: list[str | _DynamicShellScalar],
     *,
     index: int,
     action: argparse.Action,
     inline_value: str | None,
-) -> tuple[tuple[str, ...], int] | None:
+) -> tuple[tuple[object, ...], int] | None:
     if action.nargs == 0:
         if inline_value is not None:
             return None
@@ -1869,14 +1896,18 @@ def _agent_guard_option_values(
         if index + 1 >= len(argv):
             return None
         value = argv[index + 1]
-        if value == "--" or (value.startswith("-") and value != "-"):
+        if value == "--" or (
+            isinstance(value, str) and value.startswith("-") and value != "-"
+        ):
             return None
         return (value,), 2
     if action.nargs == "*":
         if inline_value is not None:
             return (inline_value,), 1
         end = index + 1
-        while end < len(argv) and not argv[end].startswith("-"):
+        while end < len(argv) and not (
+            isinstance(argv[end], str) and argv[end].startswith("-")
+        ):
             end += 1
         return tuple(argv[index + 1 : end]), end - index
     return None
@@ -1903,7 +1934,7 @@ def _normalize_agent_guard_command(
         for action in parser._actions
         for option in action.option_strings
     }
-    normalized: list[tuple[str, ...]] = [
+    normalized: list[tuple[object, ...]] = [
         ("literal", value) for value in argv[:entrypoint_size]
     ]
     normalized.extend(("literal", value) for value in route)
@@ -1913,6 +1944,8 @@ def _normalize_agent_guard_command(
     while index < len(tail):
         value = tail[index]
         if value == "--":
+            return False
+        if not isinstance(value, str):
             return False
         action, inline_value, ambiguous = _resolve_agent_guard_option(
             value,
