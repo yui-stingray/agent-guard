@@ -716,6 +716,60 @@ def test_command_match_preserves_safe_setup_and_tail_shapes() -> None:
 
 
 @pytest.mark.parametrize(
+    ("required", "candidate"),
+    [
+        (
+            "python -m agent_guard.cli context check --policy reviewed.yaml",
+            "python -m agent_guard.cli context check --policy reviewed.yaml "
+            "--policy=attacker.yaml",
+        ),
+        (
+            "agent-guard context lock --policy reviewed.yaml --check",
+            "agent-guard context lock --policy reviewed.yaml --check --check",
+        ),
+        (
+            "agent-guard content check --policy reviewed.yaml --targets reviewed.py",
+            "agent-guard content check --policy reviewed.yaml --targets reviewed.py "
+            "--targets attacker.py",
+        ),
+        (
+            "agent-guard evidence-pack manifest --report reviewed.json --artifact reviewed.json",
+            "agent-guard evidence-pack manifest --report reviewed.json --artifact reviewed.json "
+            "--artifact attacker.json",
+        ),
+    ],
+)
+def test_command_match_rejects_appended_native_option_overrides(
+    required: str, candidate: str
+) -> None:
+    assert not command_line_matches_required(candidate, required)
+
+
+@pytest.mark.parametrize("override", ["--policy attacker.yaml", "--pol=attacker.yaml"])
+def test_command_match_rejects_equivalent_native_option_overrides(override: str) -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(f"{required} {override}", required)
+
+
+def test_command_match_rejects_ambiguous_native_option_form() -> None:
+    required = "agent-guard report --root ."
+    candidate = f"{required} --drift=attacker"
+
+    assert not command_line_matches_required(candidate, required)
+
+
+def test_command_match_normalizes_native_options_without_rejecting_safe_prefix_tail() -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert command_line_matches_required(
+        "agent-guard context check --policy=reviewed.yaml --json",
+        required,
+    )
+
+
+@pytest.mark.parametrize(
     "tail",
     [
         "|",

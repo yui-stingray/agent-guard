@@ -5,12 +5,15 @@ Why: ensure CI keeps running declared guard commands and required policy files.
 
 from __future__ import annotations
 
+import argparse
 import io
 import os
 import re
+import shlex
 import stat
 from collections import deque
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path, PureWindowsPath
 from typing import Any, Iterator, NoReturn
 
@@ -68,6 +71,7 @@ _WORKFLOW_DECIMAL_LITERAL_RE = re.compile(
     r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z"
 )
 _WORKFLOW_HEX_LITERAL_RE = re.compile(r"-?0[xX][0-9a-fA-F]+\Z")
+_AGENT_GUARD_PYTHON_EXECUTABLE_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
 
 _ARRAY_TOKEN_START = 0
 _ARRAY_TOKEN_NAME = 1
@@ -1579,6 +1583,197 @@ def has_preceding_same_list_or(segments: list[tuple[str, str | None]], *, start_
     return False
 
 
+@dataclass(frozen=True)
+class _NormalizedAgentGuardCommand:
+    arguments: tuple[tuple[str, ...], ...]
+
+
+@cache
+def _agent_guard_cli_parser() -> argparse.ArgumentParser:
+    # Import lazily because the public CLI imports this workflow guard.
+    from .cli import build_parser
+
+    return build_parser()
+
+
+def _agent_guard_entrypoint_size(argv: list[str]) -> int | None:
+    if argv[:1] == ["agent-guard"]:
+        return 1
+    if (
+        len(argv) >= 3
+        and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0])
+        and argv[1:3] == ["-m", "agent_guard.cli"]
+    ):
+        return 3
+    return None
+
+
+def _agent_guard_leaf_parser(
+    argv: list[str],
+) -> tuple[list[str], argparse.ArgumentParser, int] | None:
+    parser = _agent_guard_cli_parser()
+    route: list[str] = []
+    index = 0
+    while True:
+        subparsers = next(
+            (
+                action
+                for action in parser._actions
+                if isinstance(action, argparse._SubParsersAction)
+            ),
+            None,
+        )
+        if subparsers is None:
+            return route, parser, index
+        if index >= len(argv):
+            return None
+        subparser = subparsers.choices.get(argv[index])
+        if subparser is None:
+            return None
+        route.append(argv[index])
+        parser = subparser
+        index += 1
+
+
+def _resolve_agent_guard_option(
+    value: str,
+    *,
+    options: dict[str, argparse.Action],
+) -> tuple[argparse.Action | None, str | None, bool]:
+    option, separator, inline_value = value.partition("=")
+    action = options.get(option)
+    if action is not None:
+        return action, inline_value if separator else None, False
+    if not option.startswith("--"):
+        return None, None, False
+
+    matching_actions = {
+        id(candidate): candidate
+        for option_name, candidate in options.items()
+        if option_name.startswith("--") and option_name.startswith(option)
+    }
+    if len(matching_actions) == 1:
+        return next(iter(matching_actions.values())), inline_value if separator else None, False
+    return None, None, bool(matching_actions)
+
+
+def _agent_guard_option_values(
+    argv: list[str],
+    *,
+    index: int,
+    action: argparse.Action,
+    inline_value: str | None,
+) -> tuple[tuple[str, ...], int] | None:
+    if action.nargs == 0:
+        if inline_value is not None:
+            return None
+        return (), 1
+    if action.nargs is None:
+        if inline_value is not None:
+            return (inline_value,), 1
+        if index + 1 >= len(argv):
+            return None
+        value = argv[index + 1]
+        if value == "--" or (value.startswith("-") and value != "-"):
+            return None
+        return (value,), 2
+    if action.nargs == "*":
+        if inline_value is not None:
+            return (inline_value,), 1
+        end = index + 1
+        while end < len(argv) and not argv[end].startswith("-"):
+            end += 1
+        return tuple(argv[index + 1 : end]), end - index
+    return None
+
+
+def _normalize_agent_guard_command(
+    command: str,
+) -> _NormalizedAgentGuardCommand | bool | None:
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    entrypoint_size = _agent_guard_entrypoint_size(argv)
+    if entrypoint_size is None:
+        return None
+
+    leaf = _agent_guard_leaf_parser(argv[entrypoint_size:])
+    if leaf is None:
+        return False
+    route, parser, route_size = leaf
+    options = {
+        option: action
+        for action in parser._actions
+        for option in action.option_strings
+    }
+    normalized: list[tuple[str, ...]] = [
+        ("literal", value) for value in argv[:entrypoint_size]
+    ]
+    normalized.extend(("literal", value) for value in route)
+
+    tail = argv[entrypoint_size + route_size :]
+    index = 0
+    while index < len(tail):
+        value = tail[index]
+        if value == "--":
+            return False
+        action, inline_value, ambiguous = _resolve_agent_guard_option(
+            value,
+            options=options,
+        )
+        if ambiguous:
+            return False
+        if action is None:
+            normalized.append(("literal", value))
+            index += 1
+            continue
+        if action.dest == "help":
+            return False
+        option_values = _agent_guard_option_values(
+            tail,
+            index=index,
+            action=action,
+            inline_value=inline_value,
+        )
+        if option_values is None:
+            return False
+        values, consumed = option_values
+        normalized.append(("option", action.dest, *values))
+        index += consumed
+
+    return _NormalizedAgentGuardCommand(arguments=tuple(normalized))
+
+
+def command_prefix_matches_required(candidate: str, required: str) -> bool:
+    required_command = _normalize_agent_guard_command(required)
+    candidate_command = _normalize_agent_guard_command(candidate)
+    if isinstance(required_command, _NormalizedAgentGuardCommand) or isinstance(
+        candidate_command, _NormalizedAgentGuardCommand
+    ):
+        if not isinstance(required_command, _NormalizedAgentGuardCommand) or not isinstance(
+            candidate_command, _NormalizedAgentGuardCommand
+        ):
+            return False
+        required_arguments = required_command.arguments
+        candidate_arguments = candidate_command.arguments
+        if candidate_arguments[: len(required_arguments)] != required_arguments:
+            return False
+        required_option_destinations = {
+            argument[1]
+            for argument in required_arguments
+            if argument[0] == "option"
+        }
+        return not any(
+            argument[0] == "option" and argument[1] in required_option_destinations
+            for argument in candidate_arguments[len(required_arguments) :]
+        )
+
+    if required_command is False or candidate_command is False:
+        return False
+    return candidate == required or candidate.startswith(required + " ")
+
+
 def command_line_matches_required(command_line: str, required_command: str) -> bool:
     _validate_command_lexer_characters(command_line)
     _validate_command_lexer_characters(required_command)
@@ -1586,7 +1781,6 @@ def command_line_matches_required(command_line: str, required_command: str) -> b
     if not required:
         return False
 
-    required_prefix = required + " "
     candidate_matched = False
     preceding_same_list_or = False
     previous_operator: str | None = None
@@ -1603,10 +1797,7 @@ def command_line_matches_required(command_line: str, required_command: str) -> b
             and next_operator not in {"||", "|"}
             and not has_help_option(normalized)
             and not preceding_same_list_or
-            and (
-                normalized == required
-                or normalized.startswith(required_prefix)
-            )
+            and command_prefix_matches_required(normalized, required)
         ):
             candidate_matched = True
 
