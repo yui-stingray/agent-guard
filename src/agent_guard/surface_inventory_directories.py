@@ -118,9 +118,10 @@ def collect_directory_surfaces(
     surface: str,
     opaque_directories: Sequence[str] = (),
     include_empty_containers: bool = True,
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    budget = SurfaceInventoryBudget()
+    budget = _budget or SurfaceInventoryBudget()
     for rel_base, kind in entries:
         base = root / rel_base
         if not is_repo_bound_path(base, root):
@@ -165,16 +166,16 @@ def collect_directory_surfaces(
                 opaque_directories=opaque_directories,
                 _budget=budget,
             )
-            surfaces.append(
-                {
-                    "surface": surface,
-                    "path": rel_path(base, root),
-                    "kind": kind,
-                    "status": "present",
-                    "file_count": file_count,
-                    **({"truncated": True} if truncated else {}),
-                }
-            )
+            item = {
+                "surface": surface,
+                "path": rel_path(base, root),
+                "kind": kind,
+                "status": "present",
+                "file_count": file_count,
+                **({"truncated": True} if truncated else {}),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
             continue
         for child in children:
             file_count, truncated = count_tree_files(
@@ -183,16 +184,16 @@ def collect_directory_surfaces(
                 opaque_directories=opaque_directories,
                 _budget=budget,
             )
-            surfaces.append(
-                {
-                    "surface": surface,
-                    "path": rel_path(child, root),
-                    "kind": kind,
-                    "status": "present",
-                    "file_count": file_count,
-                    **({"truncated": True} if truncated else {}),
-                }
-            )
+            item = {
+                "surface": surface,
+                "path": rel_path(child, root),
+                "kind": kind,
+                "status": "present",
+                "file_count": file_count,
+                **({"truncated": True} if truncated else {}),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
     return surfaces
 
 
@@ -200,9 +201,10 @@ def collect_hook_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    budget = SurfaceInventoryBudget()
+    budget = _budget or SurfaceInventoryBudget()
     for pattern, kind in AGENT_HOOK_FILES:
         for path in sorted(
             repo_bound_glob(
@@ -215,13 +217,13 @@ def collect_hook_surfaces(
             if not path.is_file():
                 continue
             opened = read_surface_file(path, root, budget=budget)
-            surfaces.append(
-                {
-                    "surface": "agent_hook_config",
-                    "path": opened.relative_path,
-                    "kind": kind,
-                    "status": "present",
-                    "size_bytes": len(opened.data),
-                }
-            )
+            item = {
+                "surface": "agent_hook_config",
+                "path": opened.relative_path,
+                "kind": kind,
+                "status": "present",
+                "size_bytes": len(opened.data),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
     return surfaces

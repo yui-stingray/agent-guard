@@ -10,11 +10,16 @@ from pathlib import Path
 
 from .bounded_repo_reader import DistinctInputBudget
 from .context_guard import (
-    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    ERROR_CONTEXT_SCAN_LIMIT,
     ContextInventory,
     collect_context_inventory,
 )
-from .surface_inventory_core import normalize_surface_version, schema_for_surface_version
+from .surface_inventory_core import (
+    ERROR_SURFACE_INVENTORY_LIMIT,
+    SurfaceInventoryBudget,
+    normalize_surface_version,
+    schema_for_surface_version,
+)
 from .surface_inventory_directories import (
     AGENT_COMMAND_DIRS,
     AGENT_PROFILE_DIRS,
@@ -22,8 +27,10 @@ from .surface_inventory_directories import (
     collect_directory_surfaces,
     collect_hook_surfaces,
 )
-from .surface_inventory_mcp import collect_mcp_config_surfaces
-from .surface_inventory_mcp import MAX_MCP_DISTINCT_INPUT_BYTES
+from .surface_inventory_mcp import (
+    ERROR_MCP_CONFIG_LIMIT,
+    collect_mcp_config_surfaces,
+)
 from .surface_inventory_metadata import (
     collect_committed_evidence_surfaces,
     collect_documented_guard_surfaces,
@@ -57,18 +64,34 @@ def collect_agent_surface_inventory(
 ) -> dict[str, object]:
     root = root.resolve()
     version = normalize_surface_version(schema_version)
-    context_input_budget = _context_input_budget or DistinctInputBudget(
-        max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+    # Preserve a caller's prior context-policy charge while using one budget for
+    # every collector invoked by this inventory assembly.
+    budget = SurfaceInventoryBudget(
+        _input_budget=_context_input_budget or _mcp_input_budget
     )
-    context_inventory = _context_inventory or collect_context_inventory(
-        root=root,
-        policy=context_policy,
-        opaque_directories=opaque_directories,
-        _input_budget=context_input_budget,
-    )
+    if _context_inventory is None:
+        try:
+            context_inventory = collect_context_inventory(
+                root=root,
+                policy=context_policy,
+                opaque_directories=opaque_directories,
+                _input_budget=budget.input_budget,
+            )
+        except ValueError as exc:
+            if str(exc) == ERROR_CONTEXT_SCAN_LIMIT:
+                raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+            raise
+    else:
+        context_inventory = _context_inventory
     surfaces: list[dict[str, object]] = []
+
+    def append_surface(item: dict[str, object]) -> None:
+        budget.add_result(item)
+        surfaces.append(item)
+
     for item in context_inventory.context_files:
-        surfaces.append(
+        budget.charge_selected(root / item.path)
+        append_surface(
             {
                 "surface": "agent_context",
                 "path": item.path,
@@ -82,28 +105,36 @@ def collect_agent_surface_inventory(
         collect_policy_surfaces(
             root,
             opaque_directories=opaque_directories,
+            _budget=budget,
         )
     )
+    budget.check_deadline()
     surfaces.extend(
         collect_workflow_surfaces(
             root,
             include_artifacts=version == "v2",
             opaque_directories=opaque_directories,
+            _budget=budget,
         )
     )
+    budget.check_deadline()
     if version == "v2":
         surfaces.extend(
             collect_documented_guard_surfaces(
                 root,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         )
+        budget.check_deadline()
         surfaces.extend(
             collect_committed_evidence_surfaces(
                 root,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         )
+        budget.check_deadline()
         surfaces.extend(
             collect_directory_surfaces(
                 root,
@@ -111,8 +142,10 @@ def collect_agent_surface_inventory(
                 surface="agent_skill",
                 opaque_directories=opaque_directories,
                 include_empty_containers=include_empty_directory_surfaces,
+                _budget=budget,
             )
         )
+        budget.check_deadline()
         surfaces.extend(
             collect_directory_surfaces(
                 root,
@@ -120,8 +153,10 @@ def collect_agent_surface_inventory(
                 surface="agent_profile",
                 opaque_directories=opaque_directories,
                 include_empty_containers=include_empty_directory_surfaces,
+                _budget=budget,
             )
         )
+        budget.check_deadline()
         surfaces.extend(
             collect_directory_surfaces(
                 root,
@@ -129,26 +164,38 @@ def collect_agent_surface_inventory(
                 surface="agent_command",
                 opaque_directories=opaque_directories,
                 include_empty_containers=include_empty_directory_surfaces,
+                _budget=budget,
             )
         )
+        budget.check_deadline()
         surfaces.extend(
             collect_hook_surfaces(
                 root,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         )
-        surfaces.extend(
-            _mcp_surfaces
-            if _mcp_surfaces is not None
-            else collect_mcp_config_surfaces(
-                root,
-                opaque_directories=opaque_directories,
-                _input_budget=(
-                    _mcp_input_budget
-                    or DistinctInputBudget(max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES)
-                ),
-            )
-        )
+        budget.check_deadline()
+        if _mcp_surfaces is None:
+            try:
+                mcp_surfaces = collect_mcp_config_surfaces(
+                    root,
+                    opaque_directories=opaque_directories,
+                    _input_budget=budget.input_budget,
+                )
+            except ValueError as exc:
+                if str(exc) == ERROR_MCP_CONFIG_LIMIT:
+                    raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+                raise
+        else:
+            mcp_surfaces = _mcp_surfaces
+        # MCP owns an independent incremental result bound; charge its already
+        # bounded entries into the aggregate budget while joining the inventory.
+        for item in mcp_surfaces:
+            path = item.get("path")
+            if isinstance(path, str) and path:
+                budget.charge_selected(root / path)
+            append_surface(item)
     directory_surfaces = {"agent_skill", "agent_profile", "agent_command"}
     filtered_surfaces = []
     for item in surfaces:
@@ -165,6 +212,7 @@ def collect_agent_surface_inventory(
             path == containing_opaque and item.get("surface") in directory_surfaces
         ):
             filtered_surfaces.append(item)
+    budget.check_deadline()
     surfaces = sorted(
         filtered_surfaces,
         key=lambda item: (str(item.get("path", "")), str(item.get("surface", ""))),

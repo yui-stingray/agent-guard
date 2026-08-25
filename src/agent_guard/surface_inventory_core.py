@@ -6,6 +6,7 @@ Why: keep surface scanners deterministic while splitting scanner-specific logic.
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import re
 import time
@@ -22,6 +23,7 @@ from .bounded_repo_reader import (
     DistinctInputBudget,
     read_repo_bound_bytes,
 )
+from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
 from .cli_registry import is_agent_guard_cli_command
 from .content_guard import CONTENT_TRAVERSAL_TIMEOUT_SECONDS
 from .context_guard import (
@@ -47,10 +49,44 @@ MAX_SURFACE_INVENTORY_FILE_BYTES = MAX_CONTEXT_FILE_BYTES
 MAX_SURFACE_INVENTORY_POLICY_BYTES = MAX_WORKFLOW_POLICY_BYTES
 MAX_SURFACE_INVENTORY_DISTINCT_INPUT_BYTES = MAX_CONTEXT_DISTINCT_INPUT_BYTES
 SURFACE_INVENTORY_TRAVERSAL_TIMEOUT_SECONDS = CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+# Reserve half the isolated transport cap for the full inventory container and
+# serialization overhead, matching the other public scanner result budgets.
+MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
+
+
+def _canonical_json_size(value: object) -> int:
+    try:
+        rendered = json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+
+
+class _SurfaceInventoryResultBudget:
+    """Bound the compact JSON representation before collectors append entries."""
+
+    def __init__(self) -> None:
+        self.used = _canonical_json_size([])
+        self.count = 0
+        if self.used > MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def add(self, item: dict[str, object]) -> None:
+        amount = _canonical_json_size(item) + (1 if self.count else 0)
+        if amount > MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES - self.used:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+        self.used += amount
+        self.count += 1
 
 
 class SurfaceInventoryBudget:
-    """Share bounded enumeration and descriptor-read work inside one collector."""
+    """Share bounded work and result construction inside one inventory collection."""
 
     def __init__(
         self,
@@ -65,6 +101,7 @@ class SurfaceInventoryBudget:
         self.input_budget = _input_budget or DistinctInputBudget(
             max_bytes=MAX_SURFACE_INVENTORY_DISTINCT_INPUT_BYTES
         )
+        self.result_budget = _SurfaceInventoryResultBudget()
 
     def check_deadline(self) -> None:
         if time.monotonic() >= self.deadline:
@@ -82,6 +119,10 @@ class SurfaceInventoryBudget:
         self.selected.add(identity)
         if len(self.selected) > MAX_SURFACE_INVENTORY_FILES:
             raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def add_result(self, item: dict[str, object]) -> None:
+        self.check_deadline()
+        self.result_budget.add(item)
 
 
 def read_surface_file(

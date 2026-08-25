@@ -144,9 +144,10 @@ def collect_documented_guard_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    budget = SurfaceInventoryBudget()
+    budget = _budget or SurfaceInventoryBudget()
     doc_files: list[Path] = []
     for pattern in DOC_GLOBS:
         doc_files.extend(
@@ -170,16 +171,16 @@ def collect_documented_guard_surfaces(
             command = parse_agent_guard_command(line)
             if command is None:
                 continue
-            surfaces.append(
-                {
-                    "surface": "documented_guard_command",
-                    "path": doc_path,
-                    "kind": "documentation_recipe",
-                    "status": "documented",
-                    "line": lineno,
-                    "command": command,
-                }
-            )
+            item = {
+                "surface": "documented_guard_command",
+                "path": doc_path,
+                "kind": "documentation_recipe",
+                "status": "documented",
+                "line": lineno,
+                "command": command,
+            }
+            budget.add_result(item)
+            surfaces.append(item)
     return surfaces
 
 
@@ -187,6 +188,7 @@ def collect_committed_evidence_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     """Return regular evidence files proven by the repository's Git index.
 
@@ -197,11 +199,15 @@ def collect_committed_evidence_surfaces(
     official generated output name.
     """
 
+    budget = _budget or SurfaceInventoryBudget()
+    budget.check_deadline()
     if not _is_git_worktree(root):
         return _collect_materialized_evidence_surfaces(
             root,
             opaque_directories=opaque_directories,
+            _budget=budget,
         )
+    budget.check_deadline()
     indexed = _run_git_metadata(
         root,
         [
@@ -213,11 +219,13 @@ def collect_committed_evidence_surfaces(
             *EVIDENCE_INDEX_PATHS,
         ],
     )
+    budget.check_deadline()
     if indexed.returncode != 0:
         raise ValueError(ERROR_EVIDENCE_INDEX)
 
     entries: list[tuple[str, str]] = []
     for raw_entry in indexed.stdout.split(b"\0"):
+        budget.check_deadline()
         if not raw_entry:
             continue
         metadata, separator, raw_path = raw_entry.partition(b"\t")
@@ -256,17 +264,20 @@ def collect_committed_evidence_surfaces(
     if not entries:
         return []
 
+    budget.check_deadline()
     object_ids = sorted({object_id for _display, object_id in entries})
     object_metadata = _run_git_metadata(
         root,
         ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
         input_data="".join(f"{object_id}\n" for object_id in object_ids).encode("ascii"),
     )
+    budget.check_deadline()
     if object_metadata.returncode != 0:
         raise ValueError(ERROR_EVIDENCE_INDEX)
 
     blob_sizes: dict[str, int] = {}
     for raw_line in object_metadata.stdout.splitlines():
+        budget.check_deadline()
         try:
             line = raw_line.decode("ascii")
         except UnicodeDecodeError:
@@ -281,22 +292,24 @@ def collect_committed_evidence_surfaces(
 
     surfaces: list[dict[str, object]] = []
     for display, object_id in sorted(entries):
+        budget.check_deadline()
         size_bytes = blob_sizes.get(object_id)
         if size_bytes is None:
             raise ValueError(ERROR_EVIDENCE_INDEX)
-        surfaces.append(
-            {
-                "surface": "evidence_artifact",
-                "path": display,
-                "kind": (
-                    "committed_evidence_sample"
-                    if display.startswith("docs/evidence-samples/")
-                    else "repo_evidence_file"
-                ),
-                "status": "present",
-                "size_bytes": size_bytes,
-            }
-        )
+        budget.charge_selected(root / display)
+        item = {
+            "surface": "evidence_artifact",
+            "path": display,
+            "kind": (
+                "committed_evidence_sample"
+                if display.startswith("docs/evidence-samples/")
+                else "repo_evidence_file"
+            ),
+            "status": "present",
+            "size_bytes": size_bytes,
+        }
+        budget.add_result(item)
+        surfaces.append(item)
     return surfaces
 
 
@@ -304,6 +317,7 @@ def _collect_materialized_evidence_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     """Collect bounded non-Git evidence without admitting official outputs.
 
@@ -311,8 +325,10 @@ def _collect_materialized_evidence_surfaces(
     directory cannot force an unbounded intermediate collection.
     """
 
+    budget = _budget or SurfaceInventoryBudget()
     candidates: list[tuple[str, Path]] = []
     for rel_base in EVIDENCE_INDEX_PATHS:
+        budget.check_deadline()
         base = root / rel_base
         if is_in_opaque_directory(
             base,
@@ -325,6 +341,7 @@ def _collect_materialized_evidence_surfaces(
         try:
             with os.scandir(base) as entries:
                 for entry in entries:
+                    budget.charge_traversal()
                     if len(candidates) >= MAX_EVIDENCE_ARTIFACT_FILES:
                         raise ValueError(ERROR_EVIDENCE_INDEX)
                     candidates.append((rel_base, base / entry.name))
@@ -333,6 +350,7 @@ def _collect_materialized_evidence_surfaces(
 
     surfaces: list[dict[str, object]] = []
     for rel_base, path in sorted(candidates):
+        budget.check_deadline()
         if is_in_opaque_directory(
             path,
             root=root,
@@ -347,19 +365,20 @@ def _collect_materialized_evidence_surfaces(
             size_bytes = path.stat().st_size
         except OSError:
             raise ValueError(ERROR_EVIDENCE_INDEX) from None
-        surfaces.append(
-            {
-                "surface": "evidence_artifact",
-                "path": rel_path(path, root),
-                "kind": (
-                    "committed_evidence_sample"
-                    if rel_base == "docs/evidence-samples"
-                    else "repo_evidence_file"
-                ),
-                "status": "present",
-                "size_bytes": size_bytes,
-            }
-        )
+        budget.charge_selected(path)
+        item = {
+            "surface": "evidence_artifact",
+            "path": rel_path(path, root),
+            "kind": (
+                "committed_evidence_sample"
+                if rel_base == "docs/evidence-samples"
+                else "repo_evidence_file"
+            ),
+            "status": "present",
+            "size_bytes": size_bytes,
+        }
+        budget.add_result(item)
+        surfaces.append(item)
     return surfaces
 
 
@@ -367,6 +386,7 @@ def collect_policy_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     policy_dir = root / ".agent-guard"
     if not is_repo_bound_path(policy_dir, root):
@@ -374,7 +394,7 @@ def collect_policy_surfaces(
     if not policy_dir.is_dir():
         return []
     surfaces: list[dict[str, object]] = []
-    budget = SurfaceInventoryBudget()
+    budget = _budget or SurfaceInventoryBudget()
     for path in sorted(
         repo_bound_glob(
             root,
@@ -392,13 +412,13 @@ def collect_policy_surfaces(
             max_bytes=MAX_SURFACE_INVENTORY_POLICY_BYTES,
         )
         display = opened.relative_path
-        surfaces.append(
-            {
-                "surface": "policy_file",
-                "path": display,
-                "kind": policy_kind(display),
-                "status": "present",
-                "size_bytes": len(opened.data),
-            }
-        )
+        item = {
+            "surface": "policy_file",
+            "path": display,
+            "kind": policy_kind(display),
+            "status": "present",
+            "size_bytes": len(opened.data),
+        }
+        budget.add_result(item)
+        surfaces.append(item)
     return surfaces

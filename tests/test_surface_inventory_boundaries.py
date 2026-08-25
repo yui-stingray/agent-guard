@@ -8,6 +8,7 @@ import pytest
 
 from agent_guard.bounded_yaml import MAX_YAML_EXPANDED_BYTES
 from agent_guard import surface_inventory_core
+from agent_guard import surface_inventory_context
 from agent_guard import surface_inventory_directories
 from agent_guard import surface_inventory_metadata
 from agent_guard import surface_inventory_workflow
@@ -107,6 +108,177 @@ def test_document_inventory_enforces_aggregate_distinct_input_limit(
         surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path)
 
     assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_agent_inventory_shares_distinct_input_budget_across_collectors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".agent-guard" / "policy.yaml", "12345678")
+    write(tmp_path / "README.md", "abcdefgh")
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_DISTINCT_INPUT_BYTES",
+        15,
+    )
+
+    assert surface_inventory_metadata.collect_policy_surfaces(tmp_path)
+    assert surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path) == []
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_agent_inventory_shares_traversal_budget_across_collectors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".agent-guard" / "policy.yaml", "safe\n")
+    write(tmp_path / "docs" / "guide.md", "safe\n")
+    monkeypatch.setattr(surface_inventory_core, "MAX_SURFACE_INVENTORY_TRAVERSAL", 1)
+
+    assert surface_inventory_metadata.collect_policy_surfaces(tmp_path)
+    assert surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path) == []
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_agent_inventory_shares_result_budget_across_collectors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".agent-guard" / "policy.yaml", "safe\n")
+    write(tmp_path / "README.md", "agent-guard context check --root .\n")
+
+    policy_surfaces = surface_inventory_metadata.collect_policy_surfaces(tmp_path)
+    documented_surfaces = surface_inventory_metadata.collect_documented_guard_surfaces(
+        tmp_path
+    )
+    inventory = surface_inventory_context.collect_agent_surface_inventory(
+        root=tmp_path,
+        context_policy={},
+        schema_version="v2",
+    )
+    direct_budget = max(
+        surface_inventory_core._canonical_json_size(policy_surfaces),
+        surface_inventory_core._canonical_json_size(documented_surfaces),
+    )
+    inventory_budget = surface_inventory_core._canonical_json_size(
+        inventory["surfaces"]
+    )
+
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES",
+        direct_budget,
+    )
+    assert surface_inventory_metadata.collect_policy_surfaces(tmp_path) == policy_surfaces
+    assert (
+        surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path)
+        == documented_surfaces
+    )
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES",
+        inventory_budget,
+    )
+    assert (
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+        == inventory
+    )
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES",
+        inventory_budget - 1,
+    )
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_document_inventory_enforces_incremental_result_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(
+        tmp_path / "README.md",
+        "agent-guard context check --root .\n"
+        "agent-guard context check --root .\n",
+    )
+    surfaces = surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path)
+    one_surface_budget = surface_inventory_core._canonical_json_size(surfaces[:1])
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES",
+        one_surface_budget,
+    )
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path)
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_agent_inventory_preserves_v1_v2_collector_compatibility(tmp_path: Path) -> None:
+    write(tmp_path / "AGENTS.md", "Run local tests.\n")
+    write(tmp_path / ".agent-guard" / "policy.yaml", "safe\n")
+    write(tmp_path / "README.md", "agent-guard context check --root .\n")
+    write(tmp_path / ".mcp.json", "{}\n")
+    context_policy = {"scan": {"include": ["AGENTS.md"], "exclude": []}}
+
+    v1 = surface_inventory_context.collect_agent_surface_inventory(
+        root=tmp_path,
+        context_policy=context_policy,
+        schema_version="v1",
+    )
+    v2 = surface_inventory_context.collect_agent_surface_inventory(
+        root=tmp_path,
+        context_policy=context_policy,
+        schema_version="v2",
+    )
+
+    assert v1["schema_version"] == "agent-guard.agent_surface_inventory.v1"
+    assert v2["schema_version"] == "agent-guard.agent_surface_inventory.v2"
+    assert {item["surface"] for item in v1["surfaces"]} == {
+        "agent_context",
+        "policy_file",
+    }
+    assert {item["surface"] for item in v2["surfaces"]} == {
+        "agent_context",
+        "documented_guard_command",
+        "mcp_config",
+        "policy_file",
+    }
+    assert v2["summary"]["surface_count"] == len(v2["surfaces"])
 
 
 def test_policy_inventory_uses_policy_file_ceiling(

@@ -65,11 +65,17 @@ def iter_workflow_files(
     return sorted(path for path in files if is_repo_bound_path(path, root) and path.is_file())
 
 
-def collect_workflow_artifact_surfaces(workflow: dict[str, object], *, workflow_path: str) -> list[dict[str, object]]:
+def collect_workflow_artifact_surfaces(
+    workflow: dict[str, object],
+    *,
+    workflow_path: str,
+    _budget: SurfaceInventoryBudget | None = None,
+) -> list[dict[str, object]]:
     raw_jobs = workflow.get("jobs", {})
     if not isinstance(raw_jobs, dict):
         return []
     surfaces: list[dict[str, object]] = []
+    budget = _budget or SurfaceInventoryBudget()
     for raw_job_id, raw_job in raw_jobs.items():
         if not isinstance(raw_job, dict):
             continue
@@ -84,17 +90,17 @@ def collect_workflow_artifact_surfaces(workflow: dict[str, object], *, workflow_
             if "upload-artifact" in uses and isinstance(with_cfg, dict):
                 artifact_path = safe_metadata_path(str(with_cfg.get("path", "")))
                 if artifact_path:
-                    surfaces.append(
-                        {
-                            "surface": "evidence_artifact_reference",
-                            "path": workflow_path,
-                            "kind": "github_artifact",
-                            "status": "referenced",
-                            "job_id": str(raw_job_id),
-                            "step_index": step_index,
-                            "artifact_path": artifact_path,
-                        }
-                    )
+                    item = {
+                        "surface": "evidence_artifact_reference",
+                        "path": workflow_path,
+                        "kind": "github_artifact",
+                        "status": "referenced",
+                        "job_id": str(raw_job_id),
+                        "step_index": step_index,
+                        "artifact_path": artifact_path,
+                    }
+                    budget.add_result(item)
+                    surfaces.append(item)
     return surfaces
 
 
@@ -103,9 +109,10 @@ def collect_workflow_surfaces(
     *,
     include_artifacts: bool = False,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
-    budget = SurfaceInventoryBudget()
+    budget = _budget or SurfaceInventoryBudget()
     for workflow_file in iter_workflow_files(
         root,
         opaque_directories=opaque_directories,
@@ -126,63 +133,69 @@ def collect_workflow_surfaces(
         except BoundedYamlLimitError:
             raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
         except (BoundedYamlInvalidError, UnicodeDecodeError):
-            surfaces.append(
-                {
-                    "surface": "workflow_file",
-                    "path": workflow_path,
-                    "kind": "github_actions",
-                    "status": "parse_error",
-                }
-            )
-            continue
-        if not isinstance(loaded, dict):
-            surfaces.append(
-                {
-                    "surface": "workflow_file",
-                    "path": workflow_path,
-                    "kind": "github_actions",
-                    "status": "not_object",
-                }
-            )
-            continue
-        surfaces.append(
-            {
+            item = {
                 "surface": "workflow_file",
                 "path": workflow_path,
                 "kind": "github_actions",
-                "status": "scanned",
+                "status": "parse_error",
             }
-        )
+            budget.add_result(item)
+            surfaces.append(item)
+            continue
+        if not isinstance(loaded, dict):
+            item = {
+                "surface": "workflow_file",
+                "path": workflow_path,
+                "kind": "github_actions",
+                "status": "not_object",
+            }
+            budget.add_result(item)
+            surfaces.append(item)
+            continue
+        item = {
+            "surface": "workflow_file",
+            "path": workflow_path,
+            "kind": "github_actions",
+            "status": "scanned",
+        }
+        budget.add_result(item)
+        surfaces.append(item)
         for line in collect_run_lines(loaded, workflow_path=workflow_path):
             command = parse_agent_guard_command(line.command)
             if command is None:
                 continue
-            surfaces.append(
-                {
-                    "surface": "workflow_reference",
-                    "path": workflow_path,
-                    "kind": "agent_guard_command",
-                    "status": "referenced",
-                    "job_id": line.job_id,
-                    "step_index": line.step_index,
-                    "command": command,
-                }
-            )
+            item = {
+                "surface": "workflow_reference",
+                "path": workflow_path,
+                "kind": "agent_guard_command",
+                "status": "referenced",
+                "job_id": line.job_id,
+                "step_index": line.step_index,
+                "command": command,
+            }
+            budget.add_result(item)
+            surfaces.append(item)
             if include_artifacts:
                 artifact_path = parse_output_artifact(line.command)
                 if artifact_path:
-                    surfaces.append(
-                        {
-                            "surface": "evidence_artifact_reference",
-                            "path": workflow_path,
-                            "kind": "agent_guard_output",
-                            "status": "referenced",
-                            "job_id": line.job_id,
-                            "step_index": line.step_index,
-                            "artifact_path": artifact_path,
-                            "command": command,
-                        }
-                    )
+                    item = {
+                        "surface": "evidence_artifact_reference",
+                        "path": workflow_path,
+                        "kind": "agent_guard_output",
+                        "status": "referenced",
+                        "job_id": line.job_id,
+                        "step_index": line.step_index,
+                        "artifact_path": artifact_path,
+                        "command": command,
+                    }
+                    budget.add_result(item)
+                    surfaces.append(item)
         if include_artifacts:
-            surfaces.extend(collect_workflow_artifact_surfaces(loaded, workflow_path=workflow_path))
+            surfaces.extend(
+                collect_workflow_artifact_surfaces(
+                    loaded,
+                    workflow_path=workflow_path,
+                    _budget=budget,
+                )
+            )
     return surfaces
