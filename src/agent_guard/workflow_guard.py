@@ -9,7 +9,6 @@ import argparse
 import io
 import os
 import re
-import shlex
 import stat
 from collections import deque
 from dataclasses import dataclass, field
@@ -78,6 +77,15 @@ _WORKFLOW_DECIMAL_LITERAL_RE = re.compile(
 )
 _WORKFLOW_HEX_LITERAL_RE = re.compile(r"-?0[xX][0-9a-fA-F]+\Z")
 _AGENT_GUARD_PYTHON_EXECUTABLE_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
+_AGENT_GUARD_COMMAND_MARKER_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:agent-guard(?:\.exe)?|agent_guard\.cli)"
+    r"(?![A-Za-z0-9_.-])"
+)
+_AGENT_GUARD_LOOKING_EXPANSION_RE = re.compile(
+    r"\$(?:\{[^}\r\n]*\}|[A-Za-z_][A-Za-z0-9_]*)"
+    r"|%[^%\r\n]+%|![^!\r\n]+!"
+)
+_CMD_EXPANSION_RE = re.compile(r"%[^%\r\n]+%|%[0-9*~]|![^!\r\n]+!")
 
 _ARRAY_TOKEN_START = 0
 _ARRAY_TOKEN_NAME = 1
@@ -153,6 +161,7 @@ class WorkflowRunLine:
     step_index: int
     step_name: str
     command: str
+    shell: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1298,6 +1307,11 @@ def _collect_step_run_lines_iterative(
                         step_index=step_index,
                         step_name=step_name,
                         command=command,
+                        shell=(
+                            effective_shell
+                            if isinstance(effective_shell, str)
+                            else None
+                        ),
                     )
                 )
 
@@ -1594,6 +1608,183 @@ class _NormalizedAgentGuardCommand:
     arguments: tuple[tuple[str, ...], ...]
 
 
+def _looks_like_agent_guard_command(command: str) -> bool:
+    probe = _AGENT_GUARD_LOOKING_EXPANSION_RE.sub(
+        "",
+        command.replace("^", "").replace("`", ""),
+    )
+    return _AGENT_GUARD_COMMAND_MARKER_RE.search(probe) is not None
+
+
+def _agent_guard_redirection_operator(
+    command: str,
+    *,
+    index: int,
+) -> tuple[str, int] | None:
+    if command.startswith("<(", index) or command.startswith(">(", index):
+        return None
+    for operator in (
+        "&>>",
+        "<<<",
+        "<<-",
+        "&>",
+        ">&",
+        "<&",
+        ">>",
+        "<<",
+        "<>",
+        ">|",
+        ">",
+        "<",
+    ):
+        if command.startswith(operator, index):
+            return operator, index + len(operator)
+    return None
+
+
+def _consume_static_agent_guard_word(
+    command: str,
+    *,
+    index: int,
+    reject_dynamic: bool,
+    shell: str | None,
+) -> tuple[str, int, bool] | None:
+    characters: list[str] = []
+    started = False
+    plain = True
+    while index < len(command):
+        character = command[index]
+        if character.isspace():
+            break
+        if _agent_guard_redirection_operator(command, index=index) is not None:
+            break
+        if command.startswith("<(", index) or command.startswith(">(", index):
+            return None
+        if character == "'":
+            plain = False
+            started = True
+            end = command.find("'", index + 1)
+            if end < 0:
+                return None
+            characters.append(command[index + 1 : end])
+            index = end + 1
+            continue
+        if character == '"':
+            plain = False
+            started = True
+            index += 1
+            while index < len(command) and command[index] != '"':
+                character = command[index]
+                if reject_dynamic and character in {"$", "`"}:
+                    return None
+                if character == "\\" and index + 1 < len(command):
+                    escaped = command[index + 1]
+                    if escaped in {'"', "\\", "$", "`"}:
+                        if reject_dynamic and escaped in {"$", "`"} and shell in {
+                            None,
+                            "pwsh",
+                            "powershell",
+                        }:
+                            return None
+                        characters.append(escaped)
+                        index += 2
+                        continue
+                characters.append(character)
+                index += 1
+            if index >= len(command):
+                return None
+            index += 1
+            continue
+        if character == "\\":
+            plain = False
+            started = True
+            if index + 1 >= len(command):
+                return None
+            escaped = command[index + 1]
+            if reject_dynamic and escaped in {"$", "`"} and shell in {
+                None,
+                "pwsh",
+                "powershell",
+            }:
+                return None
+            characters.append(escaped)
+            index += 2
+            continue
+        if reject_dynamic and character in {"$", "`", "*", "?", "[", "{", "}"}:
+            return None
+        if (
+            reject_dynamic
+            and shell in {"pwsh", "powershell"}
+            and character == "@"
+            and not started
+        ):
+            return None
+        started = True
+        characters.append(character)
+        index += 1
+    if not started:
+        return None
+    return "".join(characters), index, plain
+
+
+def _static_agent_guard_argv(
+    command: str,
+    *,
+    shell: str | None,
+) -> list[str] | None:
+    """Return static native argv while excluding shell redirections."""
+    if "${{" in command:
+        return None
+    if shell == "cmd" and ("^" in command or _CMD_EXPANSION_RE.search(command)):
+        return None
+    if shell in {"pwsh", "powershell"} and "`" in command:
+        return None
+
+    argv: list[str] = []
+    index = 0
+    while index < len(command):
+        while index < len(command) and command[index].isspace():
+            index += 1
+        if index >= len(command):
+            break
+
+        redirection = _agent_guard_redirection_operator(command, index=index)
+        if redirection is not None:
+            _, index = redirection
+            while index < len(command) and command[index].isspace():
+                index += 1
+            target = _consume_static_agent_guard_word(
+                command,
+                index=index,
+                reject_dynamic=False,
+                shell=shell,
+            )
+            if target is None:
+                return None
+            _, index, _ = target
+            continue
+
+        word = _consume_static_agent_guard_word(
+            command,
+            index=index,
+            reject_dynamic=True,
+            shell=shell,
+        )
+        if word is None:
+            return None
+        value, next_index, plain = word
+        redirection = _agent_guard_redirection_operator(
+            command,
+            index=next_index,
+        )
+        if redirection is not None and plain and value.isdigit():
+            index = next_index
+            continue
+        argv.append(value)
+        index = next_index
+    return argv
+
+
 @cache
 def _agent_guard_cli_parser() -> argparse.ArgumentParser:
     # Import lazily because the public CLI imports this workflow guard.
@@ -1605,12 +1796,10 @@ def _agent_guard_cli_parser() -> argparse.ArgumentParser:
 def _agent_guard_entrypoint_size(argv: list[str]) -> int | None:
     if argv[:1] == ["agent-guard"]:
         return 1
-    if (
-        len(argv) >= 3
-        and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0])
-        and argv[1:3] == ["-m", "agent_guard.cli"]
-    ):
-        return 3
+    if argv and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0]):
+        module_index = 2 if argv[1:2] == ["-I"] else 1
+        if argv[module_index : module_index + 2] == ["-m", "agent_guard.cli"]:
+            return module_index + 2
     return None
 
 
@@ -1695,11 +1884,12 @@ def _agent_guard_option_values(
 
 def _normalize_agent_guard_command(
     command: str,
+    *,
+    shell: str | None = None,
 ) -> _NormalizedAgentGuardCommand | bool | None:
-    try:
-        argv = shlex.split(command, posix=True)
-    except ValueError:
-        return None
+    argv = _static_agent_guard_argv(command, shell=shell)
+    if argv is None:
+        return False if _looks_like_agent_guard_command(command) else None
     entrypoint_size = _agent_guard_entrypoint_size(argv)
     if entrypoint_size is None:
         return None
@@ -1731,9 +1921,7 @@ def _normalize_agent_guard_command(
         if ambiguous:
             return False
         if action is None:
-            normalized.append(("literal", value))
-            index += 1
-            continue
+            return False
         if action.dest == "help":
             return False
         option_values = _agent_guard_option_values(
@@ -1751,9 +1939,14 @@ def _normalize_agent_guard_command(
     return _NormalizedAgentGuardCommand(arguments=tuple(normalized))
 
 
-def command_prefix_matches_required(candidate: str, required: str) -> bool:
+def command_prefix_matches_required(
+    candidate: str,
+    required: str,
+    *,
+    shell: str | None = None,
+) -> bool:
     required_command = _normalize_agent_guard_command(required)
-    candidate_command = _normalize_agent_guard_command(candidate)
+    candidate_command = _normalize_agent_guard_command(candidate, shell=shell)
     if isinstance(required_command, _NormalizedAgentGuardCommand) or isinstance(
         candidate_command, _NormalizedAgentGuardCommand
     ):
@@ -1775,12 +1968,21 @@ def command_prefix_matches_required(candidate: str, required: str) -> bool:
             for argument in candidate_arguments[len(required_arguments) :]
         )
 
-    if required_command is False or candidate_command is False:
+    if (
+        required_command is False
+        or candidate_command is False
+        or _looks_like_agent_guard_command(required)
+    ):
         return False
     return candidate == required or candidate.startswith(required + " ")
 
 
-def command_line_matches_required(command_line: str, required_command: str) -> bool:
+def command_line_matches_required(
+    command_line: str,
+    required_command: str,
+    *,
+    shell: str | None = None,
+) -> bool:
     _validate_command_lexer_characters(command_line)
     _validate_command_lexer_characters(required_command)
     required = normalize_command_text(required_command)
@@ -1803,7 +2005,11 @@ def command_line_matches_required(command_line: str, required_command: str) -> b
             and next_operator not in {"||", "|"}
             and not has_help_option(normalized)
             and not preceding_same_list_or
-            and command_prefix_matches_required(normalized, required)
+            and command_prefix_matches_required(
+                normalized,
+                required,
+                shell=shell,
+            )
         ):
             candidate_matched = True
 
@@ -1942,7 +2148,11 @@ def scan_workflow_policy(
                     amount=len(line.command) + len(required.command),
                     limit=MAX_WORKFLOW_MATCH_CHARS,
                 )
-                if command_line_matches_required(line.command, required.command):
+                if command_line_matches_required(
+                    line.command,
+                    required.command,
+                    shell=line.shell,
+                ):
                     matched = True
                     break
             if matched:
