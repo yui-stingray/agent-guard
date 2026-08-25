@@ -107,6 +107,12 @@ class SurfaceInventoryBudget:
         if time.monotonic() >= self.deadline:
             raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
 
+    def remaining_timeout(self) -> float:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+        return remaining
+
     def charge_traversal(self) -> None:
         self.check_deadline()
         self.traversed += 1

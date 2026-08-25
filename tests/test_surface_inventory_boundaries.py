@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -108,6 +109,40 @@ def test_document_inventory_enforces_aggregate_distinct_input_limit(
         surface_inventory_metadata.collect_documented_guard_surfaces(tmp_path)
 
     assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_git_metadata_uses_shared_remaining_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ticks = iter((100.0, 104.0))
+    monkeypatch.setattr(
+        surface_inventory_core.time,
+        "monotonic",
+        lambda: next(ticks),
+    )
+    budget = surface_inventory_core.SurfaceInventoryBudget()
+    captured: dict[str, float] = {}
+
+    def bounded_git(
+        _root: Path,
+        _args: list[str],
+        *,
+        timeout_seconds: float,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[bytes]:
+        captured["timeout_seconds"] = timeout_seconds
+        return subprocess.CompletedProcess([], 0, b"", b"")
+
+    monkeypatch.setattr(surface_inventory_metadata, "run_bounded_git", bounded_git)
+
+    surface_inventory_metadata._run_git_metadata(
+        tmp_path,
+        ["status"],
+        _budget=budget,
+    )
+
+    assert captured["timeout_seconds"] == 1.0
 
 
 def test_agent_inventory_shares_distinct_input_budget_across_collectors(

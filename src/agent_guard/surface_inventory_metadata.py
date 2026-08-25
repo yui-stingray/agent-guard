@@ -64,12 +64,16 @@ def _run_git_metadata(
     args: list[str],
     *,
     input_data: bytes | None = None,
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
+    timeout_seconds = GIT_METADATA_TIMEOUT_SECONDS
+    if _budget is not None:
+        timeout_seconds = min(timeout_seconds, _budget.remaining_timeout())
     try:
         return run_bounded_git(
             root,
             args,
-            timeout_seconds=GIT_METADATA_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds,
             max_output_bytes=MAX_EVIDENCE_INDEX_OUTPUT_BYTES,
             input_data=input_data,
         )
@@ -77,7 +81,11 @@ def _run_git_metadata(
         raise ValueError(ERROR_EVIDENCE_INDEX) from None
 
 
-def _has_valid_git_marker(root: Path) -> bool:
+def _has_valid_git_marker(
+    root: Path,
+    *,
+    _budget: SurfaceInventoryBudget | None = None,
+) -> bool:
     for candidate in (root, *root.parents):
         marker = candidate / ".git"
         if not marker.exists():
@@ -86,6 +94,7 @@ def _has_valid_git_marker(root: Path) -> bool:
             resolved = _run_git_metadata(
                 root,
                 ["rev-parse", "--resolve-git-dir", str(marker)],
+                _budget=_budget,
             )
         except ValueError:
             if candidate == root or _looks_like_git_marker(marker):
@@ -111,16 +120,24 @@ def _looks_like_git_marker(marker: Path) -> bool:
     return len(prefix) <= 4_096 and prefix.lstrip().startswith(b"gitdir:")
 
 
-def _is_git_worktree(root: Path) -> bool:
+def _is_git_worktree(
+    root: Path,
+    *,
+    _budget: SurfaceInventoryBudget | None = None,
+) -> bool:
     try:
-        probe = _run_git_metadata(root, ["rev-parse", "--is-inside-work-tree"])
+        probe = _run_git_metadata(
+            root,
+            ["rev-parse", "--is-inside-work-tree"],
+            _budget=_budget,
+        )
     except ValueError:
-        if _has_valid_git_marker(root):
+        if _has_valid_git_marker(root, _budget=_budget):
             raise
         return False
     if probe.returncode == 0 and probe.stdout.strip() == b"true":
         return True
-    if _has_valid_git_marker(root):
+    if _has_valid_git_marker(root, _budget=_budget):
         raise ValueError(ERROR_EVIDENCE_INDEX)
     return False
 
@@ -201,7 +218,7 @@ def collect_committed_evidence_surfaces(
 
     budget = _budget or SurfaceInventoryBudget()
     budget.check_deadline()
-    if not _is_git_worktree(root):
+    if not _is_git_worktree(root, _budget=budget):
         return _collect_materialized_evidence_surfaces(
             root,
             opaque_directories=opaque_directories,
@@ -218,6 +235,7 @@ def collect_committed_evidence_surfaces(
             "--",
             *EVIDENCE_INDEX_PATHS,
         ],
+        _budget=budget,
     )
     budget.check_deadline()
     if indexed.returncode != 0:
@@ -270,6 +288,7 @@ def collect_committed_evidence_surfaces(
         root,
         ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
         input_data="".join(f"{object_id}\n" for object_id in object_ids).encode("ascii"),
+        _budget=budget,
     )
     budget.check_deadline()
     if object_metadata.returncode != 0:
