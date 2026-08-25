@@ -43,6 +43,14 @@ def _context_policy(include: list[str]) -> dict[str, object]:
     return {"scan": {"include": include, "exclude": []}}
 
 
+def _alias_dag_context_policy(marker: str, *, depth: int) -> str:
+    lines = [f"n0: &n0 [{marker}]\n"]
+    for index in range(1, depth + 1):
+        lines.append(f"n{index}: &n{index} [*n{index - 1}, *n{index - 1}]\n")
+    lines.extend(("scan:\n", f"  include: [*n{depth}]\n"))
+    return "".join(lines)
+
+
 def _assert_sanitized_cli_limit_error(
     result: object,
     *,
@@ -151,6 +159,58 @@ def test_context_public_entrypoints_fail_closed_on_oversized_input(tmp_path: Pat
             root=tmp_path,
             marker=marker,
         )
+
+
+def test_context_inventory_and_report_reject_alias_dag_policy_before_normalization(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    marker = "synthetic-context-alias-dag-marker"
+    policy_path = tmp_path / "context-policy.yaml"
+    policy_path.write_text(
+        _alias_dag_context_policy(marker, depth=10),
+        encoding="utf-8",
+    )
+    (tmp_path / "AGENTS.md").write_text(
+        "Use project tests before completion.\n",
+        encoding="utf-8",
+    )
+
+    inventory_args = build_parser().parse_args(
+        [
+            "context",
+            "inventory",
+            "--root",
+            str(tmp_path),
+            "--policy",
+            str(policy_path),
+            "--json",
+        ]
+    )
+    assert run_context_inventory(inventory_args) == 2
+    inventory_output = capsys.readouterr()
+    inventory_payload = json.loads(inventory_output.out)
+    assert inventory_payload["error"] == context_guard.ERROR_CONTEXT_POLICY_INVALID
+    assert marker not in inventory_output.out + inventory_output.err
+    assert str(tmp_path) not in inventory_output.out + inventory_output.err
+
+    report_args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            str(policy_path),
+            "--format",
+            "json",
+        ]
+    )
+    assert run_report(report_args) == 2
+    report_output = capsys.readouterr()
+    report_payload = json.loads(report_output.out)
+    assert report_payload["error"] == context_guard.ERROR_CONTEXT_POLICY_INVALID
+    assert marker not in report_output.out + report_output.err
+    assert str(tmp_path) not in report_output.out + report_output.err
 
 
 def test_mcp_config_rejects_exactly_one_byte_over_before_parse(

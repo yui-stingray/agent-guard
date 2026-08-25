@@ -577,12 +577,16 @@ def normalize_string_list(
     limit: int = MAX_CONTEXT_POLICY_LIST_ITEMS,
 ) -> list[str]:
     if not isinstance(values, list):
-        return []
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
     if len(values) > limit:
         raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
     out: list[str] = []
     for value in values:
-        text = str(value).strip()
+        if not isinstance(value, str):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        text = value.strip()
+        if len(text) > MAX_CONTEXT_GLOB_LENGTH:
+            raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
         if text:
             out.append(text)
     return out
@@ -590,12 +594,16 @@ def normalize_string_list(
 
 def policy_section(policy: dict[str, object]) -> dict[str, object]:
     raw = policy.get("policy", {})
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+    return raw
 
 
 def scan_section(policy: dict[str, object]) -> dict[str, object]:
     raw = policy.get("scan", {})
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+    return raw
 
 
 def has_glob_magic(pattern: str) -> bool:
@@ -1259,13 +1267,13 @@ def normalize_rule_patterns(policy: dict[str, object]) -> list[dict[str, object]
     cfg = policy_section(policy)
     raw_forbidden = cfg.get("forbidden_patterns", DEFAULT_FORBIDDEN_PATTERNS)
     if not isinstance(raw_forbidden, list):
-        raise ValueError("forbidden_patterns must be a list")
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
 
     raw_extra = cfg.get("extra_forbidden_patterns", [])
     if raw_extra is None:
         raw_extra = []
     if not isinstance(raw_extra, list):
-        raise ValueError("extra_forbidden_patterns must be a list")
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
 
     return [*raw_forbidden, *raw_extra]
 
@@ -1279,22 +1287,31 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
         raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
     for rule_index, item in enumerate(raw_rules):
         if not isinstance(item, dict):
-            continue
-        rule_id = str(item.get("id", "")).strip()
-        pattern_text = str(item.get("pattern", "")).strip()
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        raw_rule_id = item.get("id", "")
+        raw_pattern = item.get("pattern", "")
+        raw_severity = item.get("severity", "high")
+        raw_message = item.get("message", "policy violation")
+        if not all(
+            isinstance(value, str)
+            for value in (raw_rule_id, raw_pattern, raw_severity, raw_message)
+        ):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        rule_id = raw_rule_id.strip()
+        pattern_text = raw_pattern.strip()
         if not rule_id or not pattern_text:
             continue
         if len(pattern_text) > MAX_CONTEXT_POLICY_REGEX_LENGTH:
             raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
         try:
             regex = re.compile(pattern_text)
-        except re.error as exc:
-            raise ValueError(f"invalid forbidden_patterns regex for {rule_id!r}: {exc}") from exc
+        except (OverflowError, RecursionError, re.error):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID) from None
         rules.append(
             {
                 "id": rule_id,
-                "severity": str(item.get("severity", "high")).strip() or "high",
-                "message": str(item.get("message", "policy violation")).strip() or "policy violation",
+                "severity": raw_severity.strip() or "high",
+                "message": raw_message.strip() or "policy violation",
                 "regex": regex,
                 "default_rule": (
                     uses_default_patterns
@@ -1648,18 +1665,6 @@ def collect_context_inventory(
     return inventory
 
 
-def line_allows_rule(line: str, rule_id: str) -> bool:
-    match = re.search(r"agent-guard:\s*allow\s+([A-Za-z0-9_., -]+)", line)
-    if not match:
-        return False
-    allowed = {
-        item.strip()
-        for item in re.split(r"[,\s]+", match.group(1))
-        if item.strip()
-    }
-    return "all" in allowed or rule_id in allowed
-
-
 def _safe_negation_prefix_is_complete(
     segment: str,
     *,
@@ -1808,9 +1813,6 @@ def _matching_rule_indices(
     )
     for index, rule in enumerate(rules):
         if complete_default_prohibitions and bool(rule.get("default_rule")):
-            continue
-        rule_id = str(rule["id"])
-        if line_allows_rule(line, rule_id):
             continue
         if _rule_matches_line(line, rule):
             matches.append(index)
@@ -2018,6 +2020,7 @@ def scan_context_files(
         runtime_error=ERROR_CONTEXT_SCAN_RUNTIME,
         result_limit_error=ERROR_CONTEXT_SCAN_LIMIT,
         safe_errors=(
+            ERROR_CONTEXT_POLICY_INVALID,
             ERROR_CONTEXT_POLICY_LIMIT,
             ERROR_CONTEXT_SCAN_LIMIT,
             ERROR_CONTEXT_SCAN_TARGET,
@@ -2040,6 +2043,7 @@ def scan_context_files_with_inventory(
         runtime_error=ERROR_CONTEXT_SCAN_RUNTIME,
         result_limit_error=ERROR_CONTEXT_SCAN_LIMIT,
         safe_errors=(
+            ERROR_CONTEXT_POLICY_INVALID,
             ERROR_CONTEXT_POLICY_LIMIT,
             ERROR_CONTEXT_SCAN_LIMIT,
             ERROR_CONTEXT_SCAN_TARGET,

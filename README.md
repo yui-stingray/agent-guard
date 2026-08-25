@@ -1029,9 +1029,8 @@ A ready-to-run copy lives in [`examples/content_security_policy.yaml`](examples/
 Content rules may define per-rule `include_globs` / `exclude_globs`. Use this
 when a repository contains intentional adversarial fixtures that should stay
 scannable for secrets but should not fail dangerous-command rules. For narrow
-documented examples, append an inline suppression such as
-`# agent-guard: allow pipe_to_shell` or `# agent-guard: allow all` on the same
-line.
+reviewed exceptions, scope the rule in the policy; inline `agent-guard: allow`
+text is scanned as ordinary content and cannot suppress a finding.
 
 ### Context guard policy
 
