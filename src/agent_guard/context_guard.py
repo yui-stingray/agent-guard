@@ -1019,6 +1019,37 @@ def _iter_context_files_pruned(
         opaque_directories=opaque_directories,
     )
     glob_work_budget = _ContextGlobWorkBudget()
+    excluded_cache: dict[tuple[str, ...], bool] = {}
+    directory_excluded_cache: dict[tuple[str, ...], bool] = {}
+    excluded_ancestor_cache: dict[tuple[str, ...], bool] = {}
+
+    def path_is_excluded(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in excluded_cache:
+            excluded_cache[key] = _is_excluded_compiled(
+                path,
+                compiled_exclude,
+                work_budget=glob_work_budget,
+            )
+        return excluded_cache[key]
+
+    def directory_is_excluded(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in directory_excluded_cache:
+            directory_excluded_cache[key] = path_is_excluded(
+                path,
+            ) or path_is_excluded(path / "__agent_guard_probe__")
+        return directory_excluded_cache[key]
+
+    def has_excluded_ancestor(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in excluded_ancestor_cache:
+            excluded_ancestor_cache[key] = any(
+                directory_is_excluded(parent)
+                for parent in path.parents
+                if parent != Path(".")
+            )
+        return excluded_ancestor_cache[key]
 
     files: list[Path] = []
     seen_files: set[Path] = set()
@@ -1026,14 +1057,8 @@ def _iter_context_files_pruned(
         path = root / alias_relative
         if _relative_path_is_opaque(alias_relative, opaque_directories):
             continue
-        if _directory_is_excluded(
-            alias_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
-        ) or _has_excluded_ancestor(
-            alias_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
+        if directory_is_excluded(alias_relative) or has_excluded_ancestor(
+            alias_relative
         ):
             continue
         try:
@@ -1045,14 +1070,8 @@ def _iter_context_files_pruned(
             raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
         if _relative_path_is_opaque(resolved_relative, opaque_directories):
             continue
-        if _is_excluded_compiled(
-            resolved_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
-        ) or _has_excluded_ancestor(
-            resolved_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
+        if path_is_excluded(resolved_relative) or has_excluded_ancestor(
+            resolved_relative
         ):
             continue
         try:
@@ -1104,14 +1123,8 @@ def _iter_context_files_pruned(
                 raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
             if _relative_path_is_opaque(alias_relative, opaque_directories):
                 continue
-            if _directory_is_excluded(
-                alias_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
-            ) or _is_excluded_compiled(
-                alias_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
+            if directory_is_excluded(alias_relative) or path_is_excluded(
+                alias_relative
             ):
                 continue
             try:
@@ -1155,23 +1168,13 @@ def _iter_context_files_pruned(
             is_directory = stat.S_ISDIR(path_stat.st_mode)
             is_file = stat.S_ISREG(path_stat.st_mode)
             if is_directory:
-                if _directory_is_excluded(
-                    alias_relative,
-                    compiled_exclude,
-                    work_budget=glob_work_budget,
-                ) or _directory_is_excluded(
-                    resolved_relative,
-                    compiled_exclude,
-                    work_budget=glob_work_budget,
-                ):
+                if directory_is_excluded(
+                    alias_relative
+                ) or directory_is_excluded(resolved_relative):
                     continue
                 pending.append((path, child_ancestors))
                 continue
-            if not is_file or _is_excluded_compiled(
-                resolved_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
-            ):
+            if not is_file or path_is_excluded(resolved_relative):
                 continue
             if not _context_candidate_matches(
                 alias_path=alias_relative,
