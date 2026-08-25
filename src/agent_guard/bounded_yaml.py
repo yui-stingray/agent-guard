@@ -90,23 +90,30 @@ def _container_children(value: Any) -> Iterator[Any] | None:
 
 
 def _scalar_expanded_bytes(value: Any) -> int:
-    if isinstance(value, str):
-        try:
-            return len(value.encode("utf-8"))
-        except UnicodeEncodeError:
-            _raise_limit()
-    if isinstance(value, bytes):
-        return len(value)
-    return 0
+    if _container_children(value) is not None:
+        return 0
+    try:
+        return len(str(value).encode("utf-8"))
+    except UnicodeEncodeError:
+        _raise_limit()
 
 
-def _validate_object_graph(value: Any) -> None:
+def _validate_object_graph(
+    value: Any,
+    *,
+    max_expanded_bytes: int | None = None,
+) -> None:
     """Reject cycles and bound alias-expanded graph work without recursion."""
 
     active: set[int] = set()
     stack: list[tuple[int, Iterator[Any], int]] = []
     traversed = 0
     expanded_bytes = 0
+    expanded_bytes_limit = (
+        MAX_YAML_EXPANDED_BYTES
+        if max_expanded_bytes is None
+        else max_expanded_bytes
+    )
 
     def enter(child: Any, *, depth: int) -> None:
         nonlocal expanded_bytes, traversed
@@ -114,7 +121,7 @@ def _validate_object_graph(value: Any) -> None:
         if traversed > MAX_YAML_GRAPH_TRAVERSAL or depth > MAX_YAML_DEPTH:
             _raise_limit()
         expanded_bytes += _scalar_expanded_bytes(child)
-        if expanded_bytes > MAX_YAML_EXPANDED_BYTES:
+        if expanded_bytes > expanded_bytes_limit:
             _raise_limit()
         children = _container_children(child)
         if children is None:
@@ -141,13 +148,14 @@ def load_bounded_yaml(
     text: str,
     *,
     construct: Callable[[str], Any],
+    max_expanded_bytes: int | None = None,
 ) -> Any:
     """Construct YAML only after event bounds, then validate its object graph."""
 
     try:
         _preflight_yaml_events(text)
         loaded = construct(text)
-        _validate_object_graph(loaded)
+        _validate_object_graph(loaded, max_expanded_bytes=max_expanded_bytes)
     except (BoundedYamlInvalidError, BoundedYamlLimitError):
         raise
     except (MemoryError, OverflowError, RecursionError):

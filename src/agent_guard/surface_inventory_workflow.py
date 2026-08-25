@@ -18,6 +18,7 @@ from .bounded_yaml import (
 )
 from .surface_inventory_core import (
     ERROR_SURFACE_INVENTORY_LIMIT,
+    MAX_SURFACE_INVENTORY_FILE_BYTES,
     SurfaceInventoryBudget,
     is_repo_bound_path,
     parse_agent_guard_command,
@@ -117,7 +118,11 @@ def collect_workflow_surfaces(
             opened = read_surface_file(workflow_file, root, budget=budget)
             workflow_path = opened.relative_path
             text = opened.data.decode("utf-8")
-            loaded = load_bounded_yaml(text, construct=yaml.safe_load) or {}
+            loaded = load_bounded_yaml(
+                text,
+                construct=yaml.safe_load,
+                max_expanded_bytes=MAX_SURFACE_INVENTORY_FILE_BYTES,
+            ) or {}
         except BoundedYamlLimitError:
             raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
         except (BoundedYamlInvalidError, UnicodeDecodeError):

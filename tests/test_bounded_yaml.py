@@ -32,6 +32,15 @@ def test_bounded_yaml_rejects_alias_dag_expanded_scalar_bytes() -> None:
     assert marker not in str(exc_info.value)
 
 
+def test_bounded_yaml_rejects_integer_alias_dag_expanded_scalar_bytes() -> None:
+    marker = "9" * 4_000
+
+    with pytest.raises(BoundedYamlLimitError) as exc_info:
+        load_bounded_yaml(_alias_dag(marker, depth=7), construct=yaml.safe_load)
+
+    assert marker not in str(exc_info.value)
+
+
 def test_bounded_yaml_preserves_small_non_merge_aliases() -> None:
     loaded = load_bounded_yaml(
         "shared: &shared [safe]\nfirst: *shared\nsecond: *shared\n",

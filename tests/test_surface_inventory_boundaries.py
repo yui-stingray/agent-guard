@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from agent_guard.bounded_yaml import MAX_YAML_EXPANDED_BYTES
 from agent_guard import surface_inventory_core
 from agent_guard import surface_inventory_directories
 from agent_guard import surface_inventory_metadata
@@ -195,6 +196,28 @@ def test_workflow_inventory_preserves_legitimate_bounded_workflow(tmp_path: Path
     assert [item["surface"] for item in surfaces] == [
         "workflow_file",
         "workflow_reference",
+    ]
+
+
+def test_workflow_inventory_preserves_nonaliased_workflow_within_file_ceiling(
+    tmp_path: Path,
+) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "large-name.yml"
+    write(
+        workflow,
+        "name: " + "x" * (MAX_YAML_EXPANDED_BYTES + 1) + "\njobs: {}\n",
+    )
+
+    surfaces = surface_inventory_workflow.collect_workflow_surfaces(tmp_path)
+
+    assert workflow.stat().st_size <= surface_inventory_core.MAX_SURFACE_INVENTORY_FILE_BYTES
+    assert surfaces == [
+        {
+            "surface": "workflow_file",
+            "path": ".github/workflows/large-name.yml",
+            "kind": "github_actions",
+            "status": "scanned",
+        }
     ]
 
 
