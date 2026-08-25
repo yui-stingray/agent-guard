@@ -147,6 +147,21 @@ is used in a diff. These controls do not make an attacker-selected executable
 earlier on the caller's `PATH` trusted; the Python and Git executables and
 installed package environment remain part of the runner trust boundary.
 
+Surface delta applies the existing five-second traversal deadline across each
+base-tree materialization. Tree and index metadata are capped at 4 MiB;
+selected entries are capped at 10,000, regular files at 1 MiB each, and
+materialized regular-file and symlink data at 8 MiB in aggregate. Bounded
+blob-batch and synthetic tar output are each capped at 16 MiB.
+Surface inventory workflow, documentation, hook, policy, and directory
+collectors reuse the five-second traversal deadline, 32,768 traversal units,
+10,000 selected paths, 1 MiB file reads, 256 KiB policy reads, and 16 MiB of
+distinct input per collector. Workflow YAML uses the shared bounded loader and
+rejects merge-key expansion. Policy/spec drift uses descriptor-bound 1 MiB
+README and 256 KiB workflow-policy reads under one 16 MiB input budget; its Git
+queries use a five-second deadline and 4 MiB output cap. Limit and containment
+failures use fixed diagnostics without publishing paths, Git stderr, or input
+content.
+
 Repository walks are bounded static observations, not filesystem snapshots.
 Descriptor-bound API and content reads keep the bytes actually read beneath the
 validated repository root, but a concurrent checkout writer can still add or

@@ -138,6 +138,9 @@ def test_run_bounded_git_passes_command_line_fsmonitor_override(
         ["ls-files", "--cached"],
         ["-c", "filter.synthetic.clean=helper", "diff", "--no-ext-diff", "--no-textconv", "--no-renames"],
         ["-c", "filter.synthetic.clean=", "diff", "--no-ext-diff", "--no-textconv", "--no-renames"],
+        ["cat-file", "--batch-all-objects"],
+        ["ls-tree", "-r", "-z", "--full-tree", "--output=unsafe"],
+        ["merge-base", "--all", "origin/main", "HEAD"],
     ],
 )
 def test_run_bounded_git_rejects_helper_capable_or_unbounded_invocations(
@@ -200,6 +203,44 @@ def test_run_bounded_git_accepts_complete_filter_neutralization(
     command = captured["command"]
     assert isinstance(command, list)
     assert command[-len(args) :] == args
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["cat-file", "--batch"],
+        ["ls-tree", "-r", "-z", "--full-tree", "HEAD"],
+        ["merge-base", "--all", "--", "origin/main", "HEAD"],
+    ],
+)
+def test_run_bounded_git_accepts_surface_delta_read_only_queries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    args: list[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    def run_process(command: list[str], **kwargs: object):
+        captured["command"] = command
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, b"")
+
+    monkeypatch.setattr(bounded_git, "_run_bounded_process", run_process)
+
+    bounded_git.run_bounded_git(
+        tmp_path,
+        args,
+        timeout_seconds=1.0,
+        max_output_bytes=128,
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[-len(args) :] == args
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert environment["GIT_NO_LAZY_FETCH"] == "1"
+    assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
 
 
 def test_bounded_process_kills_descendant_holding_stdout_and_joins_reader(

@@ -11,11 +11,39 @@ from pathlib import Path
 
 import yaml
 
-from .context_guard import collect_context_inventory, load_context_policy, scan_context_files
+from .bounded_git import (
+    BoundedGitOutputLimitError,
+    BoundedGitProcessError,
+    run_bounded_git,
+)
+from .bounded_repo_reader import (
+    BoundedRepoContainmentError,
+    BoundedRepoFileNotFoundError,
+    BoundedRepoLimitError,
+    BoundedRepoReadError,
+    DistinctInputBudget,
+    read_repo_bound_bytes,
+)
+from .bounded_yaml import (
+    BoundedYamlInvalidError,
+    BoundedYamlLimitError,
+    load_bounded_yaml,
+)
+from .content_guard import (
+    CONTENT_TRAVERSAL_TIMEOUT_SECONDS,
+    MAX_GIT_NAME_LIST_OUTPUT_BYTES,
+)
+from .context_guard import (
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    MAX_CONTEXT_FILE_BYTES,
+    collect_context_inventory,
+    load_context_policy,
+    scan_context_files,
+)
 from .context_lock import check_context_digest_coverage
 from .digest_guard import load_digest_policy
 from .profiles import normalize_profile_name, profile_requirements
-from .workflow_guard import load_workflow_policy, scan_workflow_policy
+from .workflow_guard import MAX_WORKFLOW_POLICY_BYTES, scan_workflow_policy
 
 
 POLICY_SPEC_DRIFT_SCHEMA_VERSION_V1 = "agent-guard.policy_spec_drift.v1"
@@ -89,6 +117,15 @@ BASELINE_TRUST_EXTRA_PATHS = (
     "action.yml",
     ".pre-commit-hooks.yaml",
 )
+GIT_DRIFT_TIMEOUT_SECONDS = CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+MAX_GIT_DRIFT_OUTPUT_BYTES = MAX_GIT_NAME_LIST_OUTPUT_BYTES
+ERROR_POLICY_SPEC_DRIFT_INPUT = "policy/spec drift repository input could not be verified"
+ERROR_POLICY_SPEC_DRIFT_LIMIT = "policy/spec drift exceeds configured limits"
+_INVALID_WORKFLOW_POLICY = object()
+
+
+class DriftGitError(Exception):
+    """A bounded Git query failed without exposing process details."""
 
 
 @dataclass(frozen=True)
@@ -168,18 +205,78 @@ def profile_required_files(profile: str) -> tuple[str, ...]:
     return tuple(str(item) for item in requirements["policy_files"])
 
 
-def read_optional_text(path: Path) -> str:
+def _read_drift_input(
+    path: Path,
+    *,
+    root: Path,
+    max_bytes: int,
+    input_budget: DistinctInputBudget,
+) -> bytes | None:
     try:
-        return path.read_text(encoding="utf-8")
-    except Exception:
+        opened = read_repo_bound_bytes(path, root, max_bytes=max_bytes)
+    except BoundedRepoFileNotFoundError:
+        return None
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT) from None
+    except (BoundedRepoContainmentError, BoundedRepoReadError):
+        raise ValueError(ERROR_POLICY_SPEC_DRIFT_INPUT) from None
+    try:
+        input_budget.charge(opened)
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT) from None
+    except BoundedRepoReadError:
+        raise ValueError(ERROR_POLICY_SPEC_DRIFT_INPUT) from None
+    return opened.data
+
+
+def read_optional_text(
+    path: Path,
+    *,
+    root: Path | None = None,
+    _input_budget: DistinctInputBudget | None = None,
+) -> str:
+    allowed_root = path.parent if root is None else root
+    budget = _input_budget or DistinctInputBudget(
+        max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES
+    )
+    raw = _read_drift_input(
+        path,
+        root=allowed_root,
+        max_bytes=MAX_CONTEXT_FILE_BYTES,
+        input_budget=budget,
+    )
+    if raw is None:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
         return ""
 
 
-def workflow_policy_required_paths(root: Path) -> set[str]:
-    policy_path = root / ".agent-guard" / "workflow-policy.yaml"
+def _load_drift_workflow_policy(
+    root: Path,
+    *,
+    input_budget: DistinctInputBudget,
+) -> object | None:
+    raw = _read_drift_input(
+        root / ".agent-guard" / "workflow-policy.yaml",
+        root=root,
+        max_bytes=MAX_WORKFLOW_POLICY_BYTES,
+        input_budget=input_budget,
+    )
+    if raw is None:
+        return None
     try:
-        loaded = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
-    except Exception:
+        text = raw.decode("utf-8")
+        return load_bounded_yaml(text, construct=yaml.safe_load) or {}
+    except BoundedYamlLimitError:
+        raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT) from None
+    except (BoundedYamlInvalidError, UnicodeDecodeError):
+        return _INVALID_WORKFLOW_POLICY
+
+
+def workflow_policy_required_paths(loaded: object) -> set[str]:
+    if loaded is _INVALID_WORKFLOW_POLICY:
         return set()
     if not isinstance(loaded, dict):
         return set()
@@ -229,12 +326,17 @@ def is_safe_base_ref_arg(base_ref: str) -> bool:
 
 
 def run_git_command(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = run_bounded_git(
+            root,
+            args,
+            timeout_seconds=GIT_DRIFT_TIMEOUT_SECONDS,
+            max_output_bytes=MAX_GIT_DRIFT_OUTPUT_BYTES,
+        )
+    except (BoundedGitOutputLimitError, BoundedGitProcessError):
+        raise DriftGitError from None
+    stdout = result.stdout.decode("utf-8", errors="surrogateescape")
+    return subprocess.CompletedProcess(result.args, result.returncode, stdout, "")
 
 
 def scan_baseline_trust_drift(
@@ -254,7 +356,7 @@ def scan_baseline_trust_drift(
         )
     try:
         probe = run_git_command(root, ["rev-parse", "--is-inside-work-tree"])
-    except FileNotFoundError:
+    except DriftGitError:
         finding = build_baseline_unproven_finding("git_unavailable")
         return [finding], 1, BaselineTrustSummary(
             status="unproven",
@@ -278,13 +380,17 @@ def scan_baseline_trust_drift(
                 "diff",
                 "--relative",
                 "--name-only",
+                "-z",
                 "--diff-filter=AMDR",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-renames",
                 f"{base_ref}...HEAD",
                 "--",
                 *protected_paths,
             ],
         )
-    except FileNotFoundError:
+    except DriftGitError:
         finding = build_baseline_unproven_finding("git_unavailable")
         return [finding], 1, BaselineTrustSummary(
             status="unproven",
@@ -301,7 +407,7 @@ def scan_baseline_trust_drift(
             finding_count=1,
         )
 
-    changed_paths = sorted({line.strip() for line in diff.stdout.splitlines() if line.strip()})
+    changed_paths = sorted({path for path in diff.stdout.split("\0") if path})
     findings = [
         DriftFinding(
             rule_id="baseline_trust_change",
@@ -444,9 +550,14 @@ def build_policy_spec_drift_scan(
     required_files = REQUIRED_AGENT_GUARD_FILES if version == "v1" else profile_required_files(profile_name)
     findings: list[DriftFinding] = []
     checked_count = 0
+    input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
 
     readme = root / "README.md"
-    readme_text = read_optional_text(readme)
+    readme_text = read_optional_text(
+        readme,
+        root=root,
+        _input_budget=input_budget,
+    )
     for requirement_id, command in readme_commands:
         checked_count += 1
         if command in readme_text:
@@ -477,7 +588,11 @@ def build_policy_spec_drift_scan(
             )
         )
 
-    required_paths = workflow_policy_required_paths(root)
+    workflow_policy = _load_drift_workflow_policy(
+        root,
+        input_budget=input_budget,
+    )
+    required_paths = workflow_policy_required_paths(workflow_policy)
     for rel_path in required_files:
         checked_count += 1
         if rel_path in required_paths:
@@ -493,12 +608,15 @@ def build_policy_spec_drift_scan(
             )
         )
 
-    workflow_policy_path = root / ".agent-guard" / "workflow-policy.yaml"
-    if workflow_policy_path.is_file():
+    if workflow_policy is not None:
         try:
+            if workflow_policy is _INVALID_WORKFLOW_POLICY or not isinstance(
+                workflow_policy, dict
+            ):
+                raise ValueError
             workflow_findings, workflow_checked = scan_workflow_policy(
                 root=root,
-                policy=load_workflow_policy(workflow_policy_path),
+                policy=workflow_policy,
             )
             checked_count += workflow_checked
             for item in workflow_findings:

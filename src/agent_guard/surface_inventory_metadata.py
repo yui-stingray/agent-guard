@@ -18,9 +18,12 @@ from .bounded_git import (
     sanitized_git_environment,
 )
 from .surface_inventory_core import (
+    MAX_SURFACE_INVENTORY_POLICY_BYTES,
+    SurfaceInventoryBudget,
     is_in_opaque_directory,
     is_repo_bound_path,
     parse_agent_guard_command,
+    read_surface_file,
     rel_path,
     repo_bound_glob,
 )
@@ -143,6 +146,7 @@ def collect_documented_guard_surfaces(
     opaque_directories: Sequence[str] = (),
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
+    budget = SurfaceInventoryBudget()
     doc_files: list[Path] = []
     for pattern in DOC_GLOBS:
         doc_files.extend(
@@ -150,16 +154,18 @@ def collect_documented_guard_surfaces(
                 root,
                 pattern,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         )
     for doc_file in sorted(
         path for path in doc_files if is_repo_bound_path(path, root) and path.is_file()
     ):
-        doc_path = rel_path(doc_file, root)
         try:
-            lines = doc_file.read_text(encoding="utf-8").splitlines()
-        except Exception:
+            opened = read_surface_file(doc_file, root, budget=budget)
+            lines = opened.data.decode("utf-8").splitlines()
+        except UnicodeDecodeError:
             continue
+        doc_path = opened.relative_path
         for lineno, line in enumerate(lines, start=1):
             command = parse_agent_guard_command(line)
             if command is None:
@@ -368,23 +374,31 @@ def collect_policy_surfaces(
     if not policy_dir.is_dir():
         return []
     surfaces: list[dict[str, object]] = []
+    budget = SurfaceInventoryBudget()
     for path in sorted(
         repo_bound_glob(
             root,
             ".agent-guard/*.yaml",
             opaque_directories=opaque_directories,
+            _budget=budget,
         )
     ):
         if not path.is_file():
             continue
-        display = rel_path(path, root)
+        opened = read_surface_file(
+            path,
+            root,
+            budget=budget,
+            max_bytes=MAX_SURFACE_INVENTORY_POLICY_BYTES,
+        )
+        display = opened.relative_path
         surfaces.append(
             {
                 "surface": "policy_file",
                 "path": display,
                 "kind": policy_kind(display),
                 "status": "present",
-                "size_bytes": path.stat().st_size,
+                "size_bytes": len(opened.data),
             }
         )
     return surfaces

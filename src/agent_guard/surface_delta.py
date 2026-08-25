@@ -7,20 +7,36 @@ Why: turn ad hoc PR agent-surface review into deterministic, sanitized evidence
 from __future__ import annotations
 
 from functools import partial
+import io
 import json
 import os
 import subprocess
 import tarfile
 import tempfile
+import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
+from .bounded_git import (
+    BoundedGitOutputLimitError,
+    BoundedGitProcessError,
+    run_bounded_git,
+)
+from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
+from .content_guard import (
+    CONTENT_TRAVERSAL_TIMEOUT_SECONDS,
+    MAX_GIT_FILTER_CONFIG_OUTPUT_BYTES,
+    MAX_GIT_NAME_LIST_OUTPUT_BYTES,
+)
 from .context_guard import (
     DEFAULT_EXCLUDE,
     DEFAULT_INCLUDE,
+    MAX_CONTEXT_AGGREGATE_RESULT_BYTES,
+    MAX_CONTEXT_FILE_BYTES,
+    MAX_CONTEXT_SCAN_FILES,
     glob_matches,
     has_glob_magic,
     is_excluded,
@@ -111,6 +127,20 @@ _MAX_MATERIALIZATION_PROJECTIONS = 4096
 _MAX_SURFACE_PATHSPECS = 256
 _MAX_SURFACE_PATHSPEC_LENGTH = 1024
 _MAX_GLOB_VARIANTS = 32
+# Reuse established scanner ceilings: bounded Git metadata uses the inventory
+# deadline/output cap, materialized files use the context per-file ceiling, and
+# intermediate/tar output uses the existing isolated-message budgets.
+_GIT_OPERATION_TIMEOUT_SECONDS = CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+_MAX_GIT_METADATA_OUTPUT_BYTES = MAX_GIT_NAME_LIST_OUTPUT_BYTES
+_MAX_GIT_FILTER_CONFIG_OUTPUT_BYTES = MAX_GIT_FILTER_CONFIG_OUTPUT_BYTES
+_MAX_MATERIALIZED_FILE_BYTES = MAX_CONTEXT_FILE_BYTES
+_MAX_MATERIALIZED_BYTES = MAX_CONTEXT_AGGREGATE_RESULT_BYTES
+_MAX_MATERIALIZED_OUTPUT_BYTES = MAX_ISOLATED_MESSAGE_BYTES
+_MAX_MATERIALIZED_FILES = MAX_CONTEXT_SCAN_FILES
+_GIT_QUERY_ERROR = "surface delta could not complete a bounded Git query"
+_MATERIALIZATION_LIMIT_ERROR = (
+    "surface delta base ref materialization exceeds configured limits"
+)
 
 
 class SurfaceDeltaError(Exception):
@@ -204,26 +234,110 @@ class GitBlobReader:
         return data
 
 
+class SurfaceMaterializationBudget:
+    """Share one deadline and byte/file budget across base-tree materialization."""
+
+    def __init__(self) -> None:
+        self.deadline = time.monotonic() + _GIT_OPERATION_TIMEOUT_SECONDS
+        self.materialized_bytes = 0
+
+    def check_deadline(self) -> None:
+        if time.monotonic() >= self.deadline:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+
+    def remaining_timeout(self) -> float:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+        return remaining
+
+    def check_file_count(self, count: int) -> None:
+        self.check_deadline()
+        if count > _MAX_MATERIALIZED_FILES:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+
+    def charge_materialized_bytes(self, size: int) -> None:
+        self.check_deadline()
+        if size < 0 or size > _MAX_MATERIALIZED_FILE_BYTES:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+        if size > _MAX_MATERIALIZED_BYTES - self.materialized_bytes:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+        self.materialized_bytes += size
+
+
+class BoundedTarWriter:
+    """Reject synthetic tar output before writing past its fixed ceiling."""
+
+    def __init__(
+        self,
+        stream: BinaryIO,
+        *,
+        budget: SurfaceMaterializationBudget,
+    ) -> None:
+        self.stream = stream
+        self.budget = budget
+        self.written = 0
+
+    def write(self, data: bytes) -> int:
+        self.budget.check_deadline()
+        if len(data) > _MAX_MATERIALIZED_OUTPUT_BYTES - self.written:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
+        written = self.stream.write(data)
+        if written != len(data):
+            raise OSError("incomplete tar write")
+        self.written += written
+        return written
+
+    def tell(self) -> int:
+        return self.written
+
+
 def is_safe_base_ref_arg(base_ref: str) -> bool:
     return bool(base_ref) and not base_ref.startswith("-") and not any(
         char in base_ref for char in _UNSAFE_BASE_REF_CHARS
     )
 
 
-def run_git_command(cwd: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
-        capture_output=True,
-        text=True,
-        errors="surrogateescape",
-        check=False,
+def _run_surface_git(
+    cwd: Path,
+    args: Sequence[str],
+    *,
+    timeout_seconds: float = _GIT_OPERATION_TIMEOUT_SECONDS,
+    max_output_bytes: int = _MAX_GIT_METADATA_OUTPUT_BYTES,
+    input_data: bytes | None = None,
+    error_message: str = _GIT_QUERY_ERROR,
+) -> subprocess.CompletedProcess[bytes]:
+    try:
+        return run_bounded_git(
+            cwd,
+            args,
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes,
+            input_data=input_data,
+        )
+    except (BoundedGitOutputLimitError, BoundedGitProcessError):
+        raise SurfaceDeltaError(error_message) from None
+
+
+def run_git_command(
+    cwd: Path,
+    args: list[str],
+    *,
+    max_output_bytes: int = _MAX_GIT_METADATA_OUTPUT_BYTES,
+) -> subprocess.CompletedProcess[str]:
+    result = _run_surface_git(
+        cwd,
+        args,
+        max_output_bytes=max_output_bytes,
     )
+    stdout = result.stdout.decode("utf-8", errors="surrogateescape")
+    return subprocess.CompletedProcess(result.args, result.returncode, stdout, "")
 
 
 def resolve_repo_toplevel(root: Path) -> Path | None:
     try:
         result = run_git_command(root, ["rev-parse", "--show-toplevel"])
-    except FileNotFoundError:
+    except SurfaceDeltaError:
         return None
     if result.returncode != 0:
         return None
@@ -249,10 +363,7 @@ def is_valid_git_object_id(value: str) -> bool:
 def resolve_merge_base(*, root: Path, base_ref: str) -> str:
     """Resolve the PR branch point without publishing the caller's ref value."""
 
-    try:
-        result = run_git_command(root, ["merge-base", "--all", "--", base_ref, "HEAD"])
-    except FileNotFoundError as exc:
-        raise SurfaceDeltaError("surface delta requires git") from exc
+    result = run_git_command(root, ["merge-base", "--all", "--", base_ref, "HEAD"])
     candidates = result.stdout.splitlines()
     if result.returncode != 0 or len(candidates) != 1 or not is_valid_git_object_id(
         candidates[0]
@@ -268,10 +379,12 @@ def configured_filter_drivers(root: Path) -> tuple[str, ...]:
         root,
         [
             "config",
+            "--null",
             "--name-only",
             "--get-regexp",
             r"^filter\..*\.(clean|process|required)$",
         ],
+        max_output_bytes=_MAX_GIT_FILTER_CONFIG_OUTPUT_BYTES,
     )
     if result.returncode == 1:
         return ()
@@ -280,7 +393,9 @@ def configured_filter_drivers(root: Path) -> tuple[str, ...]:
 
     drivers: set[str] = set()
     allowed = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
-    for raw_key in result.stdout.splitlines():
+    for raw_key in result.stdout.split("\0"):
+        if not raw_key:
+            continue
         key = raw_key.strip()
         folded = key.casefold()
         if not folded.startswith("filter."):
@@ -303,37 +418,34 @@ def configured_filter_drivers(root: Path) -> tuple[str, ...]:
 def changed_repo_paths(*, root: Path, base_ref: str) -> tuple[str, ...]:
     """Return Git-normalized changed paths relative to root without exposing them."""
 
-    try:
-        git_config_args = ["-c", "core.fsmonitor=false"]
-        for driver in configured_filter_drivers(root):
-            git_config_args.extend(
-                [
-                    "-c",
-                    f"filter.{driver}.clean=",
-                    "-c",
-                    f"filter.{driver}.process=",
-                    "-c",
-                    f"filter.{driver}.required=false",
-                ]
-            )
-        result = run_git_command(
-            root,
+    git_config_args: list[str] = []
+    for driver in configured_filter_drivers(root):
+        git_config_args.extend(
             [
-                *git_config_args,
-                "diff",
-                "--relative",
-                "--name-only",
-                "-z",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=dirty",
-                "--no-renames",
-                base_ref,
-                "--",
-            ],
+                "-c",
+                f"filter.{driver}.clean=",
+                "-c",
+                f"filter.{driver}.process=",
+                "-c",
+                f"filter.{driver}.required=false",
+            ]
         )
-    except FileNotFoundError as exc:
-        raise SurfaceDeltaError("surface delta requires git") from exc
+    result = run_git_command(
+        root,
+        [
+            *git_config_args,
+            "diff",
+            "--relative",
+            "--name-only",
+            "-z",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=dirty",
+            "--no-renames",
+            base_ref,
+            "--",
+        ],
+    )
     if result.returncode != 0:
         raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
     return tuple(sorted(path for path in result.stdout.split("\0") if path))
@@ -742,44 +854,44 @@ def run_git_tree_list(
     *,
     toplevel: Path,
     base_ref: str,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """List raw tree metadata; callers select entries before reading any blobs."""
 
-    args = [
-        "git",
-        "-C",
-        str(toplevel),
-        "ls-tree",
-        "-r",
-        "-z",
-        "--full-tree",
-        base_ref,
-    ]
-    return subprocess.run(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        check=False,
+    budget = _budget or SurfaceMaterializationBudget()
+    return _run_surface_git(
+        toplevel,
+        [
+            "ls-tree",
+            "-r",
+            "-z",
+            "--full-tree",
+            base_ref,
+        ],
+        timeout_seconds=budget.remaining_timeout(),
+        max_output_bytes=_MAX_GIT_METADATA_OUTPUT_BYTES,
+        error_message=_MATERIALIZATION_LIMIT_ERROR,
     )
 
 
-def run_git_index_list(*, toplevel: Path) -> subprocess.CompletedProcess[bytes]:
+def run_git_index_list(
+    *,
+    toplevel: Path,
+    _budget: SurfaceMaterializationBudget | None = None,
+) -> subprocess.CompletedProcess[bytes]:
     """List tracked index entries without inspecting submodule worktrees."""
 
-    return subprocess.run(
+    budget = _budget or SurfaceMaterializationBudget()
+    return _run_surface_git(
+        toplevel,
         [
-            "git",
-            "-C",
-            str(toplevel),
-            "-c",
-            "core.fsmonitor=false",
             "ls-files",
             "--stage",
             "-z",
         ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        check=False,
+        timeout_seconds=budget.remaining_timeout(),
+        max_output_bytes=_MAX_GIT_METADATA_OUTPUT_BYTES,
+        error_message=_MATERIALIZATION_LIMIT_ERROR,
     )
 
 
@@ -823,11 +935,14 @@ def gitlink_paths_from_tree(
     raw_listing: bytes,
     *,
     repo_relative: str,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> tuple[str, ...]:
     """Return validated root-relative gitlinks from one raw commit tree listing."""
 
     gitlinks: set[str] = set()
     for record in raw_listing.split(b"\0"):
+        if _budget is not None:
+            _budget.check_deadline()
         if not record:
             continue
         metadata, separator, raw_path = record.partition(b"\t")
@@ -849,6 +964,8 @@ def gitlink_paths_from_tree(
         relative = relative_git_path(path, repo_relative=repo_relative)
         if relative:
             gitlinks.add(relative)
+            if len(gitlinks) > _MAX_MATERIALIZED_FILES:
+                raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
     return tuple(sorted(gitlinks))
 
 
@@ -859,15 +976,14 @@ def gitlink_paths_from_index(
 ) -> tuple[str, ...]:
     """Return tracked root-relative gitlinks without entering initialized submodules."""
 
-    try:
-        listing = run_git_index_list(toplevel=toplevel)
-    except FileNotFoundError as exc:
-        raise SurfaceDeltaError("surface delta requires git") from exc
+    budget = SurfaceMaterializationBudget()
+    listing = run_git_index_list(toplevel=toplevel, _budget=budget)
     if listing.returncode != 0:
         raise SurfaceDeltaError("surface delta could not inspect the Git index")
 
     gitlinks: set[str] = set()
     for record in listing.stdout.split(b"\0"):
+        budget.check_deadline()
         if not record:
             continue
         metadata, separator, raw_path = record.partition(b"\t")
@@ -892,6 +1008,8 @@ def gitlink_paths_from_index(
         if relative is None:
             raise SurfaceDeltaError("surface delta could not parse the Git index")
         gitlinks.add(relative)
+        if len(gitlinks) > _MAX_MATERIALIZED_FILES:
+            raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR)
     return tuple(sorted(gitlinks))
 
 
@@ -901,6 +1019,7 @@ def parse_git_tree_entries(
     repo_relative: str,
     materialization_plan: SurfaceMaterializationPlan | None = None,
     materialization_projections: Sequence[SurfaceMaterializationProjection] = (),
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> list[GitTreeEntry]:
     """Parse and validate raw `git ls-tree -z` output deterministically."""
 
@@ -911,6 +1030,8 @@ def parse_git_tree_entries(
     prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
     raw_root = b"" if repo_relative in ("", ".") else os.fsencode(repo_relative.rstrip("/"))
     for record in raw_listing.split(b"\0"):
+        if _budget is not None:
+            _budget.check_deadline()
         if not record:
             continue
         metadata, separator, raw_path = record.partition(b"\t")
@@ -974,18 +1095,16 @@ def parse_git_tree_entries(
                 path=path,
             )
         )
+        if _budget is not None:
+            _budget.check_file_count(len(entries))
     entries.sort(key=lambda entry: entry.path)
     return entries
 
 
-def begin_git_blob(process: subprocess.Popen[bytes], object_id: str) -> GitBlobReader:
-    """Request one raw blob from a `git cat-file --batch` process."""
+def begin_git_blob(stream: BinaryIO, object_id: str) -> GitBlobReader:
+    """Begin one validated raw blob in bounded `git cat-file --batch` output."""
 
-    if process.stdin is None or process.stdout is None:
-        raise SurfaceDeltaError("surface delta could not read the base ref tree")
-    process.stdin.write(object_id.encode("ascii") + b"\n")
-    process.stdin.flush()
-    header = process.stdout.readline()
+    header = stream.readline()
     fields = header.rstrip(b"\n").split(b" ")
     if len(fields) != 3 or fields[0] != object_id.encode("ascii") or fields[1] != b"blob":
         raise SurfaceDeltaError("surface delta could not read the base ref tree")
@@ -995,60 +1114,108 @@ def begin_git_blob(process: subprocess.Popen[bytes], object_id: str) -> GitBlobR
         raise SurfaceDeltaError("surface delta could not read the base ref tree") from exc
     if size < 0:
         raise SurfaceDeltaError("surface delta could not read the base ref tree")
-    return GitBlobReader(process.stdout, size)
+    return GitBlobReader(stream, size)
 
 
-def finish_git_blob(process: subprocess.Popen[bytes], reader: GitBlobReader) -> None:
+def finish_git_blob(stream: BinaryIO, reader: GitBlobReader) -> None:
     """Verify the current batch-protocol blob was consumed exactly."""
 
-    if reader.remaining != 0 or process.stdout is None or process.stdout.read(1) != b"\n":
+    if reader.remaining != 0 or stream.read(1) != b"\n":
         raise SurfaceDeltaError("surface delta could not read the base ref tree")
+
+
+def git_blob_sizes(
+    *,
+    toplevel: Path,
+    entries: Sequence[GitTreeEntry],
+    budget: SurfaceMaterializationBudget,
+) -> dict[str, int]:
+    """Preflight selected blob sizes before requesting any raw blob contents."""
+
+    budget.check_file_count(len(entries))
+    object_ids = sorted({entry.object_id for entry in entries})
+    if not object_ids:
+        return {}
+    input_data = "".join(f"{object_id}\n" for object_id in object_ids).encode("ascii")
+    result = _run_surface_git(
+        toplevel,
+        ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+        timeout_seconds=budget.remaining_timeout(),
+        max_output_bytes=_MAX_GIT_METADATA_OUTPUT_BYTES,
+        input_data=input_data,
+        error_message=_MATERIALIZATION_LIMIT_ERROR,
+    )
+    lines = result.stdout.splitlines()
+    if result.returncode != 0 or len(lines) != len(object_ids):
+        raise SurfaceDeltaError("surface delta could not read the base ref tree")
+
+    sizes: dict[str, int] = {}
+    for expected_id, line in zip(object_ids, lines, strict=True):
+        fields = line.split(b" ")
+        try:
+            object_id = fields[0].decode("ascii")
+            size = int(fields[2])
+        except (IndexError, UnicodeDecodeError, ValueError):
+            raise SurfaceDeltaError("surface delta could not read the base ref tree") from None
+        if (
+            len(fields) != 3
+            or object_id != expected_id
+            or fields[1] != b"blob"
+            or size < 0
+        ):
+            raise SurfaceDeltaError("surface delta could not read the base ref tree")
+        sizes[object_id] = size
+    return sizes
 
 
 def read_git_symlink_targets(
     *,
     toplevel: Path,
     entries: Sequence[GitTreeEntry],
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> dict[str, bytes]:
     """Read a bounded set of raw symlink blobs without checkout filters."""
 
-    process: subprocess.Popen[bytes] | None = None
+    budget = _budget or SurfaceMaterializationBudget()
+    budget.check_file_count(len(entries))
     targets: dict[str, bytes] = {}
     try:
-        process = subprocess.Popen(
-            ["git", "-C", str(toplevel), "cat-file", "--batch"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+        result = _run_surface_git(
+            toplevel,
+            ["cat-file", "--batch"],
+            timeout_seconds=budget.remaining_timeout(),
+            max_output_bytes=_MAX_MATERIALIZED_OUTPUT_BYTES,
+            input_data="".join(f"{entry.object_id}\n" for entry in entries).encode(
+                "ascii"
+            ),
+            error_message=_MATERIALIZATION_LIMIT_ERROR,
         )
+        if result.returncode != 0:
+            raise SurfaceDeltaError("surface delta could not read the base ref tree")
+        stream = io.BytesIO(result.stdout)
         for entry in entries:
+            budget.check_deadline()
             if entry.mode != "120000":
                 raise SurfaceDeltaError("surface delta could not read the base ref tree")
-            reader = begin_git_blob(process, entry.object_id)
+            reader = begin_git_blob(stream, entry.object_id)
             if reader.remaining > _MAX_SYMLINK_TARGET_BYTES:
                 raise SurfaceDeltaError(
                     "surface delta found an unsafe symlink in the base ref tree"
                 )
+            budget.charge_materialized_bytes(reader.remaining)
             target = reader.read()
-            finish_git_blob(process, reader)
+            finish_git_blob(stream, reader)
             if b"\0" in target:
                 raise SurfaceDeltaError(
                     "surface delta found an unsafe symlink in the base ref tree"
                 )
             targets[entry.path] = target
-
-        if process.stdin is not None:
-            process.stdin.close()
-        if process.wait() != 0:
+        if stream.read(1):
             raise SurfaceDeltaError("surface delta could not read the base ref tree")
     except SurfaceDeltaError:
         raise
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise SurfaceDeltaError("surface delta could not read the base ref tree") from exc
-    finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            process.wait()
+    except (MemoryError, OSError, OverflowError) as exc:
+        raise SurfaceDeltaError(_MATERIALIZATION_LIMIT_ERROR) from exc
     return targets
 
 
@@ -1145,9 +1312,12 @@ def expand_git_tree_symlink_targets(
     repo_relative: str,
     entries: Sequence[GitTreeEntry],
     materialization_plan: SurfaceMaterializationPlan,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> tuple[list[GitTreeEntry], dict[str, bytes]]:
     """Add bounded repository-internal target chains for selected symlinks."""
 
+    budget = _budget or SurfaceMaterializationBudget()
+    budget.check_file_count(len(entries))
     selected = {os.path.normcase(entry.path): entry for entry in entries}
     selected_requests: dict[str, set[SymlinkMaterializationRequest]] = {}
     prefix = "" if repo_relative in ("", ".") else f"{repo_relative.rstrip('/')}/"
@@ -1169,6 +1339,7 @@ def expand_git_tree_symlink_targets(
     expansion_depth = 0
 
     while True:
+        budget.check_deadline()
         pending = [
             entry
             for key, entry in selected.items()
@@ -1189,7 +1360,11 @@ def expand_git_tree_symlink_targets(
                 "surface delta found too many symlinks in the base ref tree"
             )
 
-        round_targets = read_git_symlink_targets(toplevel=toplevel, entries=pending)
+        round_targets = read_git_symlink_targets(
+            toplevel=toplevel,
+            entries=pending,
+            _budget=budget,
+        )
         projections: set[SurfaceMaterializationProjection] = set()
         for entry in pending:
             key = os.path.normcase(entry.path)
@@ -1238,6 +1413,7 @@ def expand_git_tree_symlink_targets(
             repo_relative=repo_relative,
             materialization_plan=materialization_plan,
             materialization_projections=round_projections,
+            _budget=budget,
         )
         for entry in discovered:
             key = os.path.normcase(entry.path)
@@ -1268,6 +1444,7 @@ def expand_git_tree_symlink_targets(
                     "surface delta found too many symlink target entries in the base ref tree"
                 )
             selected[key] = entry
+            budget.check_file_count(len(selected))
             if entry.mode == "120000":
                 selected_requests[key] = requests
 
@@ -1292,55 +1469,80 @@ def write_git_tree_tar(
     entries: Sequence[GitTreeEntry],
     symlink_targets: Mapping[str, bytes],
     tar_stream: BinaryIO,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> None:
-    """Stream raw Git blobs into a synthetic tar without checkout filters."""
+    """Write bounded raw Git blob output into a synthetic tar."""
 
-    process: subprocess.Popen[bytes] | None = None
-    try:
-        process = subprocess.Popen(
-            ["git", "-C", str(toplevel), "cat-file", "--batch"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        with tarfile.open(fileobj=tar_stream, mode="w:", format=tarfile.PAX_FORMAT) as tar:
-            for entry in entries:
-                info = make_tar_info(entry)
-                if entry.mode == "160000":
-                    info.type = tarfile.DIRTYPE
-                    info.mode = 0o755
-                    info.size = 0
-                    tar.addfile(info)
-                    continue
-
-                if entry.mode == "120000":
-                    target = symlink_targets.get(entry.path)
-                    if target is None:
-                        raise SurfaceDeltaError(
-                            "surface delta could not read the base ref tree"
-                        )
-                    info.type = tarfile.SYMTYPE
-                    info.mode = 0o777
-                    info.size = 0
-                    info.linkname = os.fsdecode(target)
-                    tar.addfile(info)
-                    continue
-
-                reader = begin_git_blob(process, entry.object_id)
-                info.type = tarfile.REGTYPE
-                info.mode = 0o755 if entry.mode == "100755" else 0o644
-                info.size = reader.remaining
-                tar.addfile(info, reader)
-                finish_git_blob(process, reader)
-
-        if process.stdin is not None:
-            process.stdin.close()
-        if process.wait() != 0:
+    budget = _budget or SurfaceMaterializationBudget()
+    budget.check_file_count(len(entries))
+    regular_entries = [
+        entry for entry in entries if entry.mode not in {"120000", "160000"}
+    ]
+    sizes = git_blob_sizes(
+        toplevel=toplevel,
+        entries=regular_entries,
+        budget=budget,
+    )
+    for entry in regular_entries:
+        size = sizes.get(entry.object_id)
+        if size is None:
             raise SurfaceDeltaError("surface delta could not read the base ref tree")
-    finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            process.wait()
+        budget.charge_materialized_bytes(size)
+
+    raw_blobs = b""
+    if regular_entries:
+        result = _run_surface_git(
+            toplevel,
+            ["cat-file", "--batch"],
+            timeout_seconds=budget.remaining_timeout(),
+            max_output_bytes=_MAX_MATERIALIZED_OUTPUT_BYTES,
+            input_data="".join(
+                f"{entry.object_id}\n" for entry in regular_entries
+            ).encode("ascii"),
+            error_message=_MATERIALIZATION_LIMIT_ERROR,
+        )
+        if result.returncode != 0:
+            raise SurfaceDeltaError("surface delta could not read the base ref tree")
+        raw_blobs = result.stdout
+
+    blob_stream = io.BytesIO(raw_blobs)
+    bounded_tar = BoundedTarWriter(tar_stream, budget=budget)
+    with tarfile.open(fileobj=bounded_tar, mode="w:", format=tarfile.PAX_FORMAT) as tar:
+        for entry in entries:
+            budget.check_deadline()
+            info = make_tar_info(entry)
+            if entry.mode == "160000":
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755
+                info.size = 0
+                tar.addfile(info)
+                continue
+
+            if entry.mode == "120000":
+                target = symlink_targets.get(entry.path)
+                if target is None:
+                    raise SurfaceDeltaError(
+                        "surface delta could not read the base ref tree"
+                    )
+                info.type = tarfile.SYMTYPE
+                info.mode = 0o777
+                info.size = 0
+                info.linkname = os.fsdecode(target)
+                tar.addfile(info)
+                continue
+
+            reader = begin_git_blob(blob_stream, entry.object_id)
+            expected_size = sizes.get(entry.object_id)
+            if expected_size is None or reader.remaining != expected_size:
+                raise SurfaceDeltaError("surface delta could not read the base ref tree")
+            info.type = tarfile.REGTYPE
+            info.mode = 0o755 if entry.mode == "100755" else 0o644
+            info.size = reader.remaining
+            tar.addfile(info, reader)
+            finish_git_blob(blob_stream, reader)
+
+    if blob_stream.read(1):
+        raise SurfaceDeltaError("surface delta could not read the base ref tree")
 
 
 def filter_git_tree_tar_member(
@@ -1349,9 +1551,12 @@ def filter_git_tree_tar_member(
     *,
     data_filter: Callable[[tarfile.TarInfo, str], tarfile.TarInfo | None],
     repo_relative: str,
+    materialization_budget: SurfaceMaterializationBudget | None = None,
 ) -> tarfile.TarInfo | None:
     """Apply the stdlib data filter with correct relative-symlink semantics."""
 
+    if materialization_budget is not None:
+        materialization_budget.check_deadline()
     if not member.issym():
         return data_filter(member, dest_path)
 
@@ -1402,22 +1607,26 @@ def archive_base_tree(
 ) -> tuple[str, ...]:
     """Materialize raw tracked base_ref content without archive or checkout attributes."""
 
-    try:
-        listing = run_git_tree_list(toplevel=toplevel, base_ref=base_ref)
-    except FileNotFoundError as exc:
-        raise SurfaceDeltaError("surface delta requires git") from exc
+    budget = SurfaceMaterializationBudget()
+    listing = run_git_tree_list(
+        toplevel=toplevel,
+        base_ref=base_ref,
+        _budget=budget,
+    )
     if listing.returncode != 0:
         raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
 
     gitlink_paths = gitlink_paths_from_tree(
         listing.stdout,
         repo_relative=repo_relative,
+        _budget=budget,
     )
     plan = surface_materialization_plan(context_policy or {})
     entries = parse_git_tree_entries(
         listing.stdout,
         repo_relative=repo_relative,
         materialization_plan=plan,
+        _budget=budget,
     )
     entries, symlink_targets = expand_git_tree_symlink_targets(
         toplevel=toplevel,
@@ -1425,7 +1634,9 @@ def archive_base_tree(
         repo_relative=repo_relative,
         entries=entries,
         materialization_plan=plan,
+        _budget=budget,
     )
+    budget.check_file_count(len(entries))
     dest.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryFile() as tar_stream:
@@ -1434,6 +1645,7 @@ def archive_base_tree(
                 entries=entries,
                 symlink_targets=symlink_targets,
                 tar_stream=tar_stream,
+                _budget=budget,
             )
             tar_stream.seek(0)
             with tarfile.open(fileobj=tar_stream, mode="r:") as tar:
@@ -1448,11 +1660,13 @@ def archive_base_tree(
                         filter_git_tree_tar_member,
                         data_filter=data_filter,
                         repo_relative=repo_relative,
+                        materialization_budget=budget,
                     ),
                 )
+                budget.check_deadline()
     except SurfaceDeltaError:
         raise
-    except (OSError, subprocess.SubprocessError, tarfile.TarError, UnicodeError) as exc:
+    except (MemoryError, OSError, OverflowError, tarfile.TarError, UnicodeError) as exc:
         raise SurfaceDeltaError("surface delta could not materialize the base ref tree") from exc
     return gitlink_paths
 

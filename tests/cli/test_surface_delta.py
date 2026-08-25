@@ -1221,6 +1221,181 @@ def test_surface_delta_does_not_apply_export_subst_to_base_blob(tmp_path: Path) 
     assert json.loads(result.stdout)["delta"]["entries"] == []
 
 
+def test_surface_delta_ignores_hostile_git_routing_config_and_replacements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    hostile = tmp_path / "hostile"
+    init_repo(repo)
+    init_repo(hostile)
+    write(repo / "context_policy.yaml", "{}\n")
+    original = "agent-guard drift check --root .\n"
+    replacement = b"agent-guard content check --root . --scan-dir replacement\n"
+    write(repo / "README.md", original)
+    commit_all(repo, "base")
+    base = base_sha(repo)
+    original_oid = run_git(repo, "rev-parse", "HEAD:README.md").stdout.strip()
+    replacement_oid = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=repo,
+        input=replacement,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("ascii").strip()
+    run_git(repo, "replace", original_oid, replacement_oid)
+
+    hostile_config = tmp_path / "hostile.gitconfig"
+    write(hostile_config, "[core]\n\tfsmonitor = synthetic-hostile-helper\n")
+    hostile_git_dir = hostile / ".git"
+    hostile_environment = {
+        "GIT_DIR": str(hostile_git_dir),
+        "GIT_WORK_TREE": str(hostile),
+        "GIT_CONFIG_GLOBAL": str(hostile_config),
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_0": "synthetic-hostile-helper",
+        "GIT_CONFIG_PARAMETERS": "'core.fsmonitor=synthetic-hostile-parameter'",
+        "GIT_NO_LAZY_FETCH": "0",
+        "GIT_NO_REPLACE_OBJECTS": "0",
+        "GIT_REPLACE_REF_BASE": "refs/synthetic-hostile-replace/",
+    }
+    for key, value in hostile_environment.items():
+        monkeypatch.setenv(key, value)
+
+    result = run_delta(repo, base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["delta"]["entries"] == []
+    assert "replacement" not in result.stdout
+    assert "synthetic-hostile" not in result.stdout + result.stderr
+    assert str(hostile) not in result.stdout + result.stderr
+
+
+def test_archive_base_tree_rejects_per_file_materialization_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "README.md", "agent-guard drift check --root .\n")
+    commit_all(repo, "base")
+    monkeypatch.setattr(surface_delta_module, "_MAX_MATERIALIZED_FILE_BYTES", 8)
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
+
+    assert str(raised.value) == surface_delta_module._MATERIALIZATION_LIMIT_ERROR
+    assert str(tmp_path) not in str(raised.value)
+
+
+def test_archive_base_tree_rejects_aggregate_materialization_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "README.md", "12345678")
+    write(repo / "docs" / "guide.md", "abcdefgh")
+    commit_all(repo, "base")
+    monkeypatch.setattr(surface_delta_module, "_MAX_MATERIALIZED_FILE_BYTES", 8)
+    monkeypatch.setattr(surface_delta_module, "_MAX_MATERIALIZED_BYTES", 15)
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
+
+    assert str(raised.value) == surface_delta_module._MATERIALIZATION_LIMIT_ERROR
+
+
+def test_archive_base_tree_rejects_tar_output_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    write(repo / "README.md", "agent-guard drift check --root .\n")
+    commit_all(repo, "base")
+    monkeypatch.setattr(surface_delta_module, "_MAX_MATERIALIZED_OUTPUT_BYTES", 1024)
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        archive_base_tree(toplevel=repo, base_ref="HEAD", dest=tmp_path / "base-tree")
+
+    assert str(raised.value) == surface_delta_module._MATERIALIZATION_LIMIT_ERROR
+
+
+def test_surface_delta_sanitizes_bounded_git_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "sensitive bounded git detail"
+
+    def fail_git(*_args: object, **_kwargs: object) -> None:
+        raise surface_delta_module.BoundedGitProcessError(marker)
+
+    monkeypatch.setattr(surface_delta_module, "run_bounded_git", fail_git)
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        surface_delta_module.run_git_command(
+            tmp_path,
+            ["rev-parse", "--is-inside-work-tree"],
+        )
+
+    assert str(raised.value) == surface_delta_module._GIT_QUERY_ERROR
+    assert marker not in str(raised.value)
+    assert str(tmp_path) not in str(raised.value)
+
+
+def test_surface_git_queries_apply_explicit_output_caps_and_deadlines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def run_git(root: Path, args: list[str], **kwargs: object):
+        captured.append({"root": root, "args": args, **kwargs})
+        return subprocess.CompletedProcess(args, 0, b"")
+
+    monkeypatch.setattr(surface_delta_module, "run_bounded_git", run_git)
+
+    surface_delta_module.run_git_command(
+        tmp_path,
+        ["rev-parse", "--is-inside-work-tree"],
+    )
+    budget = surface_delta_module.SurfaceMaterializationBudget()
+    surface_delta_module.run_git_tree_list(
+        toplevel=tmp_path,
+        base_ref="HEAD",
+        _budget=budget,
+    )
+    surface_delta_module.run_git_index_list(
+        toplevel=tmp_path,
+        _budget=budget,
+    )
+
+    assert [item["max_output_bytes"] for item in captured] == [
+        surface_delta_module._MAX_GIT_METADATA_OUTPUT_BYTES,
+        surface_delta_module._MAX_GIT_METADATA_OUTPUT_BYTES,
+        surface_delta_module._MAX_GIT_METADATA_OUTPUT_BYTES,
+    ]
+    assert captured[0]["timeout_seconds"] == (
+        surface_delta_module._GIT_OPERATION_TIMEOUT_SECONDS
+    )
+    for item in captured[1:]:
+        assert 0 < item["timeout_seconds"] <= (
+            surface_delta_module._GIT_OPERATION_TIMEOUT_SECONDS
+        )
+
+
+def test_surface_materialization_deadline_failure_is_sanitized() -> None:
+    budget = surface_delta_module.SurfaceMaterializationBudget()
+    budget.deadline = surface_delta_module.time.monotonic()
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        budget.check_deadline()
+
+    assert str(raised.value) == surface_delta_module._MATERIALIZATION_LIMIT_ERROR
+
+
 def test_surface_delta_does_not_execute_smudge_filter(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     init_repo(repo)

@@ -25,7 +25,15 @@ _SAFE_FILTER_OVERRIDE_RE = re.compile(
     r"filter\.([A-Za-z0-9._-]{1,128})\.(clean|process|required)=(.*)"
 )
 _SAFE_GIT_SUBCOMMANDS = frozenset(
-    {"cat-file", "config", "diff", "ls-files", "rev-parse"}
+    {
+        "cat-file",
+        "config",
+        "diff",
+        "ls-files",
+        "ls-tree",
+        "merge-base",
+        "rev-parse",
+    }
 )
 _FILTER_CONFIG_QUERY = (
     "config",
@@ -171,9 +179,29 @@ def _validate_git_arguments(args: Sequence[str]) -> None:
         raise BoundedGitProcessError
     if subcommand == "ls-files" and "-z" not in command_arguments:
         raise BoundedGitProcessError
-    if subcommand == "cat-file" and command_arguments != (
-        "cat-file",
-        "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+    if subcommand == "cat-file" and command_arguments not in {
+        ("cat-file", "--batch"),
+        (
+            "cat-file",
+            "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+        ),
+    }:
+        raise BoundedGitProcessError
+    if subcommand == "ls-tree" and not (
+        len(command_arguments) == 5
+        and command_arguments[1:4] == ("-r", "-z", "--full-tree")
+        and command_arguments[4]
+        and not command_arguments[4].startswith("-")
+        and not any(char in command_arguments[4] for char in "\x00\r\n")
+    ):
+        raise BoundedGitProcessError
+    if subcommand == "merge-base" and not (
+        len(command_arguments) == 5
+        and command_arguments[1:3] == ("--all", "--")
+        and command_arguments[3]
+        and not command_arguments[3].startswith("-")
+        and not any(char in command_arguments[3] for char in "\x00\r\n")
+        and command_arguments[4] == "HEAD"
     ):
         raise BoundedGitProcessError
 

@@ -880,6 +880,9 @@ comparable. Repository-external symlink targets are not followed; external,
 `.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
 alias paths and resolved in-repo target paths are not expanded through
 context-selected symlinks. Target values are never published.
+Git queries and base materialization run with shared scanner deadlines and
+per-file, aggregate-input, selected-file, process-output, and tar-output ceilings;
+exceeding any ceiling fails with a fixed sanitized runtime error.
 Tracked submodules are opaque boundaries for the parent repository delta:
 initialized checkout contents and dirty/untracked submodule files are not
 inventoried, while a superproject gitlink pin change is reported only as

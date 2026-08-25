@@ -11,11 +11,19 @@ from pathlib import Path
 
 import yaml
 
+from .bounded_yaml import (
+    BoundedYamlInvalidError,
+    BoundedYamlLimitError,
+    load_bounded_yaml,
+)
 from .surface_inventory_core import (
+    ERROR_SURFACE_INVENTORY_LIMIT,
+    SurfaceInventoryBudget,
     is_repo_bound_path,
     parse_agent_guard_command,
     rel_path,
     repo_bound_glob,
+    read_surface_file,
     safe_metadata_path,
 )
 from .workflow_guard import collect_run_lines
@@ -35,7 +43,9 @@ def iter_workflow_files(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[Path]:
+    budget = _budget or SurfaceInventoryBudget()
     workflow_dir = root / ".github" / "workflows"
     if not is_repo_bound_path(workflow_dir, root):
         return []
@@ -48,6 +58,7 @@ def iter_workflow_files(
                 root,
                 f".github/workflows/{pattern}",
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         )
     return sorted(path for path in files if is_repo_bound_path(path, root) and path.is_file())
@@ -93,16 +104,23 @@ def collect_workflow_surfaces(
     opaque_directories: Sequence[str] = (),
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
+    budget = SurfaceInventoryBudget()
     for workflow_file in iter_workflow_files(
         root,
         opaque_directories=opaque_directories,
+        _budget=budget,
     ):
         if not is_repo_bound_path(workflow_file, root):
             continue
         workflow_path = rel_path(workflow_file, root)
         try:
-            loaded = yaml.safe_load(workflow_file.read_text(encoding="utf-8")) or {}
-        except Exception:
+            opened = read_surface_file(workflow_file, root, budget=budget)
+            workflow_path = opened.relative_path
+            text = opened.data.decode("utf-8")
+            loaded = load_bounded_yaml(text, construct=yaml.safe_load) or {}
+        except BoundedYamlLimitError:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+        except (BoundedYamlInvalidError, UnicodeDecodeError):
             surfaces.append(
                 {
                     "surface": "workflow_file",
