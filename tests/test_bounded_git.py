@@ -133,6 +133,64 @@ def test_sanitized_git_environment_removes_config_injection_case_insensitively()
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
 
 
+def test_sanitized_git_environment_removes_pathspec_modes_case_insensitively() -> None:
+    source = {
+        "AGENT_GUARD_SYNTHETIC": "preserved",
+        "git_icase_pathspecs": "1",
+        "Git_Literal_Pathspecs": "1",
+        "gIT_gLoB_pAtHsPeCs": "1",
+        "GIT_nOgLoB_PATHSPECS": "1",
+    }
+
+    environment = bounded_git.sanitized_git_environment(source)
+
+    assert environment["AGENT_GUARD_SYNTHETIC"] == "preserved"
+    assert not any(
+        key.upper()
+        in {
+            "GIT_ICASE_PATHSPECS",
+            "GIT_LITERAL_PATHSPECS",
+            "GIT_GLOB_PATHSPECS",
+            "GIT_NOGLOB_PATHSPECS",
+        }
+        for key in environment
+    )
+
+
+def test_run_bounded_git_ignores_conflicting_pathspec_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    trusted_git = bounded_git._resolve_trusted_git_executable(repo_root)
+    subprocess.run(
+        [str(trusted_git), "-C", str(repo_root), "init", "-q"],
+        capture_output=True,
+        check=True,
+    )
+    (repo_root / "selected.md").write_text("selected\n", encoding="utf-8")
+    subprocess.run(
+        [str(trusted_git), "-C", str(repo_root), "add", "--", "selected.md"],
+        capture_output=True,
+        check=True,
+    )
+    monkeypatch.setenv("GIT_ICASE_PATHSPECS", "1")
+    monkeypatch.setenv("GIT_LITERAL_PATHSPECS", "1")
+    monkeypatch.setenv("GIT_GLOB_PATHSPECS", "1")
+    monkeypatch.setenv("GIT_NOGLOB_PATHSPECS", "1")
+
+    result = bounded_git.run_bounded_git(
+        repo_root,
+        ["ls-files", "-z", "--", "*.md"],
+        timeout_seconds=1.0,
+        max_output_bytes=128,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == b"selected.md\0"
+
+
 def test_run_bounded_git_passes_command_line_fsmonitor_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
