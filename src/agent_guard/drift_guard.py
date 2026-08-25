@@ -6,6 +6,7 @@ Why: keep README guidance, workflow policy, and guard files aligned.
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,9 +37,12 @@ from .content_guard import (
 from .context_guard import (
     MAX_CONTEXT_DISTINCT_INPUT_BYTES,
     MAX_CONTEXT_FILE_BYTES,
+    ContextGuardFinding,
+    ContextInventory,
     collect_context_inventory,
     load_context_policy,
     scan_context_files,
+    scan_context_files_with_inventory,
 )
 from .context_lock import check_context_digest_coverage
 from .digest_guard import load_digest_policy
@@ -428,14 +432,33 @@ def scan_baseline_trust_drift(
     )
 
 
-def scan_context_boundary_drift(*, root: Path, profile: str) -> tuple[list[DriftFinding], int]:
+def scan_context_boundary_drift(
+    *,
+    root: Path,
+    profile: str,
+    _input_budget: DistinctInputBudget | None = None,
+    _policy: dict[str, object] | None = None,
+    _inventory: ContextInventory | None = None,
+) -> tuple[list[DriftFinding], int]:
     context_policy_path = root / ".agent-guard" / "context-policy.yaml"
     if not context_policy_path.is_file():
         return [], 0
     findings: list[DriftFinding] = []
     checked_count = 0
     required_boundaries = profile_requirements(profile)["boundary_categories"]
-    inventory = collect_context_inventory(root=root, policy=load_context_policy(context_policy_path))
+    policy = (
+        _policy
+        if _policy is not None
+        else load_context_policy(
+            context_policy_path,
+            _input_budget=_input_budget,
+        )
+    )
+    inventory = _inventory or collect_context_inventory(
+        root=root,
+        policy=policy,
+        _input_budget=_input_budget,
+    )
     boundary_status = {
         str(item.get("category", "")): str(item.get("status", "missing"))
         for item in inventory.permission_boundaries
@@ -458,13 +481,30 @@ def scan_context_boundary_drift(*, root: Path, profile: str) -> tuple[list[Drift
     return findings, checked_count
 
 
-def scan_context_instruction_drift(*, root: Path) -> tuple[list[DriftFinding], int]:
+def scan_context_instruction_drift(
+    *,
+    root: Path,
+    _input_budget: DistinctInputBudget | None = None,
+    _policy: dict[str, object] | None = None,
+    _scan_result: tuple[list[ContextGuardFinding], int] | None = None,
+) -> tuple[list[DriftFinding], int]:
     context_policy_path = root / ".agent-guard" / "context-policy.yaml"
     if not context_policy_path.is_file():
         return [], 0
 
-    policy = load_context_policy(context_policy_path)
-    context_findings, scanned_count = scan_context_files(root=root, policy=policy)
+    policy = (
+        _policy
+        if _policy is not None
+        else load_context_policy(
+            context_policy_path,
+            _input_budget=_input_budget,
+        )
+    )
+    context_findings, scanned_count = _scan_result or scan_context_files(
+        root=root,
+        policy=policy,
+        _input_budget=_input_budget,
+    )
     findings: list[DriftFinding] = []
     for item in context_findings:
         classification = CONTEXT_RULE_CLASSIFICATIONS.get(item.rule_id, "unsafe_context_instruction")
@@ -484,19 +524,41 @@ def scan_context_instruction_drift(*, root: Path) -> tuple[list[DriftFinding], i
     return findings, scanned_count
 
 
-def scan_context_lock_drift(*, root: Path) -> tuple[list[DriftFinding], int]:
+def scan_context_lock_drift(
+    *,
+    root: Path,
+    _input_budget: DistinctInputBudget | None = None,
+    _policy: dict[str, object] | None = None,
+    _inventory: ContextInventory | None = None,
+) -> tuple[list[DriftFinding], int]:
     context_policy_path = root / ".agent-guard" / "context-policy.yaml"
     digest_policy_path = root / ".agent-guard" / "context-digest-policy.yaml"
     if not context_policy_path.is_file() or not digest_policy_path.is_file():
         return [], 0
 
-    inventory = collect_context_inventory(root=root, policy=load_context_policy(context_policy_path))
+    policy = (
+        _policy
+        if _policy is not None
+        else load_context_policy(
+            context_policy_path,
+            _input_budget=_input_budget,
+        )
+    )
+    inventory = _inventory or collect_context_inventory(
+        root=root,
+        policy=policy,
+        _input_budget=_input_budget,
+    )
     if not inventory.context_files:
         return [], 0
     coverage = check_context_digest_coverage(
         root=root,
         inventory=inventory,
-        digest_policy=load_digest_policy(digest_policy_path),
+        digest_policy=load_digest_policy(
+            digest_policy_path,
+            _input_budget=_input_budget,
+        ),
+        _input_budget=_input_budget,
     )
     raw_findings = coverage.get("findings", [])
     findings: list[DriftFinding] = []
@@ -551,6 +613,11 @@ def build_policy_spec_drift_scan(
     findings: list[DriftFinding] = []
     checked_count = 0
     input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
+    deadline = time.monotonic() + CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+
+    def check_deadline() -> None:
+        if time.monotonic() >= deadline:
+            raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT)
 
     readme = root / "README.md"
     readme_text = read_optional_text(
@@ -558,6 +625,7 @@ def build_policy_spec_drift_scan(
         root=root,
         _input_budget=input_budget,
     )
+    check_deadline()
     for requirement_id, command in readme_commands:
         checked_count += 1
         if command in readme_text:
@@ -617,6 +685,7 @@ def build_policy_spec_drift_scan(
             workflow_findings, workflow_checked = scan_workflow_policy(
                 root=root,
                 policy=workflow_policy,
+                _input_budget=input_budget,
             )
             checked_count += workflow_checked
             for item in workflow_findings:
@@ -642,21 +711,54 @@ def build_policy_spec_drift_scan(
                 )
             )
             checked_count += 1
+    check_deadline()
 
     if version == "v2":
-        boundary_findings, boundary_checked = scan_context_boundary_drift(root=root, profile=profile_name)
-        checked_count += boundary_checked
-        findings.extend(boundary_findings)
-        context_findings, context_checked = scan_context_instruction_drift(root=root)
-        checked_count += context_checked
-        findings.extend(context_findings)
-        context_lock_findings, context_lock_checked = scan_context_lock_drift(root=root)
-        checked_count += context_lock_checked
-        findings.extend(context_lock_findings)
+        context_policy_path = root / ".agent-guard" / "context-policy.yaml"
+        if context_policy_path.is_file():
+            context_policy = load_context_policy(
+                context_policy_path,
+                _input_budget=input_budget,
+            )
+            raw_context_findings, context_scanned, context_inventory = (
+                scan_context_files_with_inventory(
+                    root=root,
+                    policy=context_policy,
+                    _input_budget=input_budget,
+                )
+            )
+            check_deadline()
+            boundary_findings, boundary_checked = scan_context_boundary_drift(
+                root=root,
+                profile=profile_name,
+                _input_budget=input_budget,
+                _policy=context_policy,
+                _inventory=context_inventory,
+            )
+            checked_count += boundary_checked
+            findings.extend(boundary_findings)
+            context_findings, context_checked = scan_context_instruction_drift(
+                root=root,
+                _input_budget=input_budget,
+                _policy=context_policy,
+                _scan_result=(raw_context_findings, context_scanned),
+            )
+            checked_count += context_checked
+            findings.extend(context_findings)
+            context_lock_findings, context_lock_checked = scan_context_lock_drift(
+                root=root,
+                _input_budget=input_budget,
+                _policy=context_policy,
+                _inventory=context_inventory,
+            )
+            checked_count += context_lock_checked
+            findings.extend(context_lock_findings)
+            check_deadline()
 
     baseline_trust: BaselineTrustSummary | None = None
     baseline_ref = str(base_ref).strip()
     if baseline_ref:
+        check_deadline()
         baseline_findings, baseline_checked, baseline_trust = scan_baseline_trust_drift(
             root=root,
             base_ref=baseline_ref,
@@ -664,6 +766,7 @@ def build_policy_spec_drift_scan(
         )
         checked_count += baseline_checked
         findings.extend(baseline_findings)
+        check_deadline()
 
     return PolicySpecDriftScan(
         findings=findings,

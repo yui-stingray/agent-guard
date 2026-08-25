@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import tarfile
@@ -12,6 +13,8 @@ from pathlib import Path
 import pytest
 
 from agent_guard import surface_delta as surface_delta_module
+from agent_guard.cli import common as cli_common
+from agent_guard.cli import surface as surface_cli
 from agent_guard.surface_delta import (
     SurfaceDeltaError,
     SurfaceDeltaEntry,
@@ -2427,3 +2430,60 @@ def test_surface_delta_is_omitted_from_sarif_output(tmp_path: Path) -> None:
     sarif = json.loads(result.stdout)
     assert "surface_delta" not in json.dumps(sarif)
     assert "added-server" not in result.stdout
+
+
+def test_surface_delta_entries_stop_at_incremental_result_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(surface_delta_module, "MAX_SURFACE_DELTA_ENTRIES", 1)
+
+    with pytest.raises(SurfaceDeltaError) as raised:
+        build_surface_delta_entries(
+            base_surfaces=[],
+            head_surfaces=[
+                {"surface": "policy_file", "path": "first.yaml", "status": "present"},
+                {"surface": "policy_file", "path": "second.yaml", "status": "present"},
+            ],
+        )
+
+    assert str(raised.value) == surface_delta_module.ERROR_SURFACE_DELTA_LIMIT
+
+
+def test_surface_delta_cli_fails_closed_before_oversized_public_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write(tmp_path / "context-policy.yaml", "{}\n")
+    monkeypatch.setattr(cli_common, "MAX_PUBLIC_OUTPUT_BYTES", 1_024)
+    monkeypatch.setattr(surface_cli, "load_context_policy", lambda _path: {})
+    monkeypatch.setattr(
+        surface_cli,
+        "build_surface_delta_report",
+        lambda **_kwargs: {
+            "schema_version": "agent-guard.surface_delta.v1",
+            "base_resolved": True,
+            "summary": {"added": 1, "removed": 0, "modified": 0, "unchanged": 0},
+            "entries": [
+                {
+                    "kind": "policy_file",
+                    "path": "x" * 2_000,
+                    "name": "",
+                    "status": "added",
+                    "changed_fields": [],
+                }
+            ],
+        },
+    )
+    args = argparse.Namespace(
+        root=str(tmp_path),
+        context_policy="context-policy.yaml",
+        base_ref="HEAD",
+        json=True,
+    )
+
+    assert surface_cli.run_surface_delta(args) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "error"
+    assert payload["error"] == surface_delta_module.ERROR_SURFACE_DELTA_LIMIT
+    assert str(tmp_path) not in json.dumps(payload)

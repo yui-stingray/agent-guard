@@ -59,6 +59,9 @@ from .surface_inventory_mcp_safety import MCP_RISKY_PATTERNS
 
 SURFACE_DELTA_SCHEMA_VERSION_V1 = "agent-guard.surface_delta.v1"
 ERROR_SURFACE_DELTA_INVALID = "surface delta contains invalid public data"
+ERROR_SURFACE_DELTA_LIMIT = "surface delta exceeds configured limits"
+MAX_SURFACE_DELTA_ENTRIES = MAX_CONTEXT_SCAN_FILES * 2
+MAX_SURFACE_DELTA_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 
 # Public identity fields group related records before collision-safe multiset
 # matching. Locator-only moves do not change the represented surface.
@@ -175,6 +178,34 @@ class SurfaceDeltaEntry:
             payload["risk_labels"] = list(risk_labels)
         payload["changed_fields"] = list(changed_fields)
         return sanitize_public_mapping(payload)
+
+
+class _SurfaceDeltaResultBudget:
+    """Bound delta entries before the complete public payload is materialized."""
+
+    def __init__(self) -> None:
+        self.used = len(b"[]")
+        self.count = 0
+
+    def add(self, entry: SurfaceDeltaEntry) -> None:
+        if self.count >= MAX_SURFACE_DELTA_ENTRIES:
+            raise SurfaceDeltaError(ERROR_SURFACE_DELTA_LIMIT)
+        try:
+            amount = len(
+                json.dumps(
+                    entry.to_dict(),
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8", errors="surrogatepass")
+            ) + (1 if self.count else 0)
+        except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+            raise SurfaceDeltaError(ERROR_SURFACE_DELTA_LIMIT) from None
+        if amount > MAX_SURFACE_DELTA_RESULT_BYTES - self.used:
+            raise SurfaceDeltaError(ERROR_SURFACE_DELTA_LIMIT)
+        self.used += amount
+        self.count += 1
 
 
 @dataclass(frozen=True)
@@ -1790,6 +1821,7 @@ def build_surface_delta_entries(
     head_buckets = bucket_surfaces(head_surfaces)
 
     entries: list[SurfaceDeltaEntry] = []
+    result_budget = _SurfaceDeltaResultBudget()
     unchanged_count = 0
     for key in sorted(set(base_buckets) | set(head_buckets)):
         base_remaining, head_remaining, unchanged = subtract_identical_surfaces(
@@ -1809,37 +1841,37 @@ def build_surface_delta_entries(
             if not changed_fields:
                 unchanged_count += 1
                 continue
-            entries.append(
-                SurfaceDeltaEntry(
-                    kind=kind,
-                    path=path,
-                    name=name,
-                    status="modified",
-                    risk_labels=surface_entry_risk_labels(head_item),
-                    changed_fields=changed_fields,
-                )
+            entry = SurfaceDeltaEntry(
+                kind=kind,
+                path=path,
+                name=name,
+                status="modified",
+                risk_labels=surface_entry_risk_labels(head_item),
+                changed_fields=changed_fields,
             )
+            result_budget.add(entry)
+            entries.append(entry)
 
         for head_item in head_remaining[paired_count:]:
-            entries.append(
-                SurfaceDeltaEntry(
-                    kind=kind,
-                    path=path,
-                    name=name,
-                    status="added",
-                    risk_labels=surface_entry_risk_labels(head_item),
-                )
+            entry = SurfaceDeltaEntry(
+                kind=kind,
+                path=path,
+                name=name,
+                status="added",
+                risk_labels=surface_entry_risk_labels(head_item),
             )
+            result_budget.add(entry)
+            entries.append(entry)
         for base_item in base_remaining[paired_count:]:
-            entries.append(
-                SurfaceDeltaEntry(
-                    kind=kind,
-                    path=path,
-                    name=name,
-                    status="removed",
-                    risk_labels=surface_entry_risk_labels(base_item),
-                )
+            entry = SurfaceDeltaEntry(
+                kind=kind,
+                path=path,
+                name=name,
+                status="removed",
+                risk_labels=surface_entry_risk_labels(base_item),
             )
+            result_budget.add(entry)
+            entries.append(entry)
 
     entries.sort(
         key=lambda entry: (

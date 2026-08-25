@@ -19,6 +19,12 @@ from typing import Any, Iterator, NoReturn
 
 import yaml
 
+from .bounded_repo_reader import (
+    BoundedRepoLimitError,
+    BoundedRepoReadError,
+    DistinctInputBudget,
+)
+
 
 WORKFLOW_POLICY_SCHEMA_VERSION = "agent-guard.workflow_policy.v1"
 HEREDOC_DELIMITER_RE = re.compile(r"[-A-Za-z0-9_]+")
@@ -1824,7 +1830,12 @@ def validate_workflow_policy(policy: dict[str, Any]) -> None:
         raise ValueError(f"schema_version must be {WORKFLOW_POLICY_SCHEMA_VERSION!r}")
 
 
-def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[WorkflowGuardFinding], int]:
+def scan_workflow_policy(
+    *,
+    root: Path,
+    policy: dict[str, Any],
+    _input_budget: DistinctInputBudget | None = None,
+) -> tuple[list[WorkflowGuardFinding], int]:
     root = root.resolve()
     _validate_object_graph(policy)
     validate_workflow_policy(policy)
@@ -1888,6 +1899,16 @@ def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[Wo
                 amount=len(raw_workflow),
                 limit=MAX_WORKFLOW_DISTINCT_INPUT_BYTES,
             )
+            if _input_budget is not None:
+                try:
+                    _input_budget.charge_bytes(
+                        raw_workflow,
+                        identity=("workflow", rel_path),
+                    )
+                except BoundedRepoLimitError:
+                    _raise_configuration_limit()
+                except BoundedRepoReadError:
+                    raise ValueError(ERROR_WORKFLOW_SCAN_TARGET) from None
             workflow = load_workflow_file(raw_workflow, workflow_id=check.check_id)
             run_lines = tuple(
                 collect_run_lines(
