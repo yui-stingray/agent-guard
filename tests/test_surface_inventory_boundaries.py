@@ -12,6 +12,7 @@ from agent_guard import surface_inventory_core
 from agent_guard import surface_inventory_context
 from agent_guard import surface_inventory_directories
 from agent_guard import surface_inventory_metadata
+from agent_guard import surface_inventory_mcp
 from agent_guard import surface_inventory_workflow
 from tests.cli.helpers import write
 
@@ -186,6 +187,77 @@ def test_agent_inventory_shares_traversal_budget_across_collectors(
             root=tmp_path,
             context_policy={},
             schema_version="v2",
+        )
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_agent_inventory_charges_mcp_wildcard_traversal_into_shared_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".claude" / "settings.json", "{}\n")
+    monkeypatch.setattr(surface_inventory_core, "MAX_SURFACE_INVENTORY_TRAVERSAL", 0)
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_context.collect_agent_surface_inventory(
+            root=tmp_path,
+            context_policy={},
+            schema_version="v2",
+        )
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_mcp_inventory_honors_shared_deadline(tmp_path: Path) -> None:
+    write(tmp_path / ".mcp.json", "{}\n")
+    budget = surface_inventory_core.SurfaceInventoryBudget()
+    budget.deadline = 0.0
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path, _budget=budget)
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_mcp_inventory_charges_shared_selected_files_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".mcp.json", "{}\n")
+    monkeypatch.setattr(surface_inventory_core, "MAX_SURFACE_INVENTORY_FILES", 0)
+
+    def unexpected_read(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("MCP config read after shared selection limit")
+
+    monkeypatch.setattr(surface_inventory_mcp, "_read_structured_config", unexpected_read)
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_mcp.collect_mcp_config_surfaces(
+            tmp_path,
+            _budget=surface_inventory_core.SurfaceInventoryBudget(),
+        )
+
+    assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_mcp_inventory_charges_shared_result_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / ".mcp.json", '{"mcpServers":{"server":{}}}\n')
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
+    one_surface_budget = surface_inventory_core._canonical_json_size(surfaces[:1])
+    monkeypatch.setattr(
+        surface_inventory_core,
+        "MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES",
+        one_surface_budget,
+    )
+
+    with pytest.raises(ValueError) as raised:
+        surface_inventory_mcp.collect_mcp_config_surfaces(
+            tmp_path,
+            _budget=surface_inventory_core.SurfaceInventoryBudget(),
         )
 
     assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT

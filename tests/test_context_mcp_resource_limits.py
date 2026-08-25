@@ -2068,6 +2068,31 @@ def test_mcp_config_rejects_bounded_object_graph_depth(tmp_path: Path, kind: str
     assert str(tmp_path) not in str(exc_info.value)
 
 
+def test_mcp_config_accepts_structured_input_above_default_expanded_limit(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / ".mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "large": {
+                        "description": "x" * (300 * 1024),
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
+
+    assert bounded_yaml.MAX_YAML_EXPANDED_BYTES < config_path.stat().st_size
+    assert config_path.stat().st_size < surface_inventory_mcp.MAX_MCP_CONFIG_FILE_BYTES
+    assert surfaces[0]["status"] == "present"
+    assert surfaces[0]["size_bytes"] == config_path.stat().st_size
+
+
 def test_mcp_config_normalization_sensitive_url_error_is_fixed_and_sanitized(
     tmp_path: Path,
 ) -> None:

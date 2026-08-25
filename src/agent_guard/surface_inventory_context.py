@@ -181,7 +181,7 @@ def collect_agent_surface_inventory(
                 mcp_surfaces = collect_mcp_config_surfaces(
                     root,
                     opaque_directories=opaque_directories,
-                    _input_budget=budget.input_budget,
+                    _budget=budget,
                 )
             except ValueError as exc:
                 if str(exc) == ERROR_MCP_CONFIG_LIMIT:
@@ -189,13 +189,16 @@ def collect_agent_surface_inventory(
                 raise
         else:
             mcp_surfaces = _mcp_surfaces
-        # MCP owns an independent incremental result bound; charge its already
-        # bounded entries into the aggregate budget while joining the inventory.
-        for item in mcp_surfaces:
-            path = item.get("path")
-            if isinstance(path, str) and path:
-                budget.charge_selected(root / path)
-            append_surface(item)
+        if _mcp_surfaces is None:
+            # The MCP collector already charged the shared budget while it
+            # enumerated and projected these entries.
+            surfaces.extend(mcp_surfaces)
+        else:
+            for item in mcp_surfaces:
+                path = item.get("path")
+                if isinstance(path, str) and path:
+                    budget.charge_selected(root / path)
+                append_surface(item)
     directory_surfaces = {"agent_skill", "agent_profile", "agent_command"}
     filtered_surfaces = []
     for item in surfaces:
