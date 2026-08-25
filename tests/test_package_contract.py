@@ -92,7 +92,7 @@ def pyproject_version() -> str:
 
 
 def test_package_version_matches_pyproject() -> None:
-    assert pyproject_version() == "0.3.7"
+    assert pyproject_version() == "0.3.8.dev0"
     assert agent_guard.__version__ == pyproject_version()
 
 

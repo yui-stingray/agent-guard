@@ -7,10 +7,10 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.7` alpha. Package install examples use this release; copyable
-Action examples are pinned to the immutable `0.3.7` release under the
-post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+, with
-one runtime dependency (`PyYAML`).
+**Status**: source `0.3.8.dev0` development build. Published install and
+copyable Action examples remain pinned to the immutable `0.3.7` release under
+the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,

@@ -94,7 +94,9 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "fetch-depth: 0" in workflow
     assert "persist-credentials: false" in workflow
     assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
-    assert AGENT_GUARD_VERSION == PUBLISHED_PACKAGE_VERSION
+    assert AGENT_GUARD_VERSION == "0.3.8.dev0"
+    assert PUBLISHED_PACKAGE_VERSION == "0.3.7"
+    assert AGENT_GUARD_VERSION != PUBLISHED_PACKAGE_VERSION
     assert (
         f"python -I -m pip install yui-agent-guard=={PUBLISHED_PACKAGE_VERSION}"
         in workflow

@@ -6,6 +6,19 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Started `0.3.8.dev0` development while generated install and Action examples
+  remain pinned to the published `0.3.7` release.
+- Made required workflow-command matching parse and normalize native
+  `agent-guard` options, rejecting duplicate or meaning-changing overrides.
+- Isolated surface and drift Git inspection behind the bounded Git runner and
+  applied file, count, byte, output, and deadline budgets to repository
+  inventory, YAML loading, and surface materialization.
+- Removed self-authorizing inline context/content suppressions and bounded YAML
+  alias expansion before policy normalization.
+- Bound evidence gate status and counts to their canonical component sections,
+  and applied bounded JSON parsing, structural limits, finite-number checks,
+  and public-output budgets to consumer and transform entry points.
+
 ## 0.3.7 - 2026-08-24
 
 - Kept development builds on PEP 440 `0.3.7.dev0` until this final `0.3.7`
