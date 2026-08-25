@@ -1389,6 +1389,40 @@ def test_surface_git_queries_apply_explicit_output_caps_and_deadlines(
         )
 
 
+def test_surface_git_queries_share_one_remaining_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic_values = iter((100.0, 101.0, 103.0))
+    captured_timeouts: list[float] = []
+
+    monkeypatch.setattr(
+        surface_delta_module.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    def run_git(_root: Path, args: list[str], **kwargs: object):
+        captured_timeouts.append(float(kwargs["timeout_seconds"]))
+        return subprocess.CompletedProcess(args, 0, b"")
+
+    monkeypatch.setattr(surface_delta_module, "run_bounded_git", run_git)
+    budget = surface_delta_module.SurfaceMaterializationBudget()
+
+    surface_delta_module.run_git_command(
+        tmp_path,
+        ["rev-parse", "--show-toplevel"],
+        _budget=budget,
+    )
+    surface_delta_module.run_git_command(
+        tmp_path,
+        ["merge-base", "--all", "--", "HEAD~1", "HEAD"],
+        _budget=budget,
+    )
+
+    assert captured_timeouts == [4.0, 2.0]
+
+
 def test_surface_materialization_deadline_failure_is_sanitized() -> None:
     budget = surface_delta_module.SurfaceMaterializationBudget()
     budget.deadline = surface_delta_module.time.monotonic()

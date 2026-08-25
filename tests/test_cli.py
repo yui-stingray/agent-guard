@@ -168,9 +168,6 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
         '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
         '--drift-base-ref "$base_sha" '
-        '--format json --output "$report_json" > /dev/null 2>&1',
-        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
         '--format json --output "$report_json" > /dev/null 2>&1'
     ]
     assert "AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}" in workflow
@@ -183,7 +180,8 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     )
     assert "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request" not in workflow
     assert "timeout-minutes: 1" in workflow
-    assert 'use_base_ref=true' in workflow
+    assert 'base_sha=HEAD' in workflow
+    assert 'use_base_ref=' not in workflow
     assert 'drift_base_args=' not in workflow
     assert 'report_base_args=' not in workflow
     assert "pull request base SHA is unavailable" in workflow
@@ -227,7 +225,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
             )
         )
     ]
-    assert len(raw_scanner_lines) == 7
+    assert len(raw_scanner_lines) == 6
     assert all('2>/dev/null > "$raw_dir/' in line for line in raw_scanner_lines)
     assert (
         "if ! raw_dir=\"$(mktemp -d \"$raw_parent/agent-guard-raw.XXXXXX\" 2>/dev/null)\"; then"
@@ -284,7 +282,11 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "workflow_checks:" in workflow_policy
     assert "path: .agent-guard/mcp-policy.yaml" in workflow_policy
     assert "command: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in workflow_policy
-    assert "command: agent-guard drift check --root . --profile recommended --schema-version v2" in workflow_policy
+    assert (
+        'command: agent-guard drift check --root . --profile recommended '
+        '--schema-version v2 --base-ref "$base_sha"'
+        in workflow_policy
+    )
     assert (
         'command: agent-guard conformance check --root . --evidence "$report_json" '
         "--profile recommended"
@@ -454,13 +456,14 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
     assert result.returncode == 0
 
     workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
-    workflow.write_text(
-        workflow.read_text(encoding="utf-8").replace(
-            '          agent-guard drift check --root . --profile recommended --schema-version v2 "${drift_base_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"\n',
-            "",
-        ),
-        encoding="utf-8",
+    original = workflow.read_text(encoding="utf-8")
+    drift_command = (
+        '          agent-guard drift check --root . --profile recommended '
+        '--schema-version v2 --base-ref "$base_sha" --json 2>/dev/null '
+        '> "$raw_dir/drift.json"\n'
     )
+    assert drift_command in original
+    workflow.write_text(original.replace(drift_command, ""), encoding="utf-8")
 
     result = run_cli(
         "workflow",
@@ -483,6 +486,35 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
         scanned_unit="checks",
     )
     assert payload["findings"][0]["requirement_id"] == "drift_guard"
+
+
+def test_init_cli_workflow_policy_rejects_weakened_event_base_refs(
+    tmp_path: Path,
+) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    original = workflow.read_text(encoding="utf-8")
+    weakened = original.replace('"$base_sha"', "HEAD")
+    assert weakened != original
+    workflow.write_text(weakened, encoding="utf-8")
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert {
+        finding["requirement_id"] for finding in payload["findings"]
+    } == {"drift_guard", "evidence_report_with_drift"}
 
 
 def test_init_cli_workflow_policy_detects_report_without_recommended_preset(tmp_path: Path) -> None:

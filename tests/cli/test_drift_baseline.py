@@ -262,6 +262,42 @@ def test_drift_git_query_uses_bounded_runner_and_sanitizes_failure(
     assert marker not in str(findings[0].to_dict())
 
 
+def test_baseline_git_queries_share_one_remaining_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic_values = iter((100.0, 101.0, 103.0))
+    captured_timeouts: list[float] = []
+
+    monkeypatch.setattr(
+        drift_guard.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    def run_git(
+        _root: Path,
+        args: list[str],
+        *,
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        captured_timeouts.append(timeout_seconds)
+        stdout = "true\n" if args[0] == "rev-parse" else ""
+        return subprocess.CompletedProcess(args, 0, stdout, "")
+
+    monkeypatch.setattr(drift_guard, "run_git_command", run_git)
+
+    findings, _, summary = drift_guard.scan_baseline_trust_drift(
+        root=tmp_path,
+        base_ref="HEAD~1",
+        profile="recommended",
+    )
+
+    assert findings == []
+    assert summary.status == "ok"
+    assert captured_timeouts == [4.0, 2.0]
+
+
 def test_drift_cli_rejects_oversized_readme_with_sanitized_limit(tmp_path: Path) -> None:
     write_baseline_ready_repo(tmp_path)
     (tmp_path / "README.md").write_bytes(

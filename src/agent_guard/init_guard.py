@@ -254,9 +254,9 @@ workflow_checks:
       - id: workflow_guard
         command: agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: drift_guard
-        command: agent-guard drift check --root . --profile recommended --schema-version v2
+        command: agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha"
       - id: evidence_report_with_drift
-        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml
+        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha"
       - id: conformance_check
         command: agent-guard conformance check --root . --evidence "$report_json" --profile recommended
       - id: evidence_pack_manifest
@@ -315,7 +315,6 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
             fi
           }
           base_sha=""
-          use_base_ref=false
           case "${AGENT_GUARD_EVENT_NAME:-}" in
             pull_request)
               base_sha="${AGENT_GUARD_PR_BASE_SHA:-}"
@@ -333,9 +332,9 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
                 echo "::error::pull request base SHA is invalid"
                 exit 2
               fi
-              use_base_ref=true
               ;;
             push)
+              base_sha=HEAD
               ;;
             *)
               echo "::error::workflow event type is unsupported"
@@ -401,18 +400,10 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
           agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json 2>/dev/null > "$raw_dir/workflow.json"
           validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
-          if [ "$use_base_ref" = "true" ]; then
-            agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha" --json 2>/dev/null > "$raw_dir/drift.json"
-          else
-            agent-guard drift check --root . --profile recommended --schema-version v2 --json 2>/dev/null > "$raw_dir/drift.json"
-          fi
+          agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "$base_sha" --json 2>/dev/null > "$raw_dir/drift.json"
           validate_raw_result "$?" "$raw_dir/drift.json"
           record_status "$?"
-          if [ "$use_base_ref" = "true" ]; then
-            agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha" --format json --output "$report_json" > /dev/null 2>&1
-          else
-            agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --format json --output "$report_json" > /dev/null 2>&1
-          fi
+          agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "$base_sha" --format json --output "$report_json" > /dev/null 2>&1
           record_status "$?"
           agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json 2>/dev/null > "$surface_inventory_json"
           validate_raw_result "$?" "$surface_inventory_json"

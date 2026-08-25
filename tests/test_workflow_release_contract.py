@@ -1079,8 +1079,8 @@ exit 127
     assert push.returncode == 0, push.stdout + push.stderr
     push_drift = next(args for args in push_calls if args[:2] == ["drift", "check"])
     push_report = next(args for args in push_calls if args[:1] == ["report"])
-    assert "--base-ref" not in push_drift
-    assert "--drift-base-ref" not in push_report
+    assert push_drift[push_drift.index("--base-ref") + 1] == "HEAD"
+    assert push_report[push_report.index("--drift-base-ref") + 1] == "HEAD"
 
     missing_base, missing_base_calls = run_generated_workflow(
         event_name="pull_request",

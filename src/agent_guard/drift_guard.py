@@ -329,12 +329,17 @@ def is_safe_base_ref_arg(base_ref: str) -> bool:
     return bool(base_ref) and not base_ref.startswith("-") and not any(char in base_ref for char in "\x00\r\n")
 
 
-def run_git_command(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+def run_git_command(
+    root: Path,
+    args: list[str],
+    *,
+    timeout_seconds: float = GIT_DRIFT_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
     try:
         result = run_bounded_git(
             root,
             args,
-            timeout_seconds=GIT_DRIFT_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds,
             max_output_bytes=MAX_GIT_DRIFT_OUTPUT_BYTES,
         )
     except (BoundedGitOutputLimitError, BoundedGitProcessError):
@@ -348,7 +353,20 @@ def scan_baseline_trust_drift(
     root: Path,
     base_ref: str,
     profile: str,
+    _deadline: float | None = None,
 ) -> tuple[list[DriftFinding], int, BaselineTrustSummary]:
+    deadline = (
+        _deadline
+        if _deadline is not None
+        else time.monotonic() + GIT_DRIFT_TIMEOUT_SECONDS
+    )
+
+    def remaining_timeout() -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise DriftGitError
+        return min(GIT_DRIFT_TIMEOUT_SECONDS, remaining)
+
     protected_paths = baseline_trust_paths(profile)
     if not is_safe_base_ref_arg(base_ref):
         finding = build_baseline_unproven_finding("base_ref_unavailable")
@@ -359,7 +377,11 @@ def scan_baseline_trust_drift(
             finding_count=1,
         )
     try:
-        probe = run_git_command(root, ["rev-parse", "--is-inside-work-tree"])
+        probe = run_git_command(
+            root,
+            ["rev-parse", "--is-inside-work-tree"],
+            timeout_seconds=remaining_timeout(),
+        )
     except DriftGitError:
         finding = build_baseline_unproven_finding("git_unavailable")
         return [finding], 1, BaselineTrustSummary(
@@ -393,6 +415,7 @@ def scan_baseline_trust_drift(
                 "--",
                 *protected_paths,
             ],
+            timeout_seconds=remaining_timeout(),
         )
     except DriftGitError:
         finding = build_baseline_unproven_finding("git_unavailable")
@@ -613,19 +636,12 @@ def build_policy_spec_drift_scan(
     findings: list[DriftFinding] = []
     checked_count = 0
     input_budget = DistinctInputBudget(max_bytes=MAX_CONTEXT_DISTINCT_INPUT_BYTES)
-    deadline = time.monotonic() + CONTENT_TRAVERSAL_TIMEOUT_SECONDS
-
-    def check_deadline() -> None:
-        if time.monotonic() >= deadline:
-            raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT)
-
     readme = root / "README.md"
     readme_text = read_optional_text(
         readme,
         root=root,
         _input_budget=input_budget,
     )
-    check_deadline()
     for requirement_id, command in readme_commands:
         checked_count += 1
         if command in readme_text:
@@ -711,8 +727,6 @@ def build_policy_spec_drift_scan(
                 )
             )
             checked_count += 1
-    check_deadline()
-
     if version == "v2":
         context_policy_path = root / ".agent-guard" / "context-policy.yaml"
         if context_policy_path.is_file():
@@ -727,7 +741,6 @@ def build_policy_spec_drift_scan(
                     _input_budget=input_budget,
                 )
             )
-            check_deadline()
             boundary_findings, boundary_checked = scan_context_boundary_drift(
                 root=root,
                 profile=profile_name,
@@ -753,12 +766,9 @@ def build_policy_spec_drift_scan(
             )
             checked_count += context_lock_checked
             findings.extend(context_lock_findings)
-            check_deadline()
-
     baseline_trust: BaselineTrustSummary | None = None
     baseline_ref = str(base_ref).strip()
     if baseline_ref:
-        check_deadline()
         baseline_findings, baseline_checked, baseline_trust = scan_baseline_trust_drift(
             root=root,
             base_ref=baseline_ref,
@@ -766,8 +776,6 @@ def build_policy_spec_drift_scan(
         )
         checked_count += baseline_checked
         findings.extend(baseline_findings)
-        check_deadline()
-
     return PolicySpecDriftScan(
         findings=findings,
         checked_count=checked_count,

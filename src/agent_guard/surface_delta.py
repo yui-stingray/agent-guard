@@ -355,20 +355,36 @@ def run_git_command(
     args: list[str],
     *,
     max_output_bytes: int = _MAX_GIT_METADATA_OUTPUT_BYTES,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = _run_surface_git(
         cwd,
         args,
+        timeout_seconds=(
+            _budget.remaining_timeout()
+            if _budget is not None
+            else _GIT_OPERATION_TIMEOUT_SECONDS
+        ),
         max_output_bytes=max_output_bytes,
     )
     stdout = result.stdout.decode("utf-8", errors="surrogateescape")
     return subprocess.CompletedProcess(result.args, result.returncode, stdout, "")
 
 
-def resolve_repo_toplevel(root: Path) -> Path | None:
+def resolve_repo_toplevel(
+    root: Path,
+    *,
+    _budget: SurfaceMaterializationBudget | None = None,
+) -> Path | None:
     try:
-        result = run_git_command(root, ["rev-parse", "--show-toplevel"])
+        result = run_git_command(
+            root,
+            ["rev-parse", "--show-toplevel"],
+            _budget=_budget,
+        )
     except SurfaceDeltaError:
+        if _budget is not None:
+            raise
         return None
     if result.returncode != 0:
         return None
@@ -391,10 +407,19 @@ def is_valid_git_object_id(value: str) -> bool:
     )
 
 
-def resolve_merge_base(*, root: Path, base_ref: str) -> str:
+def resolve_merge_base(
+    *,
+    root: Path,
+    base_ref: str,
+    _budget: SurfaceMaterializationBudget | None = None,
+) -> str:
     """Resolve the PR branch point without publishing the caller's ref value."""
 
-    result = run_git_command(root, ["merge-base", "--all", "--", base_ref, "HEAD"])
+    result = run_git_command(
+        root,
+        ["merge-base", "--all", "--", base_ref, "HEAD"],
+        _budget=_budget,
+    )
     candidates = result.stdout.splitlines()
     if result.returncode != 0 or len(candidates) != 1 or not is_valid_git_object_id(
         candidates[0]
@@ -403,7 +428,11 @@ def resolve_merge_base(*, root: Path, base_ref: str) -> str:
     return candidates[0]
 
 
-def configured_filter_drivers(root: Path) -> tuple[str, ...]:
+def configured_filter_drivers(
+    root: Path,
+    *,
+    _budget: SurfaceMaterializationBudget | None = None,
+) -> tuple[str, ...]:
     """Return bounded effective Git filter driver names without reading commands."""
 
     result = run_git_command(
@@ -416,6 +445,7 @@ def configured_filter_drivers(root: Path) -> tuple[str, ...]:
             r"^filter\..*\.(clean|process|required)$",
         ],
         max_output_bytes=_MAX_GIT_FILTER_CONFIG_OUTPUT_BYTES,
+        _budget=_budget,
     )
     if result.returncode == 1:
         return ()
@@ -446,11 +476,16 @@ def configured_filter_drivers(root: Path) -> tuple[str, ...]:
     return tuple(sorted(drivers))
 
 
-def changed_repo_paths(*, root: Path, base_ref: str) -> tuple[str, ...]:
+def changed_repo_paths(
+    *,
+    root: Path,
+    base_ref: str,
+    _budget: SurfaceMaterializationBudget | None = None,
+) -> tuple[str, ...]:
     """Return Git-normalized changed paths relative to root without exposing them."""
 
     git_config_args: list[str] = []
-    for driver in configured_filter_drivers(root):
+    for driver in configured_filter_drivers(root, _budget=_budget):
         git_config_args.extend(
             [
                 "-c",
@@ -476,6 +511,7 @@ def changed_repo_paths(*, root: Path, base_ref: str) -> tuple[str, ...]:
             base_ref,
             "--",
         ],
+        _budget=_budget,
     )
     if result.returncode != 0:
         raise SurfaceDeltaError(_BASE_REF_UNRESOLVED_MESSAGE)
@@ -1004,10 +1040,11 @@ def gitlink_paths_from_index(
     *,
     toplevel: Path,
     repo_relative: str,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> tuple[str, ...]:
     """Return tracked root-relative gitlinks without entering initialized submodules."""
 
-    budget = SurfaceMaterializationBudget()
+    budget = _budget or SurfaceMaterializationBudget()
     listing = run_git_index_list(toplevel=toplevel, _budget=budget)
     if listing.returncode != 0:
         raise SurfaceDeltaError("surface delta could not inspect the Git index")
@@ -1635,10 +1672,11 @@ def archive_base_tree(
     dest: Path,
     repo_relative: str = "",
     context_policy: Mapping[str, object] | None = None,
+    _budget: SurfaceMaterializationBudget | None = None,
 ) -> tuple[str, ...]:
     """Materialize raw tracked base_ref content without archive or checkout attributes."""
 
-    budget = SurfaceMaterializationBudget()
+    budget = _budget or SurfaceMaterializationBudget()
     listing = run_git_tree_list(
         toplevel=toplevel,
         base_ref=base_ref,
@@ -1956,17 +1994,27 @@ def build_surface_delta_report(
     if not is_safe_base_ref_arg(base_ref):
         raise SurfaceDeltaError("surface delta requires a non-empty, safe --base-ref value")
 
-    toplevel = resolve_repo_toplevel(root)
+    budget = SurfaceMaterializationBudget()
+    toplevel = resolve_repo_toplevel(root, _budget=budget)
     if toplevel is None:
         raise SurfaceDeltaError("surface delta requires --root to be inside a git repository")
 
     repo_relative = repo_relative_root(root=root, toplevel=toplevel)
-    merge_base = resolve_merge_base(root=root, base_ref=base_ref)
-    changed_paths = changed_repo_paths(root=root, base_ref=merge_base)
+    merge_base = resolve_merge_base(
+        root=root,
+        base_ref=base_ref,
+        _budget=budget,
+    )
+    changed_paths = changed_repo_paths(
+        root=root,
+        base_ref=merge_base,
+        _budget=budget,
+    )
     ensure_changed_symlinks_stay_in_root(root=root, changed_paths=changed_paths)
     head_gitlinks = gitlink_paths_from_index(
         toplevel=toplevel,
         repo_relative=repo_relative,
+        _budget=budget,
     )
 
     with tempfile.TemporaryDirectory(prefix="agent-guard-surface-delta-") as raw_tmpdir:
@@ -1977,6 +2025,7 @@ def build_surface_delta_report(
             dest=tmpdir,
             repo_relative=repo_relative,
             context_policy=context_policy,
+            _budget=budget,
         )
         base_root = tmpdir if repo_relative in ("", ".") else tmpdir / repo_relative
 
