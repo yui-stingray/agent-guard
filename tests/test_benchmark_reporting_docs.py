@@ -22,10 +22,10 @@ def test_current_agb_numbers_are_reported_with_population_and_scope() -> None:
     required_fragments = [
         "60 self-authored cases",
         "groups A16/B10/C13/D6/E10/F5",
-        "overall F1 `0.973451`",
-        "precision `0.948276`",
+        "overall F1 `0.982143`",
+        "precision `0.964912`",
         "recall `1.000000`",
-        "`TP=55`, `FP=3`, `FN=0`",
+        "`TP=55`, `FP=2`, `FN=0`",
         "no independent verification yet",
         "Scope limits",
         "No known false negatives remain",
@@ -35,7 +35,7 @@ def test_current_agb_numbers_are_reported_with_population_and_scope() -> None:
         "Do not use AGB movement as a reason to add runtime MCP execution",
         "| Content | 10 | 2 | 0 | 0.833333 | 1.000000 | 0.909091 |",
         "| Context | 17 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |",
-        "| MCP | 14 | 1 | 0 | 0.933333 | 1.000000 | 0.965517 |",
+        "| MCP | 14 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |",
         "| Path | 7 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |",
     ]
     for fragment in required_fragments:
