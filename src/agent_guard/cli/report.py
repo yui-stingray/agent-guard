@@ -30,6 +30,7 @@ from ..profiles import PROFILE_NAMES
 from ..report_render import emit_report_output, render_report_output
 from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
 from ..surface_inventory import collect_agent_surface_inventory
+from ..surface_inventory_core import SurfaceInventoryBudget
 from ..surface_inventory_mcp import (
     MAX_MCP_DISTINCT_INPUT_BYTES,
     collect_mcp_config_surfaces,
@@ -311,8 +312,11 @@ def run_report(args: argparse.Namespace) -> int:
                 _input_budget=mcp_input_budget,
             )
         )
+        surface_inventory_budget = SurfaceInventoryBudget(
+            _input_budget=context_input_budget
+        )
         mcp_surfaces = (
-            collect_mcp_config_surfaces(root, _input_budget=mcp_input_budget)
+            collect_mcp_config_surfaces(root, _budget=surface_inventory_budget)
             if surface_inventory_version == "v2" or args.mcp_config_check
             else None
         )
@@ -324,6 +328,10 @@ def run_report(args: argparse.Namespace) -> int:
             _mcp_input_budget=mcp_input_budget,
             _context_inventory=inventory,
             _mcp_surfaces=mcp_surfaces,
+            _budget=surface_inventory_budget,
+            _mcp_surfaces_budget=(
+                surface_inventory_budget if mcp_surfaces is not None else None
+            ),
         )
         path_report = build_path_report(root=root, policy_arg=path_policy_arg) if path_policy_arg else None
         content_report = (

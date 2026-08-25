@@ -1608,6 +1608,7 @@ def has_preceding_same_list_or(segments: list[tuple[str, str | None]], *, start_
 
 @dataclass(frozen=True)
 class _NormalizedAgentGuardCommand:
+    route: tuple[str, ...]
     arguments: tuple[tuple[object, ...], ...]
 
 
@@ -1969,7 +1970,10 @@ def _normalize_agent_guard_command(
         normalized.append(("option", action.dest, *values))
         index += consumed
 
-    return _NormalizedAgentGuardCommand(arguments=tuple(normalized))
+    return _NormalizedAgentGuardCommand(
+        route=tuple(route),
+        arguments=tuple(normalized),
+    )
 
 
 def command_prefix_matches_required(
@@ -2059,6 +2063,54 @@ def command_line_matches_required(
         previous_operator = next_operator
 
     return candidate_matched
+
+
+def command_line_conflicts_with_required(
+    command_line: str,
+    required_command: str,
+    *,
+    shell: str | None = None,
+) -> bool:
+    """Reject a weaker invocation of the same protected agent-guard route."""
+
+    required = normalize_command_text(required_command)
+    required_normalized = _normalize_agent_guard_command(required)
+    if not isinstance(required_normalized, _NormalizedAgentGuardCommand):
+        return False
+    if not any(
+        isinstance(value, _DynamicShellScalar)
+        for argument in required_normalized.arguments
+        for value in argument
+    ):
+        return False
+
+    route_seen = False
+    conflicting_segment = False
+    for segment, _ in _iter_bounded_command_segments(command_line):
+        normalized = normalize_command_text(segment)
+        if not normalized or is_documentation_segment(normalized):
+            continue
+        candidate = _normalize_agent_guard_command(normalized, shell=shell)
+        if not isinstance(candidate, _NormalizedAgentGuardCommand):
+            continue
+        if candidate.route != required_normalized.route:
+            continue
+        route_seen = True
+        if not command_prefix_matches_required(
+            normalized,
+            required,
+            shell=shell,
+        ):
+            conflicting_segment = True
+
+    return route_seen and (
+        conflicting_segment
+        or not command_line_matches_required(
+            command_line,
+            required_command,
+            shell=shell,
+        )
+    )
 
 
 def validate_workflow_policy(policy: dict[str, Any]) -> None:
@@ -2169,6 +2221,7 @@ def scan_workflow_policy(
         for required in check.required_commands:
             checked_items += 1
             matched = False
+            conflicting = False
             for line in run_lines:
                 _consume_scan_budget(
                     budget,
@@ -2181,14 +2234,19 @@ def scan_workflow_policy(
                     amount=len(line.command) + len(required.command),
                     limit=MAX_WORKFLOW_MATCH_CHARS,
                 )
+                if command_line_conflicts_with_required(
+                    line.command,
+                    required.command,
+                    shell=line.shell,
+                ):
+                    conflicting = True
                 if command_line_matches_required(
                     line.command,
                     required.command,
                     shell=line.shell,
                 ):
                     matched = True
-                    break
-            if matched:
+            if matched and not conflicting:
                 continue
             _append_workflow_finding(
                 findings,

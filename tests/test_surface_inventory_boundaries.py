@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from agent_guard import surface_inventory_directories
 from agent_guard import surface_inventory_metadata
 from agent_guard import surface_inventory_mcp
 from agent_guard import surface_inventory_workflow
+from agent_guard.cli import build_parser
+from agent_guard.cli.report import run_report
 from tests.cli.helpers import write
 
 
@@ -207,6 +210,38 @@ def test_agent_inventory_charges_mcp_wildcard_traversal_into_shared_budget(
         )
 
     assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+
+
+def test_report_precomputed_mcp_uses_shared_inventory_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write(tmp_path / "AGENTS.md", "Require approval before repository writes.\n")
+    write(tmp_path / "context-policy.yaml", "{}\n")
+    write(tmp_path / ".claude" / "settings.json", "{}\n")
+    monkeypatch.setattr(surface_inventory_core, "MAX_SURFACE_INVENTORY_TRAVERSAL", 0)
+    args = build_parser().parse_args(
+        [
+            "report",
+            "--root",
+            str(tmp_path),
+            "--context-policy",
+            str(tmp_path / "context-policy.yaml"),
+            "--surface-inventory-version",
+            "v2",
+            "--mcp-config-check",
+            "--format",
+            "json",
+        ]
+    )
+
+    assert run_report(args) == 2
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["error"] == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
+    assert str(tmp_path) not in captured.out + captured.err
 
 
 def test_mcp_inventory_honors_shared_deadline(tmp_path: Path) -> None:

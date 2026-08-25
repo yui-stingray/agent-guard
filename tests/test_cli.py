@@ -517,6 +517,69 @@ def test_init_cli_workflow_policy_rejects_weakened_event_base_refs(
     } == {"drift_guard", "evidence_report_with_drift"}
 
 
+def test_init_cli_workflow_policy_rejects_split_weakened_event_arms(
+    tmp_path: Path,
+) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    original = workflow.read_text(encoding="utf-8")
+    drift_command = (
+        '          agent-guard drift check --root . --profile recommended '
+        '--schema-version v2 --base-ref "$base_sha" --json 2>/dev/null '
+        '> "$raw_dir/drift.json"\n'
+    )
+    report_command = (
+        "          agent-guard report --root . --context-policy "
+        ".agent-guard/context-policy.yaml --evidence-preset recommended "
+        "--mcp-policy .agent-guard/mcp-policy.yaml"
+    )
+    report_command = next(
+        line + "\n"
+        for line in original.splitlines()
+        if line.startswith(report_command)
+    )
+    assert drift_command in original
+    split_drift = (
+        '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
+        + drift_command.replace('"$base_sha"', "HEAD")
+        + "          else\n"
+        + drift_command
+        + "          fi\n"
+    )
+    split_report = (
+        '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
+        + report_command.replace('"$base_sha"', "HEAD")
+        + "          else\n"
+        + report_command
+        + "          fi\n"
+    )
+    workflow.write_text(
+        original.replace(drift_command, split_drift).replace(
+            report_command,
+            split_report,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert {
+        finding["requirement_id"] for finding in payload["findings"]
+    } == {"drift_guard", "evidence_report_with_drift"}
+
+
 def test_init_cli_workflow_policy_detects_report_without_recommended_preset(tmp_path: Path) -> None:
     result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
     assert result.returncode == 0

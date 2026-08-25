@@ -61,14 +61,18 @@ def collect_agent_surface_inventory(
     _mcp_input_budget: DistinctInputBudget | None = None,
     _context_inventory: ContextInventory | None = None,
     _mcp_surfaces: list[dict[str, object]] | None = None,
+    _budget: SurfaceInventoryBudget | None = None,
+    _mcp_surfaces_budget: SurfaceInventoryBudget | None = None,
 ) -> dict[str, object]:
     root = root.resolve()
     version = normalize_surface_version(schema_version)
     # Preserve a caller's prior context-policy charge while using one budget for
     # every collector invoked by this inventory assembly.
-    budget = SurfaceInventoryBudget(
+    budget = _budget or SurfaceInventoryBudget(
         _input_budget=_context_input_budget or _mcp_input_budget
     )
+    if _mcp_surfaces_budget is not None and _mcp_surfaces_budget is not budget:
+        raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
     if _context_inventory is None:
         try:
             context_inventory = collect_context_inventory(
@@ -192,6 +196,10 @@ def collect_agent_surface_inventory(
         if _mcp_surfaces is None:
             # The MCP collector already charged the shared budget while it
             # enumerated and projected these entries.
+            surfaces.extend(mcp_surfaces)
+        elif _mcp_surfaces_budget is budget:
+            # The caller precomputed these entries with this exact shared
+            # budget so report and inventory views use one repository snapshot.
             surfaces.extend(mcp_surfaces)
         else:
             for item in mcp_surfaces:
