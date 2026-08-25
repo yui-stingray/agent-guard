@@ -45,6 +45,16 @@ COMPONENT_GATE_NAMES = (
     "workflow",
     "policy_spec_drift",
 )
+COMPONENT_SUMMARY_CHECKED_COUNT_KEYS = {
+    "path": "path_checked_count",
+    "content": "content_checked_count",
+    "api": "api_checked_count",
+    "mcp_config": "mcp_config_checked_count",
+    "context_lock": "context_lock_checked_count",
+    "digest": "digest_checked_count",
+    "workflow": "workflow_checked_count",
+    "policy_spec_drift": "drift_checked_count",
+}
 CANONICAL_GATE_NAMES = frozenset(
     {"context", "surface_inventory", *COMPONENT_GATE_NAMES}
 )
@@ -92,21 +102,29 @@ def validate_gate_counts(evidence_coverage: Mapping[str, Any], *, report_status:
 def _component_gate_state(
     gate_name: str,
     payload: Mapping[str, Any],
-) -> tuple[str, int, str]:
+) -> tuple[str, int, int, str]:
     if gate_name == "context":
         finding_count = require_int(payload.get("finding_count"), "$.finding_count")
+        summary = require_mapping(payload.get("summary"), "$.summary")
+        checked_count = require_int(summary.get("scanned_count"), "$.summary.scanned_count")
         return (
             "violation" if finding_count else "ok",
             finding_count,
+            checked_count,
             "the canonical context component",
         )
     if gate_name == "surface_inventory":
-        require_mapping(payload.get("surface_inventory"), "$.surface_inventory")
-        return "ok", 0, "$.surface_inventory"
+        surface_inventory = require_mapping(
+            payload.get("surface_inventory"), "$.surface_inventory"
+        )
+        surfaces = require_sequence(
+            surface_inventory.get("surfaces"), "$.surface_inventory.surfaces"
+        )
+        return "ok", 0, len(surfaces), "$.surface_inventory"
 
     component_path = f"$.{gate_name}"
     if gate_name not in payload:
-        return "missing", 0, component_path
+        return "missing", 0, 0, component_path
     component = require_mapping(payload.get(gate_name), component_path)
     status = str(component.get("status", ""))
     require(
@@ -118,6 +136,10 @@ def _component_gate_state(
         component.get("finding_count"),
         f"{component_path}.finding_count",
     )
+    checked_count = require_int(
+        component.get("checked_count"),
+        f"{component_path}.checked_count",
+    )
     require(
         finding_count == len(findings),
         f"{component_path}.finding_count must match {component_path}.findings length",
@@ -127,7 +149,28 @@ def _component_gate_state(
             finding_count == 0,
             f"{component_path}.finding_count must be 0 when status is ok",
         )
-    return status, finding_count, component_path
+    return status, finding_count, checked_count, component_path
+
+
+def _validate_summary_gate_count(
+    gate_name: str,
+    payload: Mapping[str, Any],
+    expected_checked_count: int,
+) -> None:
+    summary = require_mapping(payload.get("summary"), "$.summary")
+    if gate_name == "context":
+        summary_key = "context_file_count"
+    elif gate_name == "surface_inventory":
+        summary_key = "surface_count"
+    else:
+        summary_key = COMPONENT_SUMMARY_CHECKED_COUNT_KEYS[gate_name]
+    if summary_key not in summary:
+        return
+    summary_count = require_int(summary.get(summary_key), f"$.summary.{summary_key}")
+    require(
+        summary_count == expected_checked_count,
+        f"$.summary.{summary_key} must match the {gate_name} checked count",
+    )
 
 
 def validate_gate_component_bindings(
@@ -144,7 +187,7 @@ def validate_gate_component_bindings(
             f"$.evidence_coverage.gates[{index}].gate is not canonical",
         )
         bound_gate_names.add(gate_name)
-        expected_status, expected_finding_count, component_path = (
+        expected_status, expected_finding_count, expected_checked_count, component_path = (
             _component_gate_state(gate_name, payload)
         )
         require(
@@ -155,18 +198,16 @@ def validate_gate_component_bindings(
             gate.get("finding_count") == expected_finding_count,
             f"$.evidence_coverage.gates[{index}].finding_count must match {component_path}",
         )
-
-    for required_gate in ("context", "surface_inventory"):
         require(
-            required_gate in bound_gate_names,
-            f"$.evidence_coverage.gates must include {required_gate}",
+            gate.get("checked_count") == expected_checked_count,
+            f"$.evidence_coverage.gates[{index}].checked_count must match {component_path}",
         )
-    for component_gate in COMPONENT_GATE_NAMES:
-        if component_gate in payload:
-            require(
-                component_gate in bound_gate_names,
-                f"$.evidence_coverage.gates must include {component_gate} when $.{component_gate} is present",
-            )
+        _validate_summary_gate_count(gate_name, payload, expected_checked_count)
+
+    require(
+        bound_gate_names == CANONICAL_GATE_NAMES,
+        "$.evidence_coverage.gates must include every canonical gate",
+    )
 
 
 def validate_surface_inventory(surface_inventory: Mapping[str, Any]) -> None:
@@ -457,6 +498,22 @@ def validate_public_report_consistency(payload: Mapping[str, Any]) -> None:
     evidence_coverage = require_mapping(payload.get("evidence_coverage"), "$.evidence_coverage")
     validate_gate_counts(evidence_coverage, report_status=status)
     validate_gate_component_bindings(evidence_coverage, payload)
+    summary_coverage_keys = {
+        "coverage_enabled_count": "enabled_count",
+        "coverage_missing_count": "missing_count",
+        "coverage_failing_count": "failing_count",
+    }
+    for summary_key, coverage_key in summary_coverage_keys.items():
+        if summary_key not in summary:
+            continue
+        require(
+            require_int(summary.get(summary_key), f"$.summary.{summary_key}")
+            == require_int(
+                evidence_coverage.get(coverage_key),
+                f"$.evidence_coverage.{coverage_key}",
+            ),
+            f"$.summary.{summary_key} must match $.evidence_coverage.{coverage_key}",
+        )
     failing_count = require_int(evidence_coverage.get("failing_count"), "$.evidence_coverage.failing_count")
     conformance = payload.get("conformance")
     conformance_finding_count = 0

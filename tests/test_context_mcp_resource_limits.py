@@ -1903,7 +1903,7 @@ def test_digest_surrogate_finding_fails_closed_without_traceback(
     output = capsys.readouterr()
     payload = json.loads(output.out)
     assert payload["status"] == "error"
-    assert payload["error"] == digest_guard.ERROR_DIGEST_SCAN_LIMIT
+    assert payload["error"] == digest_guard.ERROR_DIGEST_POLICY_LIMIT
     assert "Traceback" not in output.out + output.err
     assert "\\ud800" not in output.out.lower() + output.err.lower()
     assert str(tmp_path) not in output.out + output.err

@@ -15,7 +15,11 @@ from agent_guard import evidence_pack
 import agent_guard.cli.common as cli_common
 import agent_guard.cli.evidence_pack as evidence_pack_cli
 from agent_guard.consumer import validate_public_evidence_shape
-from agent_guard.consumer._schema import MAX_JSON_ITEMS, MAX_REPORT_JSON_BYTES
+from agent_guard.consumer._schema import (
+    MAX_JSON_DEPTH,
+    MAX_JSON_ITEMS,
+    MAX_REPORT_JSON_BYTES,
+)
 from agent_guard.evidence_pack import (
     build_agent_policy_audit_event_artifacts,
     build_agent_policy_audit_event_binding,
@@ -637,6 +641,37 @@ def test_audit_event_binding_rejects_nonfinite_json_constants(
         )
 
     assert constant not in str(exc_info.value)
+    assert str(tmp_path) not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("shape", ["deep", "wide"])
+def test_audit_event_binding_rejects_shared_structure_budget_overflow(
+    tmp_path: Path,
+    shape: str,
+) -> None:
+    event = tmp_path / "event.json"
+    if shape == "deep":
+        nested: object = None
+        for _ in range(MAX_JSON_DEPTH):
+            nested = [nested]
+        context = {"nested": nested}
+    else:
+        context = {"items": [None] * MAX_JSON_ITEMS}
+    event.write_text(
+        json.dumps(audit_event_payload(context=context)),
+        encoding="utf-8",
+    )
+    assert event.stat().st_size < MAX_REPORT_JSON_BYTES
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
     assert str(tmp_path) not in str(exc_info.value)
 
 
