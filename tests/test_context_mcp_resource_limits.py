@@ -106,56 +106,71 @@ def test_context_public_entrypoints_fail_closed_on_oversized_input(tmp_path: Pat
 
     commands = (
         (
-            "context",
-            "check",
-            "--root",
-            str(tmp_path),
-            "--policy",
-            str(policy_path),
-            "--json",
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "check",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
         ),
         (
-            "context",
-            "inventory",
-            "--root",
-            str(tmp_path),
-            "--policy",
-            str(policy_path),
-            "--json",
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
         ),
         (
-            "context",
-            "lock",
-            "--root",
-            str(tmp_path),
-            "--policy",
-            str(policy_path),
-            "--json",
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "lock",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
         ),
         (
-            "surface",
-            "inventory",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(policy_path),
-            "--json",
+            ERROR_SURFACE_INVENTORY_LIMIT,
+            (
+                "surface",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(policy_path),
+                "--json",
+            ),
         ),
         (
-            "report",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(policy_path),
-            "--format",
-            "json",
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "report",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(policy_path),
+                "--format",
+                "json",
+            ),
         ),
     )
 
-    for command in commands:
+    for expected_error, command in commands:
         _assert_sanitized_cli_limit_error(
             run_cli(*command),
-            expected_error=context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            expected_error=expected_error,
             root=tmp_path,
             marker=marker,
         )
@@ -246,34 +261,43 @@ def test_mcp_public_entrypoints_fail_closed_on_oversized_config(tmp_path: Path) 
     )
 
     commands = (
-        ("mcp", "check", "--root", str(tmp_path), "--json"),
         (
-            "surface",
-            "inventory",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(context_policy_path),
-            "--schema-version",
-            "v2",
-            "--json",
+            surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            ("mcp", "check", "--root", str(tmp_path), "--json"),
         ),
         (
-            "report",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(context_policy_path),
-            "--mcp-config-check",
-            "--format",
-            "json",
+            ERROR_SURFACE_INVENTORY_LIMIT,
+            (
+                "surface",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(context_policy_path),
+                "--schema-version",
+                "v2",
+                "--json",
+            ),
+        ),
+        (
+            surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            (
+                "report",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(context_policy_path),
+                "--mcp-config-check",
+                "--format",
+                "json",
+            ),
         ),
     )
 
-    for command in commands:
+    for expected_error, command in commands:
         _assert_sanitized_cli_limit_error(
             run_cli(*command),
-            expected_error=surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            expected_error=expected_error,
             root=tmp_path,
             marker=marker,
         )
