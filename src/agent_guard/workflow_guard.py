@@ -1617,6 +1617,12 @@ class _DynamicShellScalar:
     name: str
 
 
+_AgentGuardNormalizationCache = dict[
+    tuple[str, str | None],
+    _NormalizedAgentGuardCommand | bool | None,
+]
+
+
 def _looks_like_agent_guard_command(command: str) -> bool:
     probe = _AGENT_GUARD_LOOKING_EXPANSION_RE.sub(
         "",
@@ -1918,16 +1924,30 @@ def _normalize_agent_guard_command(
     command: str,
     *,
     shell: str | None = None,
+    _cache: _AgentGuardNormalizationCache | None = None,
 ) -> _NormalizedAgentGuardCommand | bool | None:
+    cache_key = (command, shell)
+    if _cache is not None and cache_key in _cache:
+        return _cache[cache_key]
+
     argv = _static_agent_guard_argv(command, shell=shell)
     if argv is None:
-        return False if _looks_like_agent_guard_command(command) else None
+        result: _NormalizedAgentGuardCommand | bool | None = (
+            False if _looks_like_agent_guard_command(command) else None
+        )
+        if _cache is not None:
+            _cache[cache_key] = result
+        return result
     entrypoint_size = _agent_guard_entrypoint_size(argv)
     if entrypoint_size is None:
+        if _cache is not None:
+            _cache[cache_key] = None
         return None
 
     leaf = _agent_guard_leaf_parser(argv[entrypoint_size:])
     if leaf is None:
+        if _cache is not None:
+            _cache[cache_key] = False
         return False
     route, parser, route_size = leaf
     options = {
@@ -1945,18 +1965,28 @@ def _normalize_agent_guard_command(
     while index < len(tail):
         value = tail[index]
         if value == "--":
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         if not isinstance(value, str):
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         action, inline_value, ambiguous = _resolve_agent_guard_option(
             value,
             options=options,
         )
         if ambiguous:
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         if action is None:
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         if action.dest == "help":
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         option_values = _agent_guard_option_values(
             tail,
@@ -1965,15 +1995,20 @@ def _normalize_agent_guard_command(
             inline_value=inline_value,
         )
         if option_values is None:
+            if _cache is not None:
+                _cache[cache_key] = False
             return False
         values, consumed = option_values
         normalized.append(("option", action.dest, *values))
         index += consumed
 
-    return _NormalizedAgentGuardCommand(
+    result = _NormalizedAgentGuardCommand(
         route=tuple(route),
         arguments=tuple(normalized),
     )
+    if _cache is not None:
+        _cache[cache_key] = result
+    return result
 
 
 def _static_agent_guard_route_prefix(
@@ -2019,9 +2054,17 @@ def command_prefix_matches_required(
     required: str,
     *,
     shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
 ) -> bool:
-    required_command = _normalize_agent_guard_command(required)
-    candidate_command = _normalize_agent_guard_command(candidate, shell=shell)
+    required_command = _normalize_agent_guard_command(
+        required,
+        _cache=_normalization_cache,
+    )
+    candidate_command = _normalize_agent_guard_command(
+        candidate,
+        shell=shell,
+        _cache=_normalization_cache,
+    )
     if isinstance(required_command, _NormalizedAgentGuardCommand) or isinstance(
         candidate_command, _NormalizedAgentGuardCommand
     ):
@@ -2057,6 +2100,7 @@ def command_line_matches_required(
     required_command: str,
     *,
     shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
 ) -> bool:
     _validate_command_lexer_characters(command_line)
     _validate_command_lexer_characters(required_command)
@@ -2084,6 +2128,7 @@ def command_line_matches_required(
                 normalized,
                 required,
                 shell=shell,
+                _normalization_cache=_normalization_cache,
             )
         ):
             candidate_matched = True
@@ -2108,11 +2153,16 @@ def command_line_conflicts_with_required(
     required_command: str,
     *,
     shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
+    _line_matches: bool | None = None,
 ) -> bool:
     """Reject a weaker invocation of the same protected agent-guard route."""
 
     required = normalize_command_text(required_command)
-    required_normalized = _normalize_agent_guard_command(required)
+    required_normalized = _normalize_agent_guard_command(
+        required,
+        _cache=_normalization_cache,
+    )
     if not isinstance(required_normalized, _NormalizedAgentGuardCommand):
         return False
     if not any(
@@ -2128,7 +2178,11 @@ def command_line_conflicts_with_required(
         normalized = normalize_command_text(segment)
         if not normalized or is_documentation_segment(normalized):
             continue
-        candidate = _normalize_agent_guard_command(normalized, shell=shell)
+        candidate = _normalize_agent_guard_command(
+            normalized,
+            shell=shell,
+            _cache=_normalization_cache,
+        )
         candidate_route = (
             candidate.route
             if isinstance(candidate, _NormalizedAgentGuardCommand)
@@ -2142,16 +2196,22 @@ def command_line_conflicts_with_required(
                 normalized,
                 required,
                 shell=shell,
+                _normalization_cache=_normalization_cache,
             )
         ):
             conflicting_segment = True
 
     return route_seen and (
         conflicting_segment
-        or not command_line_matches_required(
-            command_line,
-            required_command,
-            shell=shell,
+        or not (
+            _line_matches
+            if _line_matches is not None
+            else command_line_matches_required(
+                command_line,
+                required_command,
+                shell=shell,
+                _normalization_cache=_normalization_cache,
+            )
         )
     )
 
@@ -2181,6 +2241,8 @@ def scan_workflow_policy(
     findings: list[WorkflowGuardFinding] = []
     budget = _WorkflowScanBudget()
     workflow_cache: dict[str, _CachedWorkflow] = {}
+    # Keep attacker-controlled cache state scoped to this already-budgeted scan.
+    normalization_cache: _AgentGuardNormalizationCache = {}
     checked_items = 0
     for required in required_files:
         target, rel_path = resolve_repo_file(root, required.path, label=required.check_id)
@@ -2277,17 +2339,21 @@ def scan_workflow_policy(
                     amount=len(line.command) + len(required.command),
                     limit=MAX_WORKFLOW_MATCH_CHARS,
                 )
+                line_matches = command_line_matches_required(
+                    line.command,
+                    required.command,
+                    shell=line.shell,
+                    _normalization_cache=normalization_cache,
+                )
                 if command_line_conflicts_with_required(
                     line.command,
                     required.command,
                     shell=line.shell,
+                    _normalization_cache=normalization_cache,
+                    _line_matches=line_matches,
                 ):
                     conflicting = True
-                if command_line_matches_required(
-                    line.command,
-                    required.command,
-                    shell=line.shell,
-                ):
+                if line_matches:
                     matched = True
             if matched and not conflicting:
                 continue
