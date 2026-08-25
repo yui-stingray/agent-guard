@@ -541,16 +541,26 @@ def test_init_cli_workflow_policy_rejects_split_weakened_event_arms(
         if line.startswith(report_command)
     )
     assert drift_command in original
+    weakened_drift = drift_command.replace(
+        ' --base-ref "$base_sha"',
+        ' "${drift_base_args[@]}"',
+    )
+    weakened_report = report_command.replace(
+        ' --drift-base-ref "$base_sha"',
+        ' "${report_base_args[@]}"',
+    )
     split_drift = (
         '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
-        + drift_command.replace('"$base_sha"', "HEAD")
+        + "          drift_base_args=(--base-ref HEAD)\n"
+        + weakened_drift
         + "          else\n"
         + drift_command
         + "          fi\n"
     )
     split_report = (
         '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
-        + report_command.replace('"$base_sha"', "HEAD")
+        + "          report_base_args=(--drift-base-ref HEAD)\n"
+        + weakened_report
         + "          else\n"
         + report_command
         + "          fi\n"

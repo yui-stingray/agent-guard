@@ -1976,6 +1976,44 @@ def _normalize_agent_guard_command(
     )
 
 
+def _static_agent_guard_route_prefix(
+    command: str,
+    *,
+    shell: str | None = None,
+) -> tuple[str, ...] | None:
+    """Return a proven route even when later argv cannot be normalized."""
+
+    argv: list[str | _DynamicShellScalar] = []
+    index = 0
+    while index < len(command):
+        while index < len(command) and command[index].isspace():
+            index += 1
+        if index >= len(command):
+            break
+        word = _consume_static_agent_guard_word(
+            command,
+            index=index,
+            reject_dynamic=True,
+            shell=shell,
+        )
+        if word is None:
+            break
+        value, next_index, _ = word
+        if isinstance(value, _DynamicShellScalar):
+            break
+        argv.append(value)
+        index = next_index
+
+    entrypoint_size = _agent_guard_entrypoint_size(argv)
+    if entrypoint_size is None:
+        return None
+    leaf = _agent_guard_leaf_parser(argv[entrypoint_size:])
+    if leaf is None:
+        return None
+    route, _, _ = leaf
+    return tuple(route)
+
+
 def command_prefix_matches_required(
     candidate: str,
     required: str,
@@ -2091,15 +2129,20 @@ def command_line_conflicts_with_required(
         if not normalized or is_documentation_segment(normalized):
             continue
         candidate = _normalize_agent_guard_command(normalized, shell=shell)
-        if not isinstance(candidate, _NormalizedAgentGuardCommand):
-            continue
-        if candidate.route != required_normalized.route:
+        candidate_route = (
+            candidate.route
+            if isinstance(candidate, _NormalizedAgentGuardCommand)
+            else _static_agent_guard_route_prefix(normalized, shell=shell)
+        )
+        if candidate_route != required_normalized.route:
             continue
         route_seen = True
-        if not command_prefix_matches_required(
-            normalized,
-            required,
-            shell=shell,
+        if not isinstance(candidate, _NormalizedAgentGuardCommand) or not (
+            command_prefix_matches_required(
+                normalized,
+                required,
+                shell=shell,
+            )
         ):
             conflicting_segment = True
 
