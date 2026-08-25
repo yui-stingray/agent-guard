@@ -38,7 +38,7 @@ def run_path_check(args: argparse.Namespace) -> int:
             error=str(exc),
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -56,7 +56,7 @@ def run_path_check(args: argparse.Namespace) -> int:
         extra={"scanned_paths": scanned_paths},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
     elif findings:
         print(f"path-guard: NG ({len(findings)} findings)")
         for item in findings:
@@ -68,4 +68,3 @@ def run_path_check(args: argparse.Namespace) -> int:
         print(f"path-guard: OK ({scanned_paths} paths scanned)")
 
     return 0 if not findings else 1
-

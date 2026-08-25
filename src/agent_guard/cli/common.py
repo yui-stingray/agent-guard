@@ -15,6 +15,14 @@ from typing import Iterable
 
 from .. import __version__ as PACKAGE_VERSION
 from ..bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
+from ..consumer._schema import (
+    DuplicateJSONKeyError,
+    JSONStructureLimitError,
+    MAX_REPORT_JSON_BYTES,
+    NonFiniteJSONNumberError,
+    load_json_text,
+    read_limited_bytes,
+)
 from ..public_redaction import (
     redact_public_text,
     sanitize_public_mapping,
@@ -30,6 +38,8 @@ URL_LIKE_POLICY_ARG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 # Reuse the scanner result ceiling so final public serialization cannot exceed
 # the bounded worker contract after envelope/rendering overhead is added.
 MAX_PUBLIC_OUTPUT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
+ERROR_REPORT_JSON_INVALID = "report JSON is invalid"
+ERROR_REPORT_JSON_LIMIT = "report JSON exceeds configured limits"
 
 
 def tool_version() -> str:
@@ -130,10 +140,11 @@ def bounded_public_json(
     try:
         rendered = json.dumps(
             payload,
+            allow_nan=False,
             ensure_ascii=False,
             sort_keys=sort_keys,
         )
-    except (MemoryError, OverflowError, RecursionError):
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
         raise ValueError(error) from None
     return require_public_output_budget(rendered, error=error)
 
@@ -254,10 +265,35 @@ def scrub_report_error_message(message: str) -> str:
     )
 
 
-def load_json_file(path: Path) -> dict[str, object]:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
+def load_json_file(
+    path: Path,
+    *,
+    root_error: str | None = None,
+) -> dict[str, object]:
+    raw = read_limited_bytes(
+        path,
+        limit=MAX_REPORT_JSON_BYTES,
+        read_error=f"JSON file could not be read: {path}",
+        limit_error=ERROR_REPORT_JSON_LIMIT,
+    )
+    try:
+        text = raw.decode("utf-8")
+        loaded = load_json_text(text)
+    except JSONStructureLimitError:
+        raise ValueError(ERROR_REPORT_JSON_LIMIT) from None
+    except (MemoryError, OverflowError, RecursionError):
+        raise ValueError(ERROR_REPORT_JSON_LIMIT) from None
+    except (
+        DuplicateJSONKeyError,
+        NonFiniteJSONNumberError,
+        UnicodeError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ):
+        raise ValueError(ERROR_REPORT_JSON_INVALID) from None
     if not isinstance(loaded, dict):
-        raise ValueError(f"JSON file must contain an object: {path}")
+        raise ValueError(root_error or f"JSON file must contain an object: {path}")
     return loaded
 
 

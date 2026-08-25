@@ -42,6 +42,7 @@ from .surface_inventory_mcp_safety import MCP_RISKY_PATTERNS
 
 
 SURFACE_DELTA_SCHEMA_VERSION_V1 = "agent-guard.surface_delta.v1"
+ERROR_SURFACE_DELTA_INVALID = "surface delta contains invalid public data"
 
 # Public identity fields group related records before collision-safe multiset
 # matching. Locator-only moves do not change the represented surface.
@@ -1506,7 +1507,16 @@ def diff_entry_fields(base: Mapping[str, object], head: Mapping[str, object]) ->
 
 
 def canonical_surface(surface: Mapping[str, object]) -> str:
-    return json.dumps(surface, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    try:
+        return json.dumps(
+            surface,
+            allow_nan=False,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise SurfaceDeltaError(ERROR_SURFACE_DELTA_INVALID) from None
 
 
 def surface_match_fingerprint(surface: Mapping[str, object]) -> str:

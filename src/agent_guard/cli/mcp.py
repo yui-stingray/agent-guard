@@ -68,7 +68,7 @@ def _emit_mcp_payload(
             extra={"command": "check"},
         )
         rendered = (
-            json.dumps(fallback, ensure_ascii=False, sort_keys=True)
+            json.dumps(fallback, allow_nan=False, ensure_ascii=False, sort_keys=True)
             if args.json
             else f"ERROR: {ERROR_MCP_CONFIG_LIMIT}"
         )

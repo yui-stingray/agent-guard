@@ -48,7 +48,7 @@ def run_drift_check(args: argparse.Namespace) -> int:
             extra={"command": "check"},
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False, sort_keys=True))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -68,7 +68,7 @@ def run_drift_check(args: argparse.Namespace) -> int:
         extra={"command": "check", "policy_spec_drift": report},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False, sort_keys=True))
     elif exit_code == 0:
         print(f"drift-guard: OK ({report.get('checked_count', 0)} checks)")
     else:
@@ -80,5 +80,4 @@ def run_drift_check(args: argparse.Namespace) -> int:
                 f"{finding.get('file', '-')} {finding.get('reason', '-')}"
             )
     return exit_code
-
 

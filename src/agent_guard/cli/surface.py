@@ -91,7 +91,7 @@ def _emit_surface_inventory_payload(
         )
         try:
             emit_public_output(
-                f"{json.dumps(sanitize_public_mapping(fallback), ensure_ascii=False)}\n",
+                f"{json.dumps(sanitize_public_mapping(fallback), allow_nan=False, ensure_ascii=False)}\n",
                 error=ERROR_SURFACE_INVENTORY_LIMIT,
             )
         except ValueError:
@@ -197,7 +197,7 @@ def run_surface_delta(args: argparse.Namespace) -> int:
         extra={"command": "delta", "delta": delta},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False, sort_keys=True))
     else:
         print(
             "surface-delta: OK "
@@ -218,7 +218,7 @@ def _emit_surface_delta_error(*, args: argparse.Namespace, root: Path, message: 
         extra={"command": "delta"},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False, sort_keys=True))
     else:
         print(f"ERROR: {payload.get('error', 'unknown error')}")
     return 2

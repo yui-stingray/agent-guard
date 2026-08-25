@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import os
 import re
 import stat
@@ -81,6 +82,22 @@ MAX_MCP_SERVERS = 10_000
 MAX_MCP_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 
 
+def _reject_nonfinite_json_constant(_value: str) -> None:
+    raise ValueError(ERROR_MCP_CONFIG_INVALID)
+
+
+def _validate_finite_config_numbers(value: object) -> None:
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, float) and not math.isfinite(current):
+            raise ValueError(ERROR_MCP_CONFIG_INVALID)
+        if isinstance(current, dict):
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+
+
 def _read_structured_config(
     path: Path,
     root: Path,
@@ -102,8 +119,13 @@ def _read_structured_config(
 def _parse_structured_config(path: Path, data: bytes) -> object:
     try:
         text = data.decode("utf-8")
-        loaded = tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
+        loaded = (
+            tomllib.loads(text)
+            if path.suffix == ".toml"
+            else json.loads(text, parse_constant=_reject_nonfinite_json_constant)
+        )
         _validate_object_graph(loaded)
+        _validate_finite_config_numbers(loaded)
     except BoundedYamlLimitError:
         raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
     except (MemoryError, OverflowError, RecursionError):
@@ -354,14 +376,17 @@ def mcp_server_maps(config: object) -> dict[str, object]:
 
 
 def _canonical_json_size(value: object) -> int:
-    return len(
-        json.dumps(
+    try:
+        rendered = json.dumps(
             value,
+            allow_nan=False,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
-        ).encode("utf-8", errors="surrogatepass")
-    )
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
 
 
 class _McpSurfaceResultBudget:

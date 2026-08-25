@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,10 @@ from pathlib import Path
 import pytest
 
 from agent_guard import evidence_pack
+import agent_guard.cli.common as cli_common
+import agent_guard.cli.evidence_pack as evidence_pack_cli
 from agent_guard.consumer import validate_public_evidence_shape
+from agent_guard.consumer._schema import MAX_JSON_ITEMS, MAX_REPORT_JSON_BYTES
 from agent_guard.evidence_pack import (
     build_agent_policy_audit_event_artifacts,
     build_agent_policy_audit_event_binding,
@@ -26,6 +30,106 @@ EVIDENCE_SAMPLE_REPORT = REPO_ROOT / "docs" / "evidence-samples" / "agent-guard-
 V2_REPORT_PAYLOAD = {
     "report": {"schema_version": "agent-guard.report_evidence.v2"},
 }
+
+
+def test_evidence_pack_manifest_cli_rejects_oversized_report_before_decode(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "oversized-report.json"
+    report.write_bytes(
+        b'{"ignored":"' + (b"x" * MAX_REPORT_JSON_BYTES) + b'"}'
+    )
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON exceeds configured limits"
+    assert result.stderr == ""
+
+
+def test_evidence_pack_manifest_cli_rejects_excessive_json_items(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "wide-report.json"
+    report.write_text(
+        json.dumps({"ignored": [0] * MAX_JSON_ITEMS}),
+        encoding="utf-8",
+    )
+    assert report.stat().st_size < MAX_REPORT_JSON_BYTES
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON exceeds configured limits"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_evidence_pack_manifest_cli_rejects_nonfinite_report_json(
+    tmp_path: Path,
+    constant: str,
+) -> None:
+    report = tmp_path / "nonfinite-report.json"
+    report.write_text(f'{{"metric":{constant}}}\n', encoding="utf-8")
+
+    result = run_cli(
+        "evidence-pack",
+        "manifest",
+        "--root",
+        str(tmp_path),
+        "--report",
+        str(report),
+        "--json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON is invalid"
+    assert constant not in result.stdout + result.stderr
+
+
+def test_evidence_pack_manifest_cli_fails_closed_on_public_output_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    report = tmp_path / "report.json"
+    report.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(cli_common, "MAX_PUBLIC_OUTPUT_BYTES", 1024)
+    args = argparse.Namespace(
+        root=str(tmp_path),
+        report=str(report),
+        artifact=["a" * 2048],
+        agent_policy_audit_event=[],
+        agent_policy_audit_event_profile="",
+        json=True,
+    )
+
+    exit_code = evidence_pack_cli.run_evidence_pack_manifest(args)
+    captured = capfd.readouterr()
+
+    assert exit_code == 2
+    payload = json.loads(captured.out)
+    assert payload["error"] == "evidence-pack output exceeds configured limits"
+    assert captured.err == ""
 
 
 def test_evidence_pack_manifest_cli_is_sanitized(tmp_path: Path) -> None:
@@ -507,6 +611,33 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     )
 
     assert changed["digest"] != first["digest"]
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_audit_event_binding_rejects_nonfinite_json_constants(
+    tmp_path: Path,
+    constant: str,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        '{"capability":"read","context":{"sequence":'
+        + constant
+        + '},"decision":{"matched_repo":"example/repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"repo":"example/repo"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        build_agent_policy_audit_event_binding(
+            event,
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+
+    assert constant not in str(exc_info.value)
+    assert str(tmp_path) not in str(exc_info.value)
 
 
 @pytest.mark.parametrize(

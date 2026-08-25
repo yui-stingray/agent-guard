@@ -181,4 +181,9 @@ def public_safe_surface_text(payload: dict[str, object]) -> str:
 
     import json
 
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=False,
+        sort_keys=True,
+    )

@@ -1513,14 +1513,17 @@ def boundary_summary(context_files: tuple[ContextInventoryEntry, ...]) -> tuple[
 
 
 def _canonical_json_size(value: object) -> int:
-    return len(
-        json.dumps(
+    try:
+        rendered = json.dumps(
             value,
+            allow_nan=False,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
-        ).encode("utf-8", errors="surrogatepass")
-    )
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_CONTEXT_SCAN_LIMIT) from None
 
 
 class _ContextInventoryResultBudget:

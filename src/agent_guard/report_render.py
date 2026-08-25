@@ -13,7 +13,12 @@ from .report import render_github_annotations_report, render_markdown_evidence_r
 
 def render_report_output(payload: dict[str, object], output_format: str) -> str:
     if output_format == "json":
-        return json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+        return json.dumps(
+            payload,
+            allow_nan=False,
+            ensure_ascii=False,
+            sort_keys=True,
+        ) + "\n"
     if output_format == "github-annotations":
         return render_github_annotations_report(payload)
     if output_format == "sarif":

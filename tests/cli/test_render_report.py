@@ -4,10 +4,129 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
+import pytest
+
+import agent_guard.cli.common as cli_common
+import agent_guard.cli.render_report as render_report_cli
+from agent_guard.consumer._schema import MAX_JSON_DEPTH, MAX_REPORT_JSON_BYTES
 from tests.cli.helpers import ROOT, create_report_violation_fixture_repo, read_report_fixture, run_cli
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_public_json_serialization_rejects_nonfinite_values(value: float) -> None:
+    with pytest.raises(ValueError, match="^fixed public error$"):
+        cli_common.bounded_public_json(
+            {"value": value},
+            error="fixed public error",
+        )
+
+
+def test_render_report_cli_rejects_oversized_json_before_rendering(
+    tmp_path: Path,
+) -> None:
+    report_json = tmp_path / "oversized-report.json"
+    report_json.write_bytes(
+        b'{"exit_code":0,"padding":"'
+        + (b"x" * MAX_REPORT_JSON_BYTES)
+        + b'"}'
+    )
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON exceeds configured limits"
+    assert result.stderr == ""
+
+
+def test_render_report_cli_rejects_excessive_json_depth(tmp_path: Path) -> None:
+    depth = MAX_JSON_DEPTH + 1
+    report_json = tmp_path / "deep-report.json"
+    report_json.write_text(
+        '{"exit_code":0,"value":' + ("[" * depth) + "0" + ("]" * depth) + "}\n",
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON exceeds configured limits"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_render_report_cli_rejects_nonfinite_json_constants(
+    tmp_path: Path,
+    constant: str,
+) -> None:
+    report_json = tmp_path / "nonfinite-report.json"
+    report_json.write_text(
+        f'{{"exit_code":0,"metric":{constant}}}\n',
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "render-report",
+        "--root",
+        str(tmp_path),
+        "--input",
+        str(report_json),
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["error"] == "report JSON is invalid"
+    assert constant not in result.stdout + result.stderr
+
+
+def test_render_report_cli_fails_closed_when_public_output_exceeds_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    report_json = tmp_path / "report.json"
+    report_json.write_text(
+        json.dumps({"exit_code": 0, "padding": "x" * 2048}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_common, "MAX_PUBLIC_OUTPUT_BYTES", 1024)
+    args = argparse.Namespace(
+        root=str(tmp_path),
+        input=str(report_json),
+        format="json",
+        output="",
+    )
+
+    exit_code = render_report_cli.run_report_render(args)
+    captured = capfd.readouterr()
+
+    assert exit_code == 2
+    payload = json.loads(captured.out)
+    assert payload["error"] == "report output exceeds configured limits"
+    assert captured.err == ""
 
 def test_render_report_cli_renders_markdown_from_sanitized_json(tmp_path: Path) -> None:
     policy = create_report_violation_fixture_repo(tmp_path)

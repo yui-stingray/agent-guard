@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from ..consumer import (
@@ -17,7 +16,16 @@ from ..evidence_pack import (
     build_agent_policy_audit_event_artifacts,
     build_evidence_pack_manifest,
 )
-from .common import load_json_file, result_payload
+from .common import (
+    bounded_public_json,
+    bounded_public_line,
+    emit_public_output,
+    load_json_file,
+    result_payload,
+)
+
+
+ERROR_EVIDENCE_PACK_OUTPUT_LIMIT = "evidence-pack output exceeds configured limits"
 
 
 def add_evidence_pack_parser(top) -> None:
@@ -39,6 +47,49 @@ def add_evidence_pack_parser(top) -> None:
         help="recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event",
     )
     evidence_pack_manifest.add_argument("--json", action="store_true", help="emit JSON")
+
+
+def _emit_json_payload(payload: dict[str, object]) -> None:
+    rendered = bounded_public_line(
+        bounded_public_json(
+            payload,
+            error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT,
+            sort_keys=True,
+        ),
+        error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT,
+    )
+    emit_public_output(rendered, error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT)
+
+
+def _emit_evidence_pack_error(
+    args: argparse.Namespace,
+    *,
+    root: Path,
+    error: str,
+) -> int:
+    result = result_payload(
+        scanner="evidence-pack",
+        status="error",
+        exit_code=2,
+        policy_arg=args.report,
+        root=root,
+        error=error,
+        extra={"command": "manifest"},
+    )
+    try:
+        if args.json:
+            _emit_json_payload(result)
+        else:
+            emit_public_output(
+                bounded_public_line(
+                    f"ERROR: {result.get('error', 'unknown error')}",
+                    error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT,
+                ),
+                error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT,
+            )
+    except ValueError:
+        pass
+    return 2
 
 
 def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
@@ -77,20 +128,11 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
             root=root,
         )
     except Exception as exc:
-        result = result_payload(
-            scanner="evidence-pack",
-            status="error",
-            exit_code=2,
-            policy_arg=args.report,
+        return _emit_evidence_pack_error(
+            args,
             root=root,
             error=str(exc),
-            extra={"command": "manifest"},
         )
-        if args.json:
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-        else:
-            print(f"ERROR: {result.get('error', 'unknown error')}")
-        return 2
 
     result = result_payload(
         scanner="evidence-pack",
@@ -103,8 +145,12 @@ def run_evidence_pack_manifest(args: argparse.Namespace) -> int:
         scanned_unit="gates",
         extra={"command": "manifest", "evidence_pack_manifest": manifest},
     )
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    else:
-        print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+    try:
+        _emit_json_payload(result if args.json else manifest)
+    except ValueError:
+        return _emit_evidence_pack_error(
+            args,
+            root=root,
+            error=ERROR_EVIDENCE_PACK_OUTPUT_LIMIT,
+        )
     return 0
