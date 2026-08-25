@@ -143,8 +143,9 @@ clean/process driver with a non-required empty transform, and disable external
 diffs and text conversion. Rename detection is also disabled so configured
 rename policy cannot remove added paths from content selection. A supplied
 content `--since-ref` is validated and resolved to a commit object id before it
-is used in a diff. These controls do not make an attacker-selected executable
-earlier on the caller's `PATH` trusted; the Python and Git executables and
+is used in a diff. These controls resolve Git only from fixed host installation
+locations and reject a resolved executable inside the reviewed repository or
+current repository root; the Python executable, selected host Git, and
 installed package environment remain part of the runner trust boundary.
 
 Surface delta applies the existing five-second traversal deadline across each

@@ -11,11 +11,25 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
 from agent_guard import bounded_git
+
+
+@pytest.fixture
+def trusted_git_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    executable = (tmp_path / "trusted-git").resolve()
+    monkeypatch.setattr(
+        bounded_git,
+        "_resolve_trusted_git_executable",
+        lambda _root: executable,
+    )
+    return executable
 
 
 def _process_is_running(process_id: int) -> bool:
@@ -72,6 +86,17 @@ def test_sanitized_git_environment_removes_config_injection_case_insensitively()
         "GIT_CONFIG_NOSYSTEM": "0",
         "GIT_NO_LAZY_FETCH": "0",
         "GIT_NO_REPLACE_OBJECTS": "0",
+        "git_optional_locks": "1",
+        "Git_Terminal_Prompt": "1",
+        "GIT_TRACE": "/hostile/trace.log",
+        "git_trace2_event": "af_unix:/hostile/trace.sock",
+        "Git_Trace_Packet": "/hostile/trace.log",
+        "git_curl_verbose": "1",
+        "GIT_EXEC_PATH": "hostile-git-programs",
+        "git_proxy_command": "hostile command",
+        "GIT_REDIRECT_STDIN": "hostile-stdin",
+        "Git_Redirect_Stderr": "hostile-stderr",
+        "git_redirect_stdout": "hostile-stdout",
     }
 
     environment = bounded_git.sanitized_git_environment(source)
@@ -83,6 +108,19 @@ def test_sanitized_git_environment_removes_config_injection_case_insensitively()
         key.upper() == "GIT_CONFIG_COUNT"
         or key.upper() == "GIT_CONFIG_PARAMETERS"
         or key.upper().startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+        for key in environment
+    )
+    assert not any(key.upper().startswith("GIT_TRACE") for key in environment)
+    assert not any(
+        key.upper()
+        in {
+            "GIT_CURL_VERBOSE",
+            "GIT_EXEC_PATH",
+            "GIT_PROXY_COMMAND",
+            "GIT_REDIRECT_STDIN",
+            "GIT_REDIRECT_STDERR",
+            "GIT_REDIRECT_STDOUT",
+        }
         for key in environment
     )
     assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
@@ -98,6 +136,7 @@ def test_sanitized_git_environment_removes_config_injection_case_insensitively()
 def test_run_bounded_git_passes_command_line_fsmonitor_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    trusted_git_executable: Path,
 ) -> None:
     captured: dict[str, object] = {}
 
@@ -117,7 +156,7 @@ def test_run_bounded_git_passes_command_line_fsmonitor_override(
 
     assert result.stdout == b"ok\n"
     assert captured["command"] == [
-        "git",
+        str(trusted_git_executable),
         "-c",
         "core.fsmonitor=false",
         "-C",
@@ -128,6 +167,92 @@ def test_run_bounded_git_passes_command_line_fsmonitor_override(
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
+
+
+def test_run_bounded_git_skips_path_and_current_directory_shadows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_root = tmp_path / "reviewed"
+    current_root = tmp_path / "current"
+    for directory in (reviewed_root, current_root):
+        directory.mkdir()
+
+    reviewed_shadow = reviewed_root / "git"
+    current_shadow = current_root / "git"
+    for candidate in (reviewed_shadow, current_shadow):
+        candidate.write_text("not executed", encoding="ascii")
+        candidate.chmod(0o700)
+
+    monkeypatch.chdir(current_root)
+    monkeypatch.setenv(
+        "PATH",
+        os.pathsep.join((str(reviewed_root), str(current_root))),
+    )
+    captured: dict[str, object] = {}
+
+    def run_process(command: list[str], **kwargs: object):
+        captured["command"] = command
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, b"")
+
+    monkeypatch.setattr(bounded_git, "_run_bounded_process", run_process)
+
+    bounded_git.run_bounded_git(
+        reviewed_root,
+        ["rev-parse", "--is-inside-work-tree"],
+        timeout_seconds=1.0,
+        max_output_bytes=128,
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert Path(command[0]).is_absolute()
+    assert Path(command[0]).resolve() not in {
+        reviewed_shadow.resolve(),
+        current_shadow.resolve(),
+    }
+
+
+def test_path_is_within_uses_case_insensitive_windows_identity() -> None:
+    root = PureWindowsPath(r"C:\work\Reviewed")
+
+    assert bounded_git._path_is_within(
+        PureWindowsPath(r"c:\WORK\reviewed\tools\git.exe"),
+        root,
+        windows=True,
+    )
+    assert not bounded_git._path_is_within(
+        PureWindowsPath(r"C:\work\reviewed-other\git.exe"),
+        root,
+        windows=True,
+    )
+    assert not bounded_git._path_is_within(
+        PureWindowsPath(r"D:\work\reviewed\git.exe"),
+        root,
+        windows=True,
+    )
+
+
+def test_run_bounded_git_does_not_create_trace_destinations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_destination = tmp_path / "trace.log"
+    trace2_destination = tmp_path / "trace2.json"
+    monkeypatch.setenv("GIT_TRACE", str(trace_destination))
+    monkeypatch.setenv("GIT_TRACE2_EVENT", str(trace2_destination))
+
+    result = bounded_git.run_bounded_git(
+        tmp_path,
+        ["rev-parse", "--is-inside-work-tree"],
+        timeout_seconds=1.0,
+        max_output_bytes=1_024,
+    )
+
+    assert Path(result.args[0]).is_absolute()
+    assert not trace_destination.exists()
+    assert not trace2_destination.exists()
 
 
 @pytest.mark.parametrize(
@@ -170,6 +295,7 @@ def test_run_bounded_git_rejects_helper_capable_or_unbounded_invocations(
 def test_run_bounded_git_accepts_complete_filter_neutralization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    trusted_git_executable: Path,
 ) -> None:
     captured: dict[str, object] = {}
 
@@ -202,6 +328,7 @@ def test_run_bounded_git_accepts_complete_filter_neutralization(
 
     command = captured["command"]
     assert isinstance(command, list)
+    assert command[0] == str(trusted_git_executable)
     assert command[-len(args) :] == args
 
 
@@ -216,6 +343,7 @@ def test_run_bounded_git_accepts_complete_filter_neutralization(
 def test_run_bounded_git_accepts_surface_delta_read_only_queries(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    trusted_git_executable: Path,
     args: list[str],
 ) -> None:
     captured: dict[str, object] = {}
@@ -236,6 +364,7 @@ def test_run_bounded_git_accepts_surface_delta_read_only_queries(
 
     command = captured["command"]
     assert isinstance(command, list)
+    assert command[0] == str(trusted_git_executable)
     assert command[-len(args) :] == args
     environment = captured["environment"]
     assert isinstance(environment, dict)

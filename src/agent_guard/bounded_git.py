@@ -5,7 +5,9 @@ Why: keep untrusted repository metadata from escaping Git command boundaries.
 
 from __future__ import annotations
 
+import ntpath
 import os
+import posixpath
 import re
 import signal
 import subprocess
@@ -20,6 +22,24 @@ GIT_IO_CHUNK_BYTES = 64 * 1024
 GIT_WAIT_POLL_SECONDS = 0.05
 GIT_TERMINATION_GRACE_SECONDS = 0.25
 GIT_IO_JOIN_GRACE_SECONDS = 0.5
+
+# A bare ``git`` command may resolve through a repository-controlled current
+# directory or caller-controlled PATH. These are the supported host install
+# locations, in deterministic preference order; their ownership is part of the
+# runner trust boundary.
+_POSIX_GIT_EXECUTABLES = (
+    "/usr/bin/git",
+    "/bin/git",
+    "/usr/local/bin/git",
+    "/opt/homebrew/bin/git",
+    "/opt/local/bin/git",
+)
+_WINDOWS_GIT_EXECUTABLES = (
+    r"C:\Program Files\Git\cmd\git.exe",
+    r"C:\Program Files\Git\bin\git.exe",
+    r"C:\Program Files (x86)\Git\cmd\git.exe",
+    r"C:\Program Files (x86)\Git\bin\git.exe",
+)
 
 _SAFE_FILTER_OVERRIDE_RE = re.compile(
     r"filter\.([A-Za-z0-9._-]{1,128})\.(clean|process|required)=(.*)"
@@ -49,6 +69,7 @@ _FILTER_CONFIG_QUERY = (
 UNTRUSTED_GIT_ENVIRONMENT_VARIABLES = frozenset(
     {
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_ATTR_SOURCE",
         "GIT_CEILING_DIRECTORIES",
         "GIT_COMMON_DIR",
         "GIT_CONFIG",
@@ -57,23 +78,33 @@ UNTRUSTED_GIT_ENVIRONMENT_VARIABLES = frozenset(
         "GIT_CONFIG_NOSYSTEM",
         "GIT_CONFIG_PARAMETERS",
         "GIT_CONFIG_SYSTEM",
+        "GIT_CURL_VERBOSE",
         "GIT_DIR",
         "GIT_DISCOVERY_ACROSS_FILESYSTEM",
         "GIT_DIFF_OPTS",
         "GIT_EDITOR",
+        "GIT_EXEC_PATH",
         "GIT_EXTERNAL_DIFF",
         "GIT_GRAFT_FILE",
         "GIT_IMPLICIT_WORK_TREE",
         "GIT_INDEX_FILE",
         "GIT_NAMESPACE",
+        "GIT_NO_LAZY_FETCH",
         "GIT_NO_REPLACE_OBJECTS",
         "GIT_OBJECT_DIRECTORY",
+        "GIT_OPTIONAL_LOCKS",
         "GIT_PREFIX",
         "GIT_PAGER",
+        "GIT_PROXY_COMMAND",
         "GIT_QUARANTINE_PATH",
+        "GIT_REDIRECT_STDIN",
+        "GIT_REDIRECT_STDERR",
+        "GIT_REDIRECT_STDOUT",
         "GIT_REPLACE_REF_BASE",
         "GIT_SEQUENCE_EDITOR",
         "GIT_SHALLOW_FILE",
+        "GIT_SSH_VARIANT",
+        "GIT_TERMINAL_PROMPT",
         "GIT_WORK_TREE",
         "GIT_ASKPASS",
         "GIT_SSH",
@@ -83,6 +114,7 @@ UNTRUSTED_GIT_ENVIRONMENT_VARIABLES = frozenset(
 _UNTRUSTED_GIT_ENVIRONMENT_PREFIXES = (
     "GIT_CONFIG_KEY_",
     "GIT_CONFIG_VALUE_",
+    "GIT_TRACE",
 )
 
 _WINDOWS_JOB_WRAPPER = r"""
@@ -134,6 +166,82 @@ def sanitized_git_environment(
     environment["GIT_PAGER"] = ""
     environment["GIT_TERMINAL_PROMPT"] = "0"
     return environment
+
+
+def _trusted_git_executable_candidates() -> tuple[Path, ...]:
+    """Return fixed host Git locations without consulting the caller's PATH."""
+
+    candidates = (
+        _WINDOWS_GIT_EXECUTABLES if os.name == "nt" else _POSIX_GIT_EXECUTABLES
+    )
+    return tuple(Path(candidate) for candidate in candidates)
+
+
+def _repository_controlled_roots(root: Path) -> tuple[Path, ...]:
+    """Return the reviewed and current directory roots, including Git parents."""
+
+    try:
+        starts = (root, Path.cwd())
+    except OSError as error:
+        raise BoundedGitProcessError from error
+
+    roots: list[Path] = []
+    for start in starts:
+        try:
+            resolved = start.resolve(strict=False)
+        except (OSError, RuntimeError) as error:
+            raise BoundedGitProcessError from error
+        roots.append(resolved)
+        for ancestor in (resolved, *resolved.parents):
+            try:
+                if (ancestor / ".git").exists():
+                    roots.append(ancestor)
+            except OSError:
+                continue
+    return tuple(roots)
+
+
+def _path_is_within(
+    path: Path,
+    root: Path,
+    *,
+    windows: bool | None = None,
+) -> bool:
+    """Return whether ``path`` is ``root`` or a descendant using host identity."""
+
+    is_windows = os.name == "nt" if windows is None else windows
+    path_module = ntpath if is_windows else posixpath
+    normalized_path = path_module.normcase(path_module.normpath(str(path)))
+    normalized_root = path_module.normcase(path_module.normpath(str(root)))
+    try:
+        return (
+            path_module.commonpath((normalized_path, normalized_root))
+            == normalized_root
+        )
+    except ValueError:
+        return False
+
+
+def _resolve_trusted_git_executable(root: Path) -> Path:
+    """Resolve a regular Git executable outside repository-controlled roots."""
+
+    controlled_roots = _repository_controlled_roots(root)
+    for candidate in _trusted_git_executable_candidates():
+        try:
+            executable = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if (
+            not executable.is_absolute()
+            or not executable.is_file()
+            or not os.access(executable, os.X_OK)
+            or any(
+                _path_is_within(executable, boundary) for boundary in controlled_roots
+            )
+        ):
+            continue
+        return executable
+    raise BoundedGitProcessError
 
 
 def _validate_git_arguments(args: Sequence[str]) -> None:
@@ -217,9 +325,10 @@ def run_bounded_git(
     """Run one allowlisted, helper-free Git query inside fixed resource bounds."""
 
     _validate_git_arguments(args)
+    executable = _resolve_trusted_git_executable(root)
 
     command = [
-        "git",
+        str(executable),
         "-c",
         "core.fsmonitor=false",
         "-C",
