@@ -57,8 +57,8 @@ the runner into a process sandbox.
 Workflow required-command evidence is likewise repository-static. It requires
 one direct command in a dedicated supported-shell step and rejects same-step
 control flow, command-resolution setup, dynamic redirection, and declared
-resolution-sensitive workflow, job, job-container, or step environment and
-working-directory settings. It does not
+resolution-sensitive workflow, job, or step environment, job-container
+declarations, and working-directory settings. It does not
 attest the host executable selected at runtime, shell startup state, or state
 persisted by earlier workflow steps.
 

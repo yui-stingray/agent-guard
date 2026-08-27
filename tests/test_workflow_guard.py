@@ -1368,6 +1368,8 @@ def test_scan_workflow_policy_rejects_non_dedicated_or_dynamic_command_evidence(
         ("step", "env", {"APPDATA": r"C:\\attacker"}),
         ("step", "env", {"BASH_ENV": "shadow.sh"}),
         ("step", "env", {"LD_AUDIT": "./audit.so"}),
+        ("job", "container", "python:3.13"),
+        ("job", "container", {"image": "python:3.13"}),
         (
             "job",
             "container",
@@ -1380,6 +1382,17 @@ def test_scan_workflow_policy_rejects_non_dedicated_or_dynamic_command_evidence(
         ),
         ("job", "container", {"env": {}}),
         ("job", "container", {"image": "python:3.13", "env": []}),
+        ("job", "container", {"image": "python:3.13", "options": []}),
+        (
+            "job",
+            "container",
+            {"image": "python:3.13", "options": "--env PATH=/attacker"},
+        ),
+        (
+            "job",
+            "container",
+            {"image": "python:3.13", "volumes": ["/attacker:/usr/local/bin"]},
+        ),
         ("workflow", "defaults", {"run": {"working-directory": "nested"}}),
         ("job", "defaults", {"run": {"working-directory": "nested"}}),
         ("step", "working-directory", "nested"),

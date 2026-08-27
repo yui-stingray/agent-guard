@@ -1556,21 +1556,10 @@ def _scope_preserves_command_resolution(container: dict[str, Any]) -> bool:
     if not _environment_preserves_command_resolution(container.get("env")):
         return False
 
-    raw_job_container = container.get("container")
-    if raw_job_container is not None:
-        if isinstance(raw_job_container, str):
-            if not raw_job_container.strip():
-                return False
-        elif isinstance(raw_job_container, dict):
-            image = raw_job_container.get("image")
-            if not isinstance(image, str) or not image.strip():
-                return False
-            if not _environment_preserves_command_resolution(
-                raw_job_container.get("env")
-            ):
-                return False
-        else:
-            return False
+    # A job container controls the executable image, environment, mounts, and
+    # runtime options. Static command text cannot prove name resolution there.
+    if "container" in container:
+        return False
 
     if "working-directory" in container:
         return False

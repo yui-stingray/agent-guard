@@ -132,8 +132,8 @@ substitutions, arrays, continuations, comments, and here-documents across lines;
 unsupported or unterminated shell structure is a sanitized exit `2`. Required
 commands count only in dedicated steps with one direct command, static
 redirection targets, no same-step setup/control flow, and no declared
-resolution-sensitive workflow, job, job-container, or step environment or
-working directory. This is a bounded
+resolution-sensitive workflow, job, or step environment, job-container
+declaration, or working directory. This is a bounded
 lexical contract, not a complete shell interpreter, proof of host executable
 provenance, or proof of workflow exit behavior; prior-step runner-state changes
 remain outside it.
