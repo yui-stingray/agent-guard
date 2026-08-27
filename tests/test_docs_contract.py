@@ -43,6 +43,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.7"
 ACTION_RELEASE_COMMIT = "67d8828ccf5b199d0cf9e99007de53436ac47f7a"
 PACKAGE_RELEASE_VERSION = "0.3.7"
+SOURCE_PACKAGE_VERSION = "0.3.8.dev0"
 
 
 def pyproject_version() -> str:
@@ -50,11 +51,12 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_release_package_identity() -> None:
+def test_readme_matches_source_and_published_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
-    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
+    assert "examples remain pinned to the immutable `0.3.7` release" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
@@ -63,7 +65,7 @@ def test_release_identity_contains_the_executable_change_notes() -> None:
         "## 0.3.6 - 2026-08-23", maxsplit=1
     )[0]
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
     assert "PyPI-specific long description" in release_notes
     assert "self-Action pin" in release_notes

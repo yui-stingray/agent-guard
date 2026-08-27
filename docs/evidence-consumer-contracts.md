@@ -149,6 +149,16 @@ with LF line endings on every platform for canonical JSON, Markdown, SARIF, and
 GitHub annotations. Bundle validation compares rendered artifacts exactly; it
 does not normalize CRLF or otherwise repair producer drift.
 
+Untrusted report JSON consumed by these validators and transform commands is
+capped at 1 MiB before UTF-8 decoding, then reuses the existing 64-level and
+50,000-item structured-input limits. `NaN`, `Infinity`, and `-Infinity` are
+rejected during parsing, and public JSON serialization does not permit
+non-finite numbers. Consumer validation also binds each canonical evidence gate
+status and finding count to its report component and rejects an `ok` gate or
+component with findings. These parser limits are structural controls only:
+`render-report` and the event-free v1 `evidence-pack manifest` transform retain
+their documented behavior and do not acquire report-schema semantic validation.
+
 ## Strict Release Gate
 
 Use this on a release candidate after the repository has reviewed digest policy

@@ -203,7 +203,16 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.3 - 2026-07-27",
         "## 0.3.2 - 2026-07-19",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Started `0.3.8.dev0` development while generated install and Action examples remain pinned to the published `0.3.7` release.",
+            "- Made required workflow-command matching parse and normalize native `agent-guard` options, rejecting duplicate or meaning-changing overrides.",
+            "- Bound generated drift baselines directly to the pull-request base SHA or the push event's previous SHA, so shell-variable reassignment and push self-comparison cannot satisfy the required-command contract. Generated installs remain pinned to public `0.3.7`; cross-invocation conflict detection therefore remains gated on the next published package pin.",
+            "- Isolated surface and drift Git inspection behind the bounded Git runner and applied file, count, byte, output, and deadline budgets to repository inventory, YAML loading, and surface materialization.",
+            "- Removed self-authorizing inline context/content suppressions and bounded YAML alias expansion before policy normalization.",
+            "- Bound evidence gate status and counts to their canonical component sections, and applied bounded JSON parsing, structural limits, finite-number checks, and public-output budgets to consumer and transform entry points.",
+        ]
+    )
     assert normalized_newest == " ".join(
         [
             "- Kept development builds on PEP 440 `0.3.7.dev0` until this final `0.3.7` release. The immutable PyPI `0.3.6` long description retains a copyable Action reference to the older `v0.3.5` commit. The PyPI-specific long description for `0.3.7` links to current GitHub documentation instead of freezing a self-Action pin before the release commit is known."

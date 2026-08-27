@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from agent_guard import workflow_guard
+from agent_guard.init_guard import GITHUB_EVENT_BASE_SHA_EXPRESSION
 from agent_guard.workflow_guard import (
     command_line_matches_required,
     iter_active_shell_lines,
@@ -344,18 +345,18 @@ def test_command_match_streams_bounded_segments_without_public_list(
 @pytest.mark.parametrize(
     "command_line",
     [
-        "python -m agent_guard.cli context check --message 'literal; semicolon'",
-        'python -m agent_guard.cli context check --message "literal; semicolon"',
-        r"python -m agent_guard.cli context check --message \;",
-        r"python -m agent_guard.cli context check --message \&\& \|\| \;",
-        "python -m agent_guard.cli context check --message 'literal && and ||'",
-        'python -m agent_guard.cli context check --message "literal && and ||"',
-        "python -m agent_guard.cli context check --message 'literal | and &'",
-        r"python -m agent_guard.cli context check --message \| \&",
+        "python -m agent_guard.cli content check --targets 'literal; semicolon'",
+        'python -m agent_guard.cli content check --targets "literal; semicolon"',
+        r"python -m agent_guard.cli content check --targets \;",
+        r"python -m agent_guard.cli content check --targets \&\& \|\| \;",
+        "python -m agent_guard.cli content check --targets 'literal && and ||'",
+        'python -m agent_guard.cli content check --targets "literal && and ||"',
+        "python -m agent_guard.cli content check --targets 'literal | and &'",
+        r"python -m agent_guard.cli content check --targets \| \&",
     ],
 )
 def test_command_match_accepts_quoted_and_escaped_operator_literals(command_line: str) -> None:
-    assert command_line_matches_required(command_line, "python -m agent_guard.cli context check")
+    assert command_line_matches_required(command_line, "python -m agent_guard.cli content check")
 
 
 @pytest.mark.parametrize("comment", ["# || true", "# | tee guard.log", "# &", "# ; exit 0"])
@@ -368,9 +369,9 @@ def test_command_match_ignores_operators_in_inline_shell_comments(comment: str) 
 def test_command_match_keeps_quoted_and_escaped_hashes_as_data() -> None:
     required = "python -m agent_guard.cli context check"
 
-    assert not command_line_matches_required(f"{required} --message '# literal' || true", required)
-    assert not command_line_matches_required(rf"{required} --message \# || true", required)
-    assert not command_line_matches_required(f"{required} --message value# || true", required)
+    assert not command_line_matches_required(f"{required} --policy '# literal' || true", required)
+    assert not command_line_matches_required(rf"{required} --policy \# || true", required)
+    assert not command_line_matches_required(f"{required} --policy value# || true", required)
 
 
 @pytest.mark.parametrize("redirection", ["2>&1", "<&0", "&>guard.log", "&>>guard.log"])
@@ -716,6 +717,482 @@ def test_command_match_preserves_safe_setup_and_tail_shapes() -> None:
 
 
 @pytest.mark.parametrize(
+    ("required", "candidate"),
+    [
+        (
+            "python -m agent_guard.cli context check --policy reviewed.yaml",
+            "python -m agent_guard.cli context check --policy reviewed.yaml "
+            "--policy=attacker.yaml",
+        ),
+        (
+            "agent-guard context lock --policy reviewed.yaml --check",
+            "agent-guard context lock --policy reviewed.yaml --check --check",
+        ),
+        (
+            "agent-guard content check --policy reviewed.yaml --targets reviewed.py",
+            "agent-guard content check --policy reviewed.yaml --targets reviewed.py "
+            "--targets attacker.py",
+        ),
+        (
+            "agent-guard evidence-pack manifest --report reviewed.json --artifact reviewed.json",
+            "agent-guard evidence-pack manifest --report reviewed.json --artifact reviewed.json "
+            "--artifact attacker.json",
+        ),
+    ],
+)
+def test_command_match_rejects_appended_native_option_overrides(
+    required: str, candidate: str
+) -> None:
+    assert not command_line_matches_required(candidate, required)
+
+
+@pytest.mark.parametrize("override", ["--policy attacker.yaml", "--pol=attacker.yaml"])
+def test_command_match_rejects_equivalent_native_option_overrides(override: str) -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(f"{required} {override}", required)
+
+
+def test_command_match_rejects_ambiguous_native_option_form() -> None:
+    required = "agent-guard report --root ."
+    candidate = f"{required} --drift=attacker"
+
+    assert not command_line_matches_required(candidate, required)
+
+
+def test_command_match_rejects_environment_expansion_that_can_append_policy() -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(f"{required} $EXTRA_ARGS", required)
+
+
+def test_command_match_normalizes_isolated_python_launcher_before_option_checks() -> None:
+    required = (
+        "python -I -m agent_guard.cli context check --policy reviewed.yaml"
+    )
+
+    assert not command_line_matches_required(
+        f"{required} --policy attacker.yaml",
+        required,
+    )
+    assert command_line_matches_required(f"{required} --json", required)
+
+
+@pytest.mark.parametrize(
+    ("required", "candidate"),
+    [
+        (
+            "agent-guard context check --policy reviewed.yaml",
+            "agent-guard context check --policy=reviewed.yaml --json",
+        ),
+        (
+            "agent-guard content check --policy reviewed.yaml",
+            "agent-guard content check --policy reviewed.yaml "
+            "--targets first.py second.py --json",
+        ),
+        (
+            "agent-guard evidence-pack manifest --report reviewed.json",
+            "agent-guard evidence-pack manifest --report reviewed.json "
+            "--artifact first.json --artifact second.json --json",
+        ),
+        ("custom-check reviewed", "custom-check reviewed --future-option value"),
+    ],
+)
+def test_command_match_preserves_safe_known_and_generic_prefix_commands(
+    required: str,
+    candidate: str,
+) -> None:
+    assert command_line_matches_required(candidate, required)
+
+
+@pytest.mark.parametrize("tail", ["unexpected", "--unknown value"])
+def test_command_match_rejects_unknown_native_tail(tail: str) -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(f"{required} {tail}", required)
+
+
+def test_command_match_allows_the_same_quoted_scalar_value() -> None:
+    required = (
+        'agent-guard conformance check --root . --evidence "$report_json" '
+        '--profile recommended'
+    )
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert not command_line_matches_required(
+        required.replace("$report_json", "$other_report"),
+        required,
+    )
+    assert not command_line_matches_required(
+        required.replace('"$report_json"', "$report_json"),
+        required,
+    )
+
+
+def test_command_match_binds_generated_baseline_to_exact_github_event_expression() -> None:
+    required = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"'
+    )
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert command_line_matches_required(
+        required.replace(
+            f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+            f'--base-ref="{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        )
+        + " --json",
+        required,
+    )
+    for replacement in (
+        '"$base_sha"',
+        "HEAD",
+        '"${{ github.sha }}"',
+        '"${{ github.event.pull_request.head.sha }}"',
+    ):
+        assert not command_line_matches_required(
+            required.replace(f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"', replacement),
+            required,
+        )
+
+    reassigned = (
+        "base_sha=HEAD; "
+        + required.replace(
+            f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+            '"$base_sha"',
+        )
+    )
+    assert not command_line_matches_required(reassigned, required)
+
+
+def test_command_match_preserves_closed_subshell_execution_boundary() -> None:
+    inner = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
+        '--json 2>/dev/null > "$raw_dir/drift.json"'
+    )
+    required = f"( {inner} )"
+
+    assert command_line_matches_required(required, required)
+    assert not command_line_matches_required(inner, required)
+    assert not command_line_matches_required(
+        required.replace(" --json ", " --base-ref HEAD --json "),
+        required,
+    )
+    assert not command_line_matches_required(
+        f"{required} --base-ref HEAD",
+        required,
+    )
+
+
+@pytest.mark.parametrize(
+    "weaker",
+    [
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD; true )",
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD && true )",
+        "( ( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD ) )",
+        "{ agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD; }",
+        "command -- agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "command -p agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        'env FOO="$BAR" agent-guard drift check --root . '
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "env -uFOO agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env python -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "env -S 'agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD'",
+        "env -S 'agent-guard' drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env -Sagent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD",
+        "env -S 'python' -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        r"env -S 'agent-guard\_drift\_check\_--root\_.\_--profile\_recommended"
+        r"\_--schema-version\_v2\_--base-ref\_HEAD'",
+        "env --split-string='agent-guard drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD'",
+        "python -u -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "python -magent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+        "/usr/bin/python3 -m agent_guard.cli drift check --root . "
+        "--profile recommended --schema-version v2 --base-ref HEAD",
+    ],
+)
+def test_scan_rejects_weaker_route_beside_inline_trusted_baseline(
+    tmp_path: Path,
+    weaker: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    inline = required.replace(
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        f'--base-ref="{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+    )
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {inline}\n"
+        f"          {weaker}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+@pytest.mark.parametrize(
+    "non_execution",
+    [
+        "env echo 'agent-guard drift check --base-ref HEAD'",
+        "python -cpass -m agent_guard.cli drift check --base-ref HEAD",
+        "python - -m agent_guard.cli drift check --base-ref HEAD",
+        "python --version -m agent_guard.cli drift check --base-ref HEAD",
+        "env -0 agent-guard drift check --base-ref HEAD",
+        "env --help agent-guard drift check --base-ref HEAD",
+        "command FOO=x agent-guard drift check --base-ref HEAD",
+        " ".join(
+            ["command"] * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1)
+            + ["echo safe"]
+        ),
+        "{ " * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1)
+        + "echo safe; }" * (workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1),
+    ],
+)
+def test_scan_does_not_treat_wrapped_argument_text_as_guard_invocation(
+    tmp_path: Path,
+    non_execution: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {required}\n"
+        f"          {non_execution}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert findings == []
+
+
+@pytest.mark.parametrize(
+    "depth",
+    [
+        workflow_guard.MAX_WORKFLOW_SHELL_NESTING,
+        workflow_guard.MAX_WORKFLOW_SHELL_NESTING + 1,
+    ],
+)
+@pytest.mark.parametrize("wrapper", ["command", "brace"])
+def test_scan_rejects_weaker_route_at_and_beyond_wrapper_bound(
+    tmp_path: Path,
+    depth: int,
+    wrapper: str,
+) -> None:
+    required = (
+        "( agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 "
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+    )
+    weaker_core = (
+        "agent-guard drift check --root . --profile recommended "
+        "--schema-version v2 --base-ref HEAD"
+    )
+    if wrapper == "command":
+        weaker = " ".join(["command"] * depth + [weaker_core])
+    else:
+        weaker = "{ " * depth + weaker_core + "; }" * depth
+    write(
+        tmp_path / ".github" / "workflows" / "ci.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        f"          {required}\n"
+        f"          {weaker}\n",
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "drift_guard", "command": required}
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+def test_command_match_rejects_array_expansion_and_dynamic_option_override() -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert not command_line_matches_required(
+        f'{required} "${{extra_args[@]}}"',
+        required,
+    )
+    assert not command_line_matches_required(
+        f'{required} --policy "$other_policy"',
+        required,
+    )
+
+
+def test_command_match_does_not_fall_back_for_unsupported_native_launcher() -> None:
+    required = (
+        "python -X dev -m agent_guard.cli context check --policy reviewed.yaml"
+    )
+
+    assert not command_line_matches_required(f"{required} --policy attacker.yaml", required)
+
+
+def test_command_match_normalizes_native_options_without_rejecting_safe_prefix_tail() -> None:
+    required = "agent-guard context check --policy reviewed.yaml"
+
+    assert command_line_matches_required(f"{required} --json", required)
+    assert command_line_matches_required(
+        "agent-guard context check --policy=reviewed.yaml --json",
+        required,
+    )
+
+
+def test_scan_workflow_policy_rejects_environment_expansion_with_fixed_finding(
+    tmp_path: Path,
+) -> None:
+    workflow = {
+        "name": "ci",
+        "jobs": {
+            "test": {
+                "runs-on": "ubuntu-latest",
+                "steps": [
+                    {
+                        "env": {"EXTRA_ARGS": "--policy attacker.yaml"},
+                        "run": (
+                            "python -m agent_guard.cli context check "
+                            "--policy reviewed.yaml $EXTRA_ARGS"
+                        ),
+                    }
+                ],
+            }
+        },
+    }
+
+    findings, checked_items = scan_required_context_command(tmp_path, workflow)
+
+    assert checked_items == 1
+    assert [finding.to_dict() for finding in findings] == [
+        {
+            "rule_id": "context_guard",
+            "severity": "high",
+            "file": ".github/workflows/ci.yml",
+            "message": "required workflow command is missing",
+            "reason": "missing_required_workflow_command",
+            "workflow_id": "ci_smoke",
+            "requirement_id": "context_guard",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("shell", "escaped_option"),
+    [
+        ("cmd", "--pol^icy"),
+        ("pwsh", "--pol`i`cy"),
+        ("powershell", "--pol`i`cy"),
+    ],
+)
+def test_scan_workflow_policy_rejects_declared_shell_option_escapes(
+    tmp_path: Path,
+    shell: str,
+    escaped_option: str,
+) -> None:
+    workflow = {
+        "name": "ci",
+        "jobs": {
+            "test": {
+                "runs-on": "windows-latest",
+                "steps": [
+                    {
+                        "shell": shell,
+                        "run": (
+                            "python -m agent_guard.cli context check "
+                            "--policy reviewed.yaml "
+                            f"{escaped_option} attacker.yaml"
+                        ),
+                    }
+                ],
+            }
+        },
+    }
+
+    findings, checked_items = scan_required_context_command(tmp_path, workflow)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+@pytest.mark.parametrize(
     "tail",
     [
         "|",
@@ -807,8 +1284,8 @@ jobs:
 @pytest.mark.parametrize(
     "command",
     [
-        "python -m agent_guard.cli context check --message 'literal | and &'",
-        r"python -m agent_guard.cli context check --message \| \&",
+        "python -m agent_guard.cli context check --policy 'literal | and &'",
+        r"python -m agent_guard.cli context check --root \| --policy \&",
         "python -m agent_guard.cli context check --root . &>guard.log",
         "python -m agent_guard.cli context check --root . &>>guard.log",
     ],

@@ -15,7 +15,7 @@ from .common import scrub_error_message
 
 def output_json_or_text(*, payload: dict[str, object], text: str, emit_json: bool) -> None:
     if emit_json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False, sort_keys=True))
     else:
         print(text, end="" if text.endswith("\n") else "\n")
 

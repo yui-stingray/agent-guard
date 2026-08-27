@@ -43,6 +43,14 @@ def _context_policy(include: list[str]) -> dict[str, object]:
     return {"scan": {"include": include, "exclude": []}}
 
 
+def _alias_dag_context_policy(marker: str, *, depth: int) -> str:
+    lines = [f"n0: &n0 [{marker}]\n"]
+    for index in range(1, depth + 1):
+        lines.append(f"n{index}: &n{index} [*n{index - 1}, *n{index - 1}]\n")
+    lines.extend(("scan:\n", f"  include: [*n{depth}]\n"))
+    return "".join(lines)
+
+
 def _assert_sanitized_cli_limit_error(
     result: object,
     *,
@@ -98,15 +106,93 @@ def test_context_public_entrypoints_fail_closed_on_oversized_input(tmp_path: Pat
 
     commands = (
         (
-            "context",
-            "check",
-            "--root",
-            str(tmp_path),
-            "--policy",
-            str(policy_path),
-            "--json",
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "check",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
         ),
         (
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
+        ),
+        (
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "context",
+                "lock",
+                "--root",
+                str(tmp_path),
+                "--policy",
+                str(policy_path),
+                "--json",
+            ),
+        ),
+        (
+            ERROR_SURFACE_INVENTORY_LIMIT,
+            (
+                "surface",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(policy_path),
+                "--json",
+            ),
+        ),
+        (
+            context_guard.ERROR_CONTEXT_SCAN_LIMIT,
+            (
+                "report",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(policy_path),
+                "--format",
+                "json",
+            ),
+        ),
+    )
+
+    for expected_error, command in commands:
+        _assert_sanitized_cli_limit_error(
+            run_cli(*command),
+            expected_error=expected_error,
+            root=tmp_path,
+            marker=marker,
+        )
+
+
+def test_context_inventory_and_report_reject_alias_dag_policy_before_normalization(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    marker = "synthetic-context-alias-dag-marker"
+    policy_path = tmp_path / "context-policy.yaml"
+    policy_path.write_text(
+        _alias_dag_context_policy(marker, depth=10),
+        encoding="utf-8",
+    )
+    (tmp_path / "AGENTS.md").write_text(
+        "Use project tests before completion.\n",
+        encoding="utf-8",
+    )
+
+    inventory_args = build_parser().parse_args(
+        [
             "context",
             "inventory",
             "--root",
@@ -114,26 +200,17 @@ def test_context_public_entrypoints_fail_closed_on_oversized_input(tmp_path: Pat
             "--policy",
             str(policy_path),
             "--json",
-        ),
-        (
-            "context",
-            "lock",
-            "--root",
-            str(tmp_path),
-            "--policy",
-            str(policy_path),
-            "--json",
-        ),
-        (
-            "surface",
-            "inventory",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(policy_path),
-            "--json",
-        ),
-        (
+        ]
+    )
+    assert run_context_inventory(inventory_args) == 2
+    inventory_output = capsys.readouterr()
+    inventory_payload = json.loads(inventory_output.out)
+    assert inventory_payload["error"] == context_guard.ERROR_CONTEXT_POLICY_INVALID
+    assert marker not in inventory_output.out + inventory_output.err
+    assert str(tmp_path) not in inventory_output.out + inventory_output.err
+
+    report_args = build_parser().parse_args(
+        [
             "report",
             "--root",
             str(tmp_path),
@@ -141,16 +218,14 @@ def test_context_public_entrypoints_fail_closed_on_oversized_input(tmp_path: Pat
             str(policy_path),
             "--format",
             "json",
-        ),
+        ]
     )
-
-    for command in commands:
-        _assert_sanitized_cli_limit_error(
-            run_cli(*command),
-            expected_error=context_guard.ERROR_CONTEXT_SCAN_LIMIT,
-            root=tmp_path,
-            marker=marker,
-        )
+    assert run_report(report_args) == 2
+    report_output = capsys.readouterr()
+    report_payload = json.loads(report_output.out)
+    assert report_payload["error"] == context_guard.ERROR_CONTEXT_POLICY_INVALID
+    assert marker not in report_output.out + report_output.err
+    assert str(tmp_path) not in report_output.out + report_output.err
 
 
 def test_mcp_config_rejects_exactly_one_byte_over_before_parse(
@@ -186,34 +261,43 @@ def test_mcp_public_entrypoints_fail_closed_on_oversized_config(tmp_path: Path) 
     )
 
     commands = (
-        ("mcp", "check", "--root", str(tmp_path), "--json"),
         (
-            "surface",
-            "inventory",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(context_policy_path),
-            "--schema-version",
-            "v2",
-            "--json",
+            surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            ("mcp", "check", "--root", str(tmp_path), "--json"),
         ),
         (
-            "report",
-            "--root",
-            str(tmp_path),
-            "--context-policy",
-            str(context_policy_path),
-            "--mcp-config-check",
-            "--format",
-            "json",
+            ERROR_SURFACE_INVENTORY_LIMIT,
+            (
+                "surface",
+                "inventory",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(context_policy_path),
+                "--schema-version",
+                "v2",
+                "--json",
+            ),
+        ),
+        (
+            surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            (
+                "report",
+                "--root",
+                str(tmp_path),
+                "--context-policy",
+                str(context_policy_path),
+                "--mcp-config-check",
+                "--format",
+                "json",
+            ),
         ),
     )
 
-    for command in commands:
+    for expected_error, command in commands:
         _assert_sanitized_cli_limit_error(
             run_cli(*command),
-            expected_error=surface_inventory_mcp.ERROR_MCP_CONFIG_LIMIT,
+            expected_error=expected_error,
             root=tmp_path,
             marker=marker,
         )
@@ -1843,7 +1927,7 @@ def test_digest_surrogate_finding_fails_closed_without_traceback(
     output = capsys.readouterr()
     payload = json.loads(output.out)
     assert payload["status"] == "error"
-    assert payload["error"] == digest_guard.ERROR_DIGEST_SCAN_LIMIT
+    assert payload["error"] == digest_guard.ERROR_DIGEST_POLICY_LIMIT
     assert "Traceback" not in output.out + output.err
     assert "\\ud800" not in output.out.lower() + output.err.lower()
     assert str(tmp_path) not in output.out + output.err
@@ -2006,6 +2090,31 @@ def test_mcp_config_rejects_bounded_object_graph_depth(tmp_path: Path, kind: str
         surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
     assert marker not in str(exc_info.value)
     assert str(tmp_path) not in str(exc_info.value)
+
+
+def test_mcp_config_accepts_structured_input_above_default_expanded_limit(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / ".mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "large": {
+                        "description": "x" * (300 * 1024),
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    surfaces = surface_inventory_mcp.collect_mcp_config_surfaces(tmp_path)
+
+    assert bounded_yaml.MAX_YAML_EXPANDED_BYTES < config_path.stat().st_size
+    assert config_path.stat().st_size < surface_inventory_mcp.MAX_MCP_CONFIG_FILE_BYTES
+    assert surfaces[0]["status"] == "present"
+    assert surfaces[0]["size_bytes"] == config_path.stat().st_size
 
 
 def test_mcp_config_normalization_sensitive_url_error_is_fixed_and_sanitized(

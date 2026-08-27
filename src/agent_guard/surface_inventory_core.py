@@ -5,18 +5,159 @@ Why: keep surface scanners deterministic while splitting scanner-specific logic.
 
 from __future__ import annotations
 
+import fnmatch
+import json
+import os
 import re
+import time
 from collections.abc import Sequence
 from pathlib import Path, PureWindowsPath
 from typing import Literal
 
+from .bounded_repo_reader import (
+    BoundedRepoContainmentError,
+    BoundedRepoFile,
+    BoundedRepoFileNotFoundError,
+    BoundedRepoLimitError,
+    BoundedRepoReadError,
+    DistinctInputBudget,
+    read_repo_bound_bytes,
+)
+from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
 from .cli_registry import is_agent_guard_cli_command
+from .content_guard import CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+from .context_guard import (
+    MAX_CONTEXT_DISTINCT_INPUT_BYTES,
+    MAX_CONTEXT_FILE_BYTES,
+    MAX_CONTEXT_SCAN_FILES,
+)
+from .workflow_guard import MAX_WORKFLOW_POLICY_BYTES, MAX_WORKFLOW_TRAVERSAL
 
 
 AGENT_SURFACE_SCHEMA_VERSION_V1 = "agent-guard.agent_surface_inventory.v1"
 AGENT_SURFACE_SCHEMA_VERSION_V2 = "agent-guard.agent_surface_inventory.v2"
 AGENT_SURFACE_SCHEMA_VERSION = AGENT_SURFACE_SCHEMA_VERSION_V1
 SurfaceVersion = Literal["v1", "v2"]
+ERROR_SURFACE_INVENTORY_INPUT = "surface inventory repository input could not be verified"
+ERROR_SURFACE_INVENTORY_LIMIT = "surface inventory exceeds configured limits"
+# Match established repository scanner ceilings instead of creating a separate
+# policy for inventory: 10,000 selected files, 32,768 traversal units, 1 MiB
+# per file, 16 MiB distinct input, and the shared five-second walk deadline.
+MAX_SURFACE_INVENTORY_FILES = MAX_CONTEXT_SCAN_FILES
+MAX_SURFACE_INVENTORY_TRAVERSAL = MAX_WORKFLOW_TRAVERSAL
+MAX_SURFACE_INVENTORY_FILE_BYTES = MAX_CONTEXT_FILE_BYTES
+MAX_SURFACE_INVENTORY_POLICY_BYTES = MAX_WORKFLOW_POLICY_BYTES
+MAX_SURFACE_INVENTORY_DISTINCT_INPUT_BYTES = MAX_CONTEXT_DISTINCT_INPUT_BYTES
+SURFACE_INVENTORY_TRAVERSAL_TIMEOUT_SECONDS = CONTENT_TRAVERSAL_TIMEOUT_SECONDS
+# Reserve half the isolated transport cap for the full inventory container and
+# serialization overhead, matching the other public scanner result budgets.
+MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
+
+
+def _canonical_json_size(value: object) -> int:
+    try:
+        rendered = json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+
+
+class _SurfaceInventoryResultBudget:
+    """Bound the compact JSON representation before collectors append entries."""
+
+    def __init__(self) -> None:
+        self.used = _canonical_json_size([])
+        self.count = 0
+        if self.used > MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def add(self, item: dict[str, object]) -> None:
+        amount = _canonical_json_size(item) + (1 if self.count else 0)
+        if amount > MAX_SURFACE_INVENTORY_AGGREGATE_RESULT_BYTES - self.used:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+        self.used += amount
+        self.count += 1
+
+
+class SurfaceInventoryBudget:
+    """Share bounded work and result construction inside one inventory collection."""
+
+    def __init__(
+        self,
+        *,
+        _input_budget: DistinctInputBudget | None = None,
+    ) -> None:
+        self.deadline = (
+            time.monotonic() + SURFACE_INVENTORY_TRAVERSAL_TIMEOUT_SECONDS
+        )
+        self.traversed = 0
+        self.selected: set[str] = set()
+        self.input_budget = _input_budget or DistinctInputBudget(
+            max_bytes=MAX_SURFACE_INVENTORY_DISTINCT_INPUT_BYTES
+        )
+        self.result_budget = _SurfaceInventoryResultBudget()
+
+    def check_deadline(self) -> None:
+        if time.monotonic() >= self.deadline:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def remaining_timeout(self) -> float:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+        return remaining
+
+    def charge_traversal(self) -> None:
+        self.check_deadline()
+        self.traversed += 1
+        if self.traversed > MAX_SURFACE_INVENTORY_TRAVERSAL:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def charge_selected(self, path: Path) -> None:
+        self.check_deadline()
+        identity = os.path.normcase(os.path.normpath(str(path)))
+        self.selected.add(identity)
+        if len(self.selected) > MAX_SURFACE_INVENTORY_FILES:
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+
+    def add_result(self, item: dict[str, object]) -> None:
+        self.check_deadline()
+        self.result_budget.add(item)
+
+
+def read_surface_file(
+    path: Path,
+    root: Path,
+    *,
+    budget: SurfaceInventoryBudget,
+    max_bytes: int = MAX_SURFACE_INVENTORY_FILE_BYTES,
+) -> BoundedRepoFile:
+    """Read one stable regular repository file and charge shared input limits."""
+
+    budget.charge_selected(path)
+    try:
+        opened = read_repo_bound_bytes(path, root, max_bytes=max_bytes)
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+    except (
+        BoundedRepoContainmentError,
+        BoundedRepoFileNotFoundError,
+        BoundedRepoReadError,
+    ):
+        raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+    try:
+        budget.input_budget.charge(opened)
+    except BoundedRepoLimitError:
+        raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
+    except BoundedRepoReadError:
+        raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+    return opened
 
 
 def has_glob_magic(part: str) -> bool:
@@ -69,33 +210,62 @@ def repo_bound_glob(
     pattern: str,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[Path]:
-    """Glob only when the fixed parent and each result remain repo-bound."""
+    """Enumerate glob matches incrementally inside shared traversal bounds."""
 
-    fixed_parts: list[str] = []
-    for part in Path(pattern).parts:
-        if has_glob_magic(part):
-            break
-        fixed_parts.append(part)
-    base = root.joinpath(*fixed_parts) if fixed_parts else root
-    if is_in_opaque_directory(
-        base,
-        root=root,
-        opaque_directories=opaque_directories,
-    ):
-        return []
-    if not is_repo_bound_path(base, root):
-        return []
-    return [
-        path
-        for path in root.glob(pattern)
-        if not is_in_opaque_directory(
-            path,
-            root=root,
-            opaque_directories=opaque_directories,
-        )
-        and is_repo_bound_path(path, root)
-    ]
+    budget = _budget or SurfaceInventoryBudget()
+    pattern_path = Path(pattern)
+    if pattern_path.is_absolute() or ".." in pattern_path.parts:
+        raise ValueError(ERROR_SURFACE_INVENTORY_INPUT)
+
+    candidates = [root]
+    for part in pattern_path.parts:
+        if part == "**":
+            raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT)
+        next_candidates: list[Path] = []
+        for parent in candidates:
+            budget.check_deadline()
+            if is_in_opaque_directory(
+                parent,
+                root=root,
+                opaque_directories=opaque_directories,
+            ) or not is_repo_bound_path(parent, root):
+                continue
+            if not has_glob_magic(part):
+                candidate = parent / part
+                if not is_in_opaque_directory(
+                    candidate,
+                    root=root,
+                    opaque_directories=opaque_directories,
+                ) and is_repo_bound_path(candidate, root):
+                    next_candidates.append(candidate)
+                continue
+
+            try:
+                with os.scandir(parent) as entries:
+                    for entry in entries:
+                        budget.charge_traversal()
+                        name = entry.name
+                        candidate_name = name.casefold() if os.name == "nt" else name
+                        match_pattern = part.casefold() if os.name == "nt" else part
+                        if not fnmatch.fnmatchcase(candidate_name, match_pattern):
+                            continue
+                        candidate = parent / name
+                        if is_in_opaque_directory(
+                            candidate,
+                            root=root,
+                            opaque_directories=opaque_directories,
+                        ) or not is_repo_bound_path(candidate, root):
+                            continue
+                        next_candidates.append(candidate)
+            except OSError:
+                raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+        candidates = next_candidates
+
+    for candidate in candidates:
+        budget.charge_selected(candidate)
+    return candidates
 
 
 def rel_path(path: Path, root: Path) -> str:

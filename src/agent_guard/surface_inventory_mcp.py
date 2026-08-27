@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import os
 import re
 import stat
@@ -26,7 +27,13 @@ from .bounded_repo_reader import (
 )
 from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
 from .bounded_yaml import BoundedYamlLimitError, _validate_object_graph
-from .surface_inventory_core import has_glob_magic, is_in_opaque_directory, rel_path
+from .surface_inventory_core import (
+    ERROR_SURFACE_INVENTORY_LIMIT,
+    SurfaceInventoryBudget,
+    has_glob_magic,
+    is_in_opaque_directory,
+    rel_path,
+)
 from .surface_inventory_mcp_safety import (
     AUTH_OPTION_RE,
     BROAD_AUTHORIZATION_SCOPE_VALUES,
@@ -81,6 +88,22 @@ MAX_MCP_SERVERS = 10_000
 MAX_MCP_AGGREGATE_RESULT_BYTES = MAX_ISOLATED_MESSAGE_BYTES // 2
 
 
+def _reject_nonfinite_json_constant(_value: str) -> None:
+    raise ValueError(ERROR_MCP_CONFIG_INVALID)
+
+
+def _validate_finite_config_numbers(value: object) -> None:
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, float) and not math.isfinite(current):
+            raise ValueError(ERROR_MCP_CONFIG_INVALID)
+        if isinstance(current, dict):
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+
+
 def _read_structured_config(
     path: Path,
     root: Path,
@@ -102,8 +125,16 @@ def _read_structured_config(
 def _parse_structured_config(path: Path, data: bytes) -> object:
     try:
         text = data.decode("utf-8")
-        loaded = tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
-        _validate_object_graph(loaded)
+        loaded = (
+            tomllib.loads(text)
+            if path.suffix == ".toml"
+            else json.loads(text, parse_constant=_reject_nonfinite_json_constant)
+        )
+        _validate_object_graph(
+            loaded,
+            max_expanded_bytes=MAX_MCP_CONFIG_FILE_BYTES,
+        )
+        _validate_finite_config_numbers(loaded)
     except BoundedYamlLimitError:
         raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
     except (MemoryError, OverflowError, RecursionError):
@@ -142,6 +173,7 @@ def _append_mcp_config_candidate(
     opaque_directories: Sequence[str],
     existing_count: int = 0,
     discovered: bool = False,
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> None:
     try:
         path.relative_to(root)
@@ -180,6 +212,8 @@ def _append_mcp_config_candidate(
     if existing_count + len(files) >= MAX_MCP_CONFIG_FILES:
         raise ValueError(ERROR_MCP_CONFIG_LIMIT)
     seen.add(resolved_path)
+    if _budget is not None:
+        _budget.charge_selected(path)
     files.append((path, kind))
 
 
@@ -193,6 +227,7 @@ def iter_mcp_config_files(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[tuple[Path, str]]:
     try:
         root = root.resolve(strict=True)
@@ -202,6 +237,8 @@ def iter_mcp_config_files(
     seen: set[Path] = set()
     wildcard_entries = 0
     for pattern, kind in MCP_CONFIG_FILES:
+        if _budget is not None:
+            _budget.check_deadline()
         pattern_path = Path(pattern)
         parent_parts = pattern_path.parts[:-1]
         filename_pattern = pattern_path.parts[-1]
@@ -230,6 +267,8 @@ def iter_mcp_config_files(
                         if wildcard_entries >= MAX_MCP_CONFIG_FILES:
                             raise ValueError(ERROR_MCP_CONFIG_LIMIT)
                         wildcard_entries += 1
+                        if _budget is not None:
+                            _budget.charge_traversal()
                         if not _mcp_filename_matches(entry.name, filename_pattern):
                             continue
                         try:
@@ -247,6 +286,7 @@ def iter_mcp_config_files(
                             opaque_directories=opaque_directories,
                             existing_count=len(files),
                             discovered=True,
+                            _budget=_budget,
                         )
             except ValueError:
                 raise
@@ -261,7 +301,10 @@ def iter_mcp_config_files(
             kind=kind,
             root=root,
             opaque_directories=opaque_directories,
+            _budget=_budget,
         )
+    if _budget is not None:
+        _budget.check_deadline()
     return files
 
 
@@ -354,14 +397,17 @@ def mcp_server_maps(config: object) -> dict[str, object]:
 
 
 def _canonical_json_size(value: object) -> int:
-    return len(
-        json.dumps(
+    try:
+        rendered = json.dumps(
             value,
+            allow_nan=False,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
-        ).encode("utf-8", errors="surrogatepass")
-    )
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
 
 
 class _McpSurfaceResultBudget:
@@ -384,24 +430,35 @@ def collect_mcp_config_surfaces(
     *,
     opaque_directories: Sequence[str] = (),
     _input_budget: DistinctInputBudget | None = None,
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     try:
         root = root.resolve(strict=True)
     except (OSError, RuntimeError):
         raise ValueError(ERROR_MCP_CONFIG_TARGET) from None
     surfaces: list[dict[str, object]] = []
-    result_budget = _McpSurfaceResultBudget()
-    input_budget = _input_budget or DistinctInputBudget(
-        max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES
+    input_budget = (
+        _budget.input_budget
+        if _budget is not None
+        else _input_budget
+        or DistinctInputBudget(max_bytes=MAX_MCP_DISTINCT_INPUT_BYTES)
+    )
+    add_result = (
+        _budget.add_result
+        if _budget is not None
+        else _McpSurfaceResultBudget().add
     )
     server_count = 0
     config_files = iter_mcp_config_files(
         root,
         opaque_directories=opaque_directories,
+        _budget=_budget,
     )
     if len(config_files) > MAX_MCP_CONFIG_FILES:
         raise ValueError(ERROR_MCP_CONFIG_LIMIT)
     for path, kind in config_files:
+        if _budget is not None:
+            _budget.check_deadline()
         display_path = rel_path(path, root)
         try:
             opened = _read_structured_config(
@@ -414,6 +471,8 @@ def collect_mcp_config_surfaces(
         try:
             input_budget.charge(opened)
         except BoundedRepoLimitError:
+            if _budget is not None:
+                raise ValueError(ERROR_SURFACE_INVENTORY_LIMIT) from None
             raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
         except BoundedRepoReadError:
             raise ValueError(ERROR_MCP_CONFIG_INVALID) from None
@@ -429,7 +488,7 @@ def collect_mcp_config_surfaces(
                 "kind": kind,
                 "status": "parse_error",
             }
-            result_budget.add(config_surface)
+            add_result(config_surface)
             surfaces.append(config_surface)
             continue
         config_surface = {
@@ -439,16 +498,20 @@ def collect_mcp_config_surfaces(
             "status": "present",
             "size_bytes": len(opened.data),
         }
-        result_budget.add(config_surface)
+        add_result(config_surface)
         surfaces.append(config_surface)
         server_map = mcp_server_maps(loaded)
         if len(server_map) > MAX_MCP_SERVERS - server_count:
             raise ValueError(ERROR_MCP_CONFIG_LIMIT)
         try:
+            if _budget is not None:
+                _budget.check_deadline()
             server_items = sorted(server_map.items())
         except (MemoryError, OverflowError, RecursionError):
             raise ValueError(ERROR_MCP_CONFIG_LIMIT) from None
         for server_name, raw_server in server_items:
+            if _budget is not None:
+                _budget.check_deadline()
             server_count += 1
             if server_count > MAX_MCP_SERVERS:
                 raise ValueError(ERROR_MCP_CONFIG_LIMIT)
@@ -523,6 +586,8 @@ def collect_mcp_config_surfaces(
                 "filesystem_root": has_filesystem_root,
                 **({"risky_patterns": sorted(risky_patterns)} if risky_patterns else {}),
             }
-            result_budget.add(server_surface)
+            add_result(server_surface)
             surfaces.append(server_surface)
+    if _budget is not None:
+        _budget.check_deadline()
     return surfaces

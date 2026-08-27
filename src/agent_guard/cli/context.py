@@ -93,7 +93,7 @@ def _emit_context_payload(
             extra={"command": command} if command else None,
         )
         rendered = (
-            json.dumps(fallback, ensure_ascii=False)
+            json.dumps(fallback, allow_nan=False, ensure_ascii=False)
             if args.json
             else f"ERROR: {ERROR_CONTEXT_SCAN_LIMIT}"
         )

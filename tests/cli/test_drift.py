@@ -7,6 +7,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from agent_guard import drift_guard
 from tests.cli.helpers import assert_shared_envelope, run_cli, write
 
 def test_drift_cli_json_checks_readme_policy_and_workflow_alignment(tmp_path: Path) -> None:
@@ -203,3 +206,68 @@ def test_drift_cli_json_reports_missing_readme_command(tmp_path: Path) -> None:
     assert "missing_readme_guard_command" in reasons
     assert "missing_required_file_entry" in reasons
     assert str(tmp_path) not in result.stdout
+
+
+def test_drift_v2_shares_one_input_budget_and_context_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(tmp_path / "README.md", "bounded drift fixture\n")
+    write(tmp_path / "AGENTS.md", "Require approval before privileged actions.\n")
+    write(tmp_path / ".agent-guard" / "context-policy.yaml", "{}\n")
+    write(tmp_path / ".agent-guard" / "context-digest-policy.yaml", "checks: []\n")
+    write(
+        tmp_path / ".agent-guard" / "workflow-policy.yaml",
+        "schema_version: agent-guard.workflow_policy.v1\n"
+        "required_files:\n"
+        "  - id: context_policy\n"
+        "    path: .agent-guard/context-policy.yaml\n",
+    )
+
+    budget_ids: list[int] = []
+    inventory_ids: list[int] = []
+    context_scan_count = 0
+    original_workflow = drift_guard.scan_workflow_policy
+    original_context_scan = drift_guard.scan_context_files_with_inventory
+    original_boundary = drift_guard.scan_context_boundary_drift
+    original_instruction = drift_guard.scan_context_instruction_drift
+    original_lock = drift_guard.scan_context_lock_drift
+
+    def workflow_wrapper(*args: object, **kwargs: object):
+        budget_ids.append(id(kwargs["_input_budget"]))
+        return original_workflow(*args, **kwargs)
+
+    def context_scan_wrapper(*args: object, **kwargs: object):
+        nonlocal context_scan_count
+        context_scan_count += 1
+        budget_ids.append(id(kwargs["_input_budget"]))
+        return original_context_scan(*args, **kwargs)
+
+    def boundary_wrapper(*args: object, **kwargs: object):
+        budget_ids.append(id(kwargs["_input_budget"]))
+        inventory_ids.append(id(kwargs["_inventory"]))
+        return original_boundary(*args, **kwargs)
+
+    def instruction_wrapper(*args: object, **kwargs: object):
+        budget_ids.append(id(kwargs["_input_budget"]))
+        return original_instruction(*args, **kwargs)
+
+    def lock_wrapper(*args: object, **kwargs: object):
+        budget_ids.append(id(kwargs["_input_budget"]))
+        inventory_ids.append(id(kwargs["_inventory"]))
+        return original_lock(*args, **kwargs)
+
+    monkeypatch.setattr(drift_guard, "scan_workflow_policy", workflow_wrapper)
+    monkeypatch.setattr(drift_guard, "scan_context_files_with_inventory", context_scan_wrapper)
+    monkeypatch.setattr(drift_guard, "scan_context_boundary_drift", boundary_wrapper)
+    monkeypatch.setattr(drift_guard, "scan_context_instruction_drift", instruction_wrapper)
+    monkeypatch.setattr(drift_guard, "scan_context_lock_drift", lock_wrapper)
+
+    drift_guard.build_policy_spec_drift_scan(
+        root=tmp_path,
+        schema_version="v2",
+    )
+
+    assert context_scan_count == 1
+    assert len(set(budget_ids)) == 1
+    assert len(set(inventory_ids)) == 1

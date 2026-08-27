@@ -14,6 +14,7 @@ import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+from .bounded_yaml import MAX_YAML_DEPTH, MAX_YAML_NODES
 from .public_redaction import contains_raw_url, sanitize_public_mapping
 
 EVIDENCE_PACK_MANIFEST_SCHEMA_VERSION = "agent-guard.evidence_pack_manifest.v1"
@@ -83,6 +84,25 @@ _AUDIT_EVENT_DECISION_REASONS = frozenset(
 
 class _JSONNumber(str):
     """A parser-validated JSON number retained without binary-float coercion."""
+
+
+def _validate_agent_policy_audit_event_structure(value: object) -> None:
+    """Apply the shared structured-input budgets before recursive canonicalization."""
+
+    stack: list[tuple[object, int]] = [(value, 1)]
+    item_count = 0
+    while stack:
+        current, depth = stack.pop()
+        item_count += 1
+        if item_count > MAX_YAML_NODES or depth > MAX_YAML_DEPTH:
+            raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+        if isinstance(current, dict):
+            item_count += len(current)
+            if item_count > MAX_YAML_NODES:
+                raise ValueError(ERROR_AUDIT_EVENT_INVALID)
+            stack.extend((child, depth + 1) for child in current.values())
+        elif isinstance(current, list):
+            stack.extend((child, depth + 1) for child in current)
 
 
 def safe_artifact_path(path: str, *, root: Path | None = None) -> str:
@@ -557,6 +577,7 @@ def _canonical_agent_policy_audit_event(raw: bytes, *, event_profile: str) -> by
         )
         if not isinstance(payload, dict):
             raise TypeError(ERROR_AUDIT_EVENT_INVALID)
+        _validate_agent_policy_audit_event_structure(payload)
         _validate_agent_policy_audit_event_payload(
             payload,
             event_profile=event_profile,

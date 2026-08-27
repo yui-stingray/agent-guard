@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent_guard.init_guard import GITHUB_WORKFLOW
+from agent_guard.init_guard import GITHUB_EVENT_BASE_SHA_EXPRESSION, GITHUB_WORKFLOW
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -111,8 +111,32 @@ def init_workflow_evidence_script() -> str:
     workflow = yaml.safe_load(GITHUB_WORKFLOW)
     for step in workflow["jobs"]["evidence"]["steps"]:
         if isinstance(step, dict) and step.get("name") == "Generate evidence":
-            return str(step["run"])
+            return str(step["run"]).replace(
+                GITHUB_EVENT_BASE_SHA_EXPRESSION,
+                "${AGENT_GUARD_TEST_EVENT_BASE_SHA}",
+            )
     raise AssertionError("generated init evidence step missing")
+
+
+def test_generated_drift_subshell_makes_appended_override_invalid_shell() -> None:
+    script = init_workflow_evidence_script()
+    protected_suffix = '> "$raw_dir/drift.json" )'
+    weakened = script.replace(
+        protected_suffix,
+        protected_suffix + " --base-ref HEAD",
+        1,
+    )
+    assert weakened != script
+
+    result = subprocess.run(
+        ["bash", "-n"],
+        input=weakened,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
 
 
 def write_generated_workflow_stubs(tmp_path: Path) -> tuple[Path, Path]:
@@ -233,7 +257,7 @@ def run_generated_workflow_contract(
     env["RUNNER_TEMP"] = str(runner_temp)
     env["GITHUB_OUTPUT"] = str(github_output)
     env["AGENT_GUARD_EVENT_NAME"] = "push"
-    env["AGENT_GUARD_PR_BASE_SHA"] = ""
+    env["AGENT_GUARD_TEST_EVENT_BASE_SHA"] = "a" * 40
     env["AGENT_GUARD_INIT_WORKFLOW_MODE"] = mode
     env["AGENT_GUARD_INIT_WORKFLOW_SENTINEL"] = sentinel
     env["AGENT_GUARD_CONSUMER_LOG"] = str(consumer_log)
@@ -1041,7 +1065,9 @@ exit 127
     (tmp_path / ".agent-guard").mkdir()
     github_output = tmp_path / "github-output.txt"
 
-    def run_generated_workflow(*, event_name: str, base_sha: str) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+    def run_generated_workflow(
+        *, event_name: str, event_base_sha: str
+    ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
         call_log.write_text("", encoding="utf-8")
         github_output.write_text("", encoding="utf-8")
         env = os.environ.copy()
@@ -1050,7 +1076,7 @@ exit 127
         env["GITHUB_OUTPUT"] = str(github_output)
         env["AGENT_GUARD_CALL_LOG"] = str(call_log)
         env["AGENT_GUARD_EVENT_NAME"] = event_name
-        env["AGENT_GUARD_PR_BASE_SHA"] = base_sha
+        env["AGENT_GUARD_TEST_EVENT_BASE_SHA"] = event_base_sha
         result = run_bash_script(
             init_workflow_evidence_script(),
             cwd=tmp_path,
@@ -1067,7 +1093,7 @@ exit 127
     base_sha = "a" * 40
     pull_request, pull_request_calls = run_generated_workflow(
         event_name="pull_request",
-        base_sha=base_sha,
+        event_base_sha=base_sha,
     )
     assert pull_request.returncode == 0, pull_request.stdout + pull_request.stderr
     drift_call = next(args for args in pull_request_calls if args[:2] == ["drift", "check"])
@@ -1075,16 +1101,20 @@ exit 127
     assert drift_call[drift_call.index("--base-ref") + 1] == base_sha
     assert report_call[report_call.index("--drift-base-ref") + 1] == base_sha
 
-    push, push_calls = run_generated_workflow(event_name="push", base_sha="")
+    push_before_sha = "b" * 40
+    push, push_calls = run_generated_workflow(
+        event_name="push",
+        event_base_sha=push_before_sha,
+    )
     assert push.returncode == 0, push.stdout + push.stderr
     push_drift = next(args for args in push_calls if args[:2] == ["drift", "check"])
     push_report = next(args for args in push_calls if args[:1] == ["report"])
-    assert "--base-ref" not in push_drift
-    assert "--drift-base-ref" not in push_report
+    assert push_drift[push_drift.index("--base-ref") + 1] == push_before_sha
+    assert push_report[push_report.index("--drift-base-ref") + 1] == push_before_sha
 
     missing_base, missing_base_calls = run_generated_workflow(
         event_name="pull_request",
-        base_sha="",
+        event_base_sha="",
     )
     assert missing_base.returncode == 2
     assert not any(args[:2] == ["drift", "check"] for args in missing_base_calls)
@@ -1101,7 +1131,7 @@ exit 127
     ):
         invalid, invalid_calls = run_generated_workflow(
             event_name=event_name,
-            base_sha=invalid_base,
+            event_base_sha=invalid_base,
         )
         assert invalid.returncode == 2
         assert invalid_calls == []
@@ -1173,7 +1203,7 @@ def test_generated_init_workflow_uses_isolated_consumer_for_real_violation_bundl
     env["RUNNER_TEMP"] = str(runner_temp)
     env["GITHUB_OUTPUT"] = str(github_output)
     env["AGENT_GUARD_EVENT_NAME"] = "push"
-    env["AGENT_GUARD_PR_BASE_SHA"] = ""
+    env["AGENT_GUARD_TEST_EVENT_BASE_SHA"] = "a" * 40
     env["AGENT_GUARD_SHADOW_MARKER"] = str(shadow_marker)
 
     result = run_bash_script(

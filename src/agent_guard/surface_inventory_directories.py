@@ -5,12 +5,16 @@ Why: separate filesystem surface discovery from context, workflow, and MCP parsi
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
 from .surface_inventory_core import (
+    ERROR_SURFACE_INVENTORY_INPUT,
+    SurfaceInventoryBudget,
     is_in_opaque_directory,
     is_repo_bound_path,
+    read_surface_file,
     rel_path,
     repo_bound_glob,
 )
@@ -48,10 +52,12 @@ def count_tree_files(
     root: Path | None = None,
     cap: int = MAX_SURFACE_TREE_FILES,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> tuple[int, bool]:
     """Count repo-bound files without repeatedly traversing symlink cycles."""
 
     root = base if root is None else root
+    budget = _budget or SurfaceInventoryBudget()
     if is_in_opaque_directory(
         base,
         root=root,
@@ -61,11 +67,13 @@ def count_tree_files(
     if not is_repo_bound_path(base, root):
         return 0, False
     if base.is_file():
+        budget.charge_selected(base)
         return 1, False
     count = 0
     pending = [base]
     visited: set[Path] = set()
     while pending:
+        budget.check_deadline()
         current = pending.pop()
         try:
             resolved_current = current.resolve(strict=True)
@@ -75,24 +83,31 @@ def count_tree_files(
             continue
         visited.add(resolved_current)
         try:
-            children = sorted(current.iterdir())
+            children = os.scandir(current)
         except OSError:
-            continue
-        for item in children:
-            if is_in_opaque_directory(
-                item,
-                root=root,
-                opaque_directories=opaque_directories,
-            ):
-                continue
-            if not is_repo_bound_path(item, root):
-                continue
-            if item.is_file():
-                count += 1
-                if count >= cap:
-                    return count, True
-            elif item.is_dir():
-                pending.append(item)
+            raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+        try:
+            with children as entries:
+                for entry in entries:
+                    budget.charge_traversal()
+                    item = current / entry.name
+                    if is_in_opaque_directory(
+                        item,
+                        root=root,
+                        opaque_directories=opaque_directories,
+                    ):
+                        continue
+                    if not is_repo_bound_path(item, root):
+                        continue
+                    if item.is_file():
+                        budget.charge_selected(item)
+                        count += 1
+                        if count >= cap:
+                            return count, True
+                    elif item.is_dir():
+                        pending.append(item)
+        except OSError:
+            raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
     return count, False
 
 
@@ -103,8 +118,10 @@ def collect_directory_surfaces(
     surface: str,
     opaque_directories: Sequence[str] = (),
     include_empty_containers: bool = True,
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
+    budget = _budget or SurfaceInventoryBudget()
     for rel_base, kind in entries:
         base = root / rel_base
         if not is_repo_bound_path(base, root):
@@ -116,14 +133,30 @@ def collect_directory_surfaces(
             root=root,
             opaque_directories=opaque_directories,
         )
-        raw_children = [] if base_is_opaque else list(base.iterdir())
-        children = sorted(
-            item
-            for item in raw_children
-            if is_repo_bound_path(item, root) and (item.is_dir() or item.is_file())
-        )
+        children: list[Path] = []
+        had_raw_children = False
+        if not base_is_opaque:
+            try:
+                raw_children = os.scandir(base)
+            except OSError:
+                raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+            try:
+                with raw_children as discovered:
+                    for entry in discovered:
+                        budget.charge_traversal()
+                        had_raw_children = True
+                        item = base / entry.name
+                        if not is_repo_bound_path(item, root) or not (
+                            item.is_dir() or item.is_file()
+                        ):
+                            continue
+                        budget.charge_selected(item)
+                        children.append(item)
+            except OSError:
+                raise ValueError(ERROR_SURFACE_INVENTORY_INPUT) from None
+        children.sort()
         if not children:
-            if raw_children:
+            if had_raw_children:
                 continue
             if not base_is_opaque and not include_empty_containers:
                 continue
@@ -131,34 +164,36 @@ def collect_directory_surfaces(
                 base,
                 root=root,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
-            surfaces.append(
-                {
-                    "surface": surface,
-                    "path": rel_path(base, root),
-                    "kind": kind,
-                    "status": "present",
-                    "file_count": file_count,
-                    **({"truncated": True} if truncated else {}),
-                }
-            )
+            item = {
+                "surface": surface,
+                "path": rel_path(base, root),
+                "kind": kind,
+                "status": "present",
+                "file_count": file_count,
+                **({"truncated": True} if truncated else {}),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
             continue
         for child in children:
             file_count, truncated = count_tree_files(
                 child,
                 root=root,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
-            surfaces.append(
-                {
-                    "surface": surface,
-                    "path": rel_path(child, root),
-                    "kind": kind,
-                    "status": "present",
-                    "file_count": file_count,
-                    **({"truncated": True} if truncated else {}),
-                }
-            )
+            item = {
+                "surface": surface,
+                "path": rel_path(child, root),
+                "kind": kind,
+                "status": "present",
+                "file_count": file_count,
+                **({"truncated": True} if truncated else {}),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
     return surfaces
 
 
@@ -166,25 +201,29 @@ def collect_hook_surfaces(
     root: Path,
     *,
     opaque_directories: Sequence[str] = (),
+    _budget: SurfaceInventoryBudget | None = None,
 ) -> list[dict[str, object]]:
     surfaces: list[dict[str, object]] = []
+    budget = _budget or SurfaceInventoryBudget()
     for pattern, kind in AGENT_HOOK_FILES:
         for path in sorted(
             repo_bound_glob(
                 root,
                 pattern,
                 opaque_directories=opaque_directories,
+                _budget=budget,
             )
         ):
             if not path.is_file():
                 continue
-            surfaces.append(
-                {
-                    "surface": "agent_hook_config",
-                    "path": rel_path(path, root),
-                    "kind": kind,
-                    "status": "present",
-                    "size_bytes": path.stat().st_size,
-                }
-            )
+            opened = read_surface_file(path, root, budget=budget)
+            item = {
+                "surface": "agent_hook_config",
+                "path": opened.relative_path,
+                "kind": kind,
+                "status": "present",
+                "size_bytes": len(opened.data),
+            }
+            budget.add_result(item)
+            surfaces.append(item)
     return surfaces

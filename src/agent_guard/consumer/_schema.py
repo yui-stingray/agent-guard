@@ -8,8 +8,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from importlib import resources
 import json
+import math
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
+
+from ..bounded_yaml import MAX_YAML_DEPTH, MAX_YAML_NODES
 
 
 REPORT_SCHEMA_VERSION = "agent-guard.report_evidence.v1"
@@ -29,15 +32,27 @@ _EVIDENCE_PACK_SCHEMAS = {
     EVIDENCE_PACK_SCHEMA_VERSION_V2: EVIDENCE_PACK_SCHEMA_V2,
 }
 ERROR_DUPLICATE_JSON_KEYS = "public evidence JSON contains duplicate object keys"
+ERROR_NONFINITE_JSON_NUMBER = "public evidence JSON contains a non-finite number"
+ERROR_PUBLIC_EVIDENCE_INVALID = "public evidence JSON is invalid"
 ERROR_PUBLIC_EVIDENCE_READ = "public evidence could not be read"
 ERROR_PUBLIC_EVIDENCE_LIMIT = "public evidence exceeds configured limits"
 ERROR_REPORT_SCHEMA_UNSUPPORTED = "report evidence schema version is not supported"
 ERROR_EVIDENCE_PACK_SCHEMA_UNSUPPORTED = "evidence-pack schema version is not supported"
 MAX_REPORT_JSON_BYTES = 1 * 1024 * 1024
+MAX_JSON_DEPTH = MAX_YAML_DEPTH
+MAX_JSON_ITEMS = MAX_YAML_NODES
 
 
 class DuplicateJSONKeyError(ValueError):
     """A sanitized duplicate-key failure for untrusted public evidence JSON."""
+
+
+class NonFiniteJSONNumberError(ValueError):
+    """A sanitized non-finite-number failure for untrusted JSON."""
+
+
+class JSONStructureLimitError(ValueError):
+    """Raised when decoded JSON exceeds the shared structured-input budgets."""
 
 
 def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -49,8 +64,37 @@ def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, An
     return result
 
 
+def _reject_nonfinite_json_number(_value: str) -> NoReturn:
+    raise NonFiniteJSONNumberError(ERROR_NONFINITE_JSON_NUMBER)
+
+
+def _validate_json_structure(value: Any) -> None:
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    item_count = 0
+    while stack:
+        current, depth = stack.pop()
+        item_count += 1
+        if item_count > MAX_JSON_ITEMS or depth > MAX_JSON_DEPTH:
+            raise JSONStructureLimitError(ERROR_PUBLIC_EVIDENCE_LIMIT)
+        if isinstance(current, float) and not math.isfinite(current):
+            raise NonFiniteJSONNumberError(ERROR_NONFINITE_JSON_NUMBER)
+        if isinstance(current, dict):
+            item_count += len(current)
+            if item_count > MAX_JSON_ITEMS:
+                raise JSONStructureLimitError(ERROR_PUBLIC_EVIDENCE_LIMIT)
+            stack.extend((child, depth + 1) for child in current.values())
+        elif isinstance(current, list):
+            stack.extend((child, depth + 1) for child in current)
+
+
 def load_json_text(text: str) -> Any:
-    return json.loads(text, object_pairs_hook=_object_without_duplicate_keys)
+    payload = json.loads(
+        text,
+        object_pairs_hook=_object_without_duplicate_keys,
+        parse_constant=_reject_nonfinite_json_number,
+    )
+    _validate_json_structure(payload)
+    return payload
 
 
 def read_limited_bytes(
@@ -128,7 +172,18 @@ def load_payload(path: Path) -> dict[str, Any]:
         ).decode("utf-8")
     except UnicodeError:
         raise ValueError(ERROR_PUBLIC_EVIDENCE_READ) from None
-    payload = load_json_text(text)
+    try:
+        payload = load_json_text(text)
+    except DuplicateJSONKeyError:
+        raise
+    except NonFiniteJSONNumberError:
+        raise
+    except JSONStructureLimitError:
+        raise ValueError(ERROR_PUBLIC_EVIDENCE_LIMIT) from None
+    except (MemoryError, OverflowError, RecursionError):
+        raise ValueError(ERROR_PUBLIC_EVIDENCE_LIMIT) from None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        raise ValueError(ERROR_PUBLIC_EVIDENCE_INVALID) from None
     if not isinstance(payload, dict):
         raise ValueError("report payload must be a JSON object")
     return payload

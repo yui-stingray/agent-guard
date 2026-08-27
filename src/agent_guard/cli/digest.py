@@ -59,7 +59,7 @@ def _emit_digest_payload(
             error=ERROR_DIGEST_SCAN_LIMIT,
         )
         rendered = (
-            json.dumps(fallback, ensure_ascii=False)
+            json.dumps(fallback, allow_nan=False, ensure_ascii=False)
             if args.json
             else f"ERROR: {ERROR_DIGEST_SCAN_LIMIT}"
         )

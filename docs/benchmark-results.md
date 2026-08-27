@@ -11,8 +11,8 @@ groups A16/B10/C13/D6/E10/F5. The groups cover agent instruction files, skill
 content, MCP config metadata, digest and workflow drift, benign false-positive
 probes, and path-policy positives.
 
-Current metrics: overall F1 `0.973451`, precision `0.948276`, recall `1.000000`,
-with `TP=55`, `FP=3`, `FN=0`.
+Current metrics: overall F1 `0.982143`, precision `0.964912`, recall `1.000000`,
+with `TP=55`, `FP=2`, `FN=0`.
 
 Status: no independent verification yet. Treat this as repository-local
 regression evidence for deterministic static checks, not as an externally
@@ -35,7 +35,6 @@ Known false negatives queued for a future rule-tuning session:
 Known false positives:
 
 - `e03`: benign negated secret-guidance content probe.
-- `e04`: benign pinned MCP config probe.
 - `e06`: benign quoted pipe-pattern documentation probe.
 
 ## Next Evaluation Work
@@ -70,7 +69,7 @@ This table was rendered from the current AGB result JSON with
 | Context | 17 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
 | Digest | 2 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
 | Drift | 5 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
-| MCP | 14 | 1 | 0 | 0.933333 | 1.000000 | 0.965517 |
+| MCP | 14 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
 | Path | 7 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
 
 ## Reproducing The Table

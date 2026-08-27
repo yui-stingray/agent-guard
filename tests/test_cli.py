@@ -17,6 +17,7 @@ from agent_guard import __version__ as AGENT_GUARD_VERSION
 from agent_guard.cli import build_parser, safe_policy_path
 from agent_guard.cli_registry import AGENT_GUARD_COMMANDS
 from agent_guard.init_guard import (
+    GITHUB_EVENT_BASE_SHA_EXPRESSION,
     PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
     PUBLISHED_PACKAGE_VERSION,
 )
@@ -94,7 +95,9 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "fetch-depth: 0" in workflow
     assert "persist-credentials: false" in workflow
     assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6" in workflow
-    assert AGENT_GUARD_VERSION == PUBLISHED_PACKAGE_VERSION
+    assert AGENT_GUARD_VERSION == "0.3.8.dev0"
+    assert PUBLISHED_PACKAGE_VERSION == "0.3.7"
+    assert AGENT_GUARD_VERSION != PUBLISHED_PACKAGE_VERSION
     assert (
         f"python -I -m pip install yui-agent-guard=={PUBLISHED_PACKAGE_VERSION}"
         in workflow
@@ -151,23 +154,29 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json" in workflow
     assert (
         'agent-guard drift check --root . --profile recommended --schema-version v2 '
-        '"${drift_base_args[@]}" --json'
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" --json'
         in workflow
     )
     assert (
         "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
+        f'--drift-base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
         '--format json --output "$report_json" > /dev/null 2>&1'
         in workflow
     )
-    report_lines = [line.strip() for line in workflow.splitlines() if line.strip().startswith("agent-guard report")]
+    report_lines = [
+        line.strip()
+        for line in workflow.splitlines()
+        if line.strip().startswith("( agent-guard report")
+    ]
     assert report_lines == [
-        "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
-        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml "${report_base_args[@]}" '
-        '--format json --output "$report_json" > /dev/null 2>&1'
+        "( agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        '--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml '
+        f'--drift-base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
+        '--format json --output "$report_json" > /dev/null 2>&1 )'
     ]
     assert "AGENT_GUARD_EVENT_NAME: ${{ github.event_name }}" in workflow
-    assert "AGENT_GUARD_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}" in workflow
+    assert GITHUB_EVENT_BASE_SHA_EXPRESSION in workflow
     assert "Reject unreviewed context policy changes" in workflow
     assert (
         "context policy preflight rejected a pull-request change; review and merge it separately "
@@ -176,9 +185,13 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     )
     assert "published agent-guard 0.3.4 cannot evaluate a context policy changed by a pull request" not in workflow
     assert "timeout-minutes: 1" in workflow
-    assert 'drift_base_args=(--base-ref "$base_sha")' in workflow
-    assert 'report_base_args=(--drift-base-ref "$base_sha")' in workflow
-    assert "pull request base SHA is unavailable" in workflow
+    assert 'base_sha=HEAD' not in workflow
+    assert 'baseline_label="push before"' in workflow
+    assert 'use_base_ref=' not in workflow
+    assert 'drift_base_args=' not in workflow
+    assert 'report_base_args=' not in workflow
+    assert 'baseline_label="pull request base"' in workflow
+    assert 'echo "::error::${baseline_label} SHA is unavailable"' in workflow
     assert "render_report_output" not in workflow
     assert "record_status() {" in workflow
     assert (
@@ -205,7 +218,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     raw_scanner_lines = [
         line.strip()
         for line in workflow.splitlines()
-        if line.strip().startswith("agent-guard ")
+        if line.strip().lstrip("( ").startswith("agent-guard ")
         and "--json" in line
         and any(
             command in line
@@ -276,7 +289,11 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
     assert "workflow_checks:" in workflow_policy
     assert "path: .agent-guard/mcp-policy.yaml" in workflow_policy
     assert "command: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml" in workflow_policy
-    assert "command: agent-guard drift check --root . --profile recommended --schema-version v2" in workflow_policy
+    assert (
+        'command: ( agent-guard drift check --root . --profile recommended '
+        f'--schema-version v2 --base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"'
+        in workflow_policy
+    )
     assert (
         'command: agent-guard conformance check --root . --evidence "$report_json" '
         "--profile recommended"
@@ -287,7 +304,7 @@ def test_init_cli_json_is_review_first_and_does_not_write(tmp_path: Path) -> Non
         in workflow_policy
     )
     assert (
-        "command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
+        "command: ( agent-guard report --root . --context-policy .agent-guard/context-policy.yaml "
         "--evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml"
         in workflow_policy
     )
@@ -446,13 +463,15 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
     assert result.returncode == 0
 
     workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
-    workflow.write_text(
-        workflow.read_text(encoding="utf-8").replace(
-            '          agent-guard drift check --root . --profile recommended --schema-version v2 "${drift_base_args[@]}" --json 2>/dev/null > "$raw_dir/drift.json"\n',
-            "",
-        ),
-        encoding="utf-8",
+    original = workflow.read_text(encoding="utf-8")
+    drift_command = (
+        '          ( agent-guard drift check --root . --profile recommended '
+        f'--schema-version v2 --base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
+        '--json 2>/dev/null '
+        '> "$raw_dir/drift.json" )\n'
     )
+    assert drift_command in original
+    workflow.write_text(original.replace(drift_command, ""), encoding="utf-8")
 
     result = run_cli(
         "workflow",
@@ -475,6 +494,141 @@ def test_init_cli_workflow_policy_detects_removed_drift_gate(tmp_path: Path) -> 
         scanned_unit="checks",
     )
     assert payload["findings"][0]["requirement_id"] == "drift_guard"
+
+
+def test_init_cli_workflow_policy_rejects_weakened_event_base_refs(
+    tmp_path: Path,
+) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    original = workflow.read_text(encoding="utf-8")
+    weakened = original.replace(f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"', "HEAD")
+    assert weakened != original
+    workflow.write_text(weakened, encoding="utf-8")
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert {
+        finding["requirement_id"] for finding in payload["findings"]
+    } == {"drift_guard", "evidence_report_with_drift"}
+
+
+def test_init_cli_workflow_policy_rejects_reassigned_dynamic_event_base(
+    tmp_path: Path,
+) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    original = workflow.read_text(encoding="utf-8")
+    weakened = original.replace(
+        f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        '"$base_sha"',
+    ).replace('base_sha="$base_sha"', "base_sha=HEAD")
+    assert weakened != original
+    workflow.write_text(weakened, encoding="utf-8")
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert {
+        finding["requirement_id"] for finding in payload["findings"]
+    } == {"drift_guard", "evidence_report_with_drift"}
+
+
+def test_init_cli_workflow_policy_rejects_split_weakened_event_arms(
+    tmp_path: Path,
+) -> None:
+    result = run_cli("init", "--root", str(tmp_path), "--write", "--json")
+    assert result.returncode == 0
+
+    workflow = tmp_path / ".github" / "workflows" / "agent-guard.yml"
+    original = workflow.read_text(encoding="utf-8")
+    drift_command = (
+        '          ( agent-guard drift check --root . --profile recommended '
+        f'--schema-version v2 --base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" '
+        '--json 2>/dev/null '
+        '> "$raw_dir/drift.json" )\n'
+    )
+    report_command = (
+        "          ( agent-guard report --root . --context-policy "
+        ".agent-guard/context-policy.yaml --evidence-preset recommended "
+        "--mcp-policy .agent-guard/mcp-policy.yaml"
+    )
+    report_command = next(
+        line + "\n"
+        for line in original.splitlines()
+        if line.startswith(report_command)
+    )
+    assert drift_command in original
+    weakened_drift = drift_command.replace(
+        f' --base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        ' "${drift_base_args[@]}"',
+    )
+    weakened_report = report_command.replace(
+        f' --drift-base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        ' "${report_base_args[@]}"',
+    )
+    split_drift = (
+        '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
+        + "          drift_base_args=(--base-ref HEAD)\n"
+        + weakened_drift
+        + "          else\n"
+        + drift_command
+        + "          fi\n"
+    )
+    split_report = (
+        '          if [ "$AGENT_GUARD_EVENT_NAME" = pull_request ]; then\n'
+        + "          report_base_args=(--drift-base-ref HEAD)\n"
+        + weakened_report
+        + "          else\n"
+        + report_command
+        + "          fi\n"
+    )
+    workflow.write_text(
+        original.replace(drift_command, split_drift).replace(
+            report_command,
+            split_report,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "workflow",
+        "check",
+        "--root",
+        str(tmp_path),
+        "--policy",
+        str(tmp_path / ".agent-guard" / "workflow-policy.yaml"),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert {
+        finding["requirement_id"] for finding in payload["findings"]
+    } == {"drift_guard", "evidence_report_with_drift"}
 
 
 def test_init_cli_workflow_policy_detects_report_without_recommended_preset(tmp_path: Path) -> None:

@@ -2551,6 +2551,344 @@ def test_evidence_consumer_rejects_inconsistent_evidence_coverage_counts(tmp_pat
     assert "$.evidence_coverage.failing_count must match gate statuses" in result.stderr
 
 
+@pytest.mark.parametrize("report_version", ["v1", "v2"])
+@pytest.mark.parametrize("bundle_mode", [False, True], ids=["report-only", "bundle"])
+def test_evidence_consumer_rejects_erased_canonical_gate_and_component(
+    tmp_path: Path,
+    report_version: str,
+    bundle_mode: bool,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    if report_version == "v2":
+        event.parent.mkdir()
+        write_audit_event(event)
+        payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    else:
+        payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["path"]
+    payload["evidence_coverage"]["gates"] = [
+        gate
+        for gate in payload["evidence_coverage"]["gates"]
+        if gate["gate"] != "path"
+    ]
+    payload["evidence_coverage"]["gate_count"] -= 1
+    payload["evidence_coverage"]["enabled_count"] -= 1
+    payload["summary"]["coverage_enabled_count"] -= 1
+    del payload["summary"]["path_checked_count"]
+    del payload["summary"]["path_finding_count"]
+    payload["evidence_pack_manifest"]["gates"] = [
+        gate
+        for gate in payload["evidence_pack_manifest"]["gates"]
+        if gate["gate"] != "path"
+    ]
+    payload["evidence_pack_manifest"]["summary"]["gate_count"] -= 1
+    payload["evidence_pack_manifest"]["summary"]["enabled_gate_count"] -= 1
+
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    args: list[str] = []
+    if bundle_mode:
+        args.extend(["--evidence-dir", str(evidence_dir)])
+    if report_version == "v2":
+        args.extend(
+            [
+                "--agent-policy-audit-event",
+                str(event),
+                "--agent-policy-audit-event-profile",
+                AUDIT_EVENT_PROFILE,
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+    args.append(str(report))
+
+    result = run_packaged_consumer_cli(*args)
+
+    assert result.returncode == 1
+    if bundle_mode:
+        assert result.stderr == "agent-guard evidence bundle invalid\n"
+    else:
+        assert (
+            "$.evidence_coverage.gates must include every canonical gate"
+            in result.stderr
+        )
+    assert str(tmp_path) not in result.stderr
+
+
+@pytest.mark.parametrize("report_version", ["v1", "v2"])
+@pytest.mark.parametrize("bundle_mode", [False, True], ids=["report-only", "bundle"])
+def test_evidence_consumer_rejects_gate_checked_count_divergence(
+    tmp_path: Path,
+    report_version: str,
+    bundle_mode: bool,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    if report_version == "v2":
+        event.parent.mkdir()
+        write_audit_event(event)
+        payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    else:
+        payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    path_gate = next(
+        gate
+        for gate in payload["evidence_coverage"]["gates"]
+        if gate["gate"] == "path"
+    )
+    path_gate["checked_count"] += 1
+
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    args: list[str] = []
+    if bundle_mode:
+        args.extend(["--evidence-dir", str(evidence_dir)])
+    if report_version == "v2":
+        args.extend(
+            [
+                "--agent-policy-audit-event",
+                str(event),
+                "--agent-policy-audit-event-profile",
+                AUDIT_EVENT_PROFILE,
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+    args.append(str(report))
+
+    result = run_packaged_consumer_cli(*args)
+
+    assert result.returncode == 1
+    if bundle_mode:
+        assert result.stderr == "agent-guard evidence bundle invalid\n"
+    else:
+        assert (
+            "$.evidence_coverage.gates[2].checked_count must match $.path"
+            in result.stderr
+        )
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_coverage_summary_divergence(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["summary"]["coverage_enabled_count"] -= 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_consumer(report)
+
+    assert result.returncode == 1
+    assert (
+        "$.summary.coverage_enabled_count must match "
+        "$.evidence_coverage.enabled_count" in result.stderr
+    )
+
+
+@pytest.mark.parametrize("report_version", ["v1", "v2"])
+@pytest.mark.parametrize("bundle_mode", [False, True], ids=["report-only", "bundle"])
+def test_evidence_consumer_rejects_gate_status_divergent_from_component(
+    tmp_path: Path,
+    report_version: str,
+    bundle_mode: bool,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    if report_version == "v2":
+        event.parent.mkdir()
+        write_audit_event(event)
+        payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    else:
+        payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["path"]["status"] = "violation"
+    payload["path"]["finding_count"] = 1
+    payload["path"]["findings"] = [
+        {"rule_id": "synthetic", "severity": "high", "path": "AGENTS.md"}
+    ]
+
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    args: list[str] = []
+    if bundle_mode:
+        args.extend(["--evidence-dir", str(evidence_dir)])
+    if report_version == "v2":
+        args.extend(
+            [
+                "--agent-policy-audit-event",
+                str(event),
+                "--agent-policy-audit-event-profile",
+                AUDIT_EVENT_PROFILE,
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+    args.append(str(report))
+
+    result = run_packaged_consumer_cli(*args)
+
+    assert result.returncode == 1
+    if bundle_mode:
+        assert result.stderr == "agent-guard evidence bundle invalid\n"
+    else:
+        assert "$.evidence_coverage.gates[2].status must match $.path" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+@pytest.mark.parametrize("report_version", ["v1", "v2"])
+@pytest.mark.parametrize("bundle_mode", [False, True], ids=["report-only", "bundle"])
+def test_evidence_consumer_rejects_gate_count_divergent_from_component(
+    tmp_path: Path,
+    report_version: str,
+    bundle_mode: bool,
+) -> None:
+    event = tmp_path / "reviewed" / "event.json"
+    if report_version == "v2":
+        event.parent.mkdir()
+        write_audit_event(event)
+        payload = _bound_v2_report(event, artifact_path="reviewed/event.json")
+    else:
+        payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["path"]["status"] = "violation"
+    payload["path"]["finding_count"] = 1
+    payload["path"]["findings"] = [
+        {"rule_id": "synthetic", "severity": "high", "path": "AGENTS.md"}
+    ]
+    path_gate = next(
+        gate
+        for gate in payload["evidence_coverage"]["gates"]
+        if gate["gate"] == "path"
+    )
+    path_gate["status"] = "violation"
+    payload["evidence_coverage"]["failing_count"] = 1
+    manifest = payload["evidence_pack_manifest"]
+    manifest["report"]["status"] = "violation"
+    manifest_path_gate = next(
+        gate for gate in manifest["gates"] if gate["gate"] == "path"
+    )
+    manifest_path_gate["status"] = "violation"
+    manifest["summary"]["failing_gate_count"] = 1
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    args: list[str] = []
+    if bundle_mode:
+        args.extend(["--evidence-dir", str(evidence_dir)])
+    if report_version == "v2":
+        args.extend(
+            [
+                "--agent-policy-audit-event",
+                str(event),
+                "--agent-policy-audit-event-profile",
+                AUDIT_EVENT_PROFILE,
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+    args.append(str(report))
+
+    result = run_packaged_consumer_cli(*args)
+
+    assert result.returncode == 1
+    if bundle_mode:
+        assert result.stderr == "agent-guard evidence bundle invalid\n"
+    else:
+        assert (
+            "$.evidence_coverage.gates[2].finding_count must match $.path"
+            in result.stderr
+        )
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_ok_gate_with_findings(tmp_path: Path) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["evidence_pack_manifest"]
+    payload["path"]["finding_count"] = 1
+    payload["path"]["findings"] = [
+        {"rule_id": "synthetic", "severity": "high", "path": "AGENTS.md"}
+    ]
+    path_gate = next(
+        gate
+        for gate in payload["evidence_coverage"]["gates"]
+        if gate["gate"] == "path"
+    )
+    path_gate["finding_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_packaged_consumer_cli(str(report))
+
+    assert result.returncode == 1
+    assert "finding_count must be 0 when status is ok" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+def test_evidence_consumer_rejects_component_finding_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del payload["evidence_pack_manifest"]
+    payload["status"] = "violation"
+    payload["exit_code"] = 1
+    payload["path"]["status"] = "violation"
+    payload["path"]["finding_count"] = 1
+    path_gate = next(
+        gate
+        for gate in payload["evidence_coverage"]["gates"]
+        if gate["gate"] == "path"
+    )
+    path_gate["status"] = "violation"
+    path_gate["finding_count"] = 1
+    payload["evidence_coverage"]["failing_count"] = 1
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = run_packaged_consumer_cli(str(report))
+
+    assert result.returncode == 1
+    assert "$.path.finding_count must match $.path.findings length" in result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("bundle_mode", [False, True], ids=["report-only", "bundle"])
+def test_evidence_consumer_rejects_nonfinite_json_constants(
+    tmp_path: Path,
+    constant: str,
+    bundle_mode: bool,
+) -> None:
+    payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    placeholder = "synthetic-nonfinite-placeholder"
+    payload["surface_inventory"]["summary"]["metric"] = placeholder
+    raw = json.dumps(payload).replace(json.dumps(placeholder), constant, 1)
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    report = evidence_dir / "agent-guard-report.json"
+    report.write_text(raw, encoding="utf-8")
+    args = (
+        ["--evidence-dir", str(evidence_dir), str(report)]
+        if bundle_mode
+        else [str(report)]
+    )
+
+    result = run_packaged_consumer_cli(*args)
+
+    assert result.returncode == 1
+    if bundle_mode:
+        assert result.stderr == "agent-guard evidence bundle invalid\n"
+    else:
+        assert result.stderr == (
+            "agent-guard evidence invalid: "
+            "public evidence JSON contains a non-finite number\n"
+        )
+    assert constant not in result.stdout + result.stderr
+    assert str(tmp_path) not in result.stderr
+
+
 def test_evidence_consumer_rejects_inconsistent_evidence_pack_manifest_counts(tmp_path: Path) -> None:
     payload = json.loads(SAMPLE.read_text(encoding="utf-8"))
     payload["evidence_pack_manifest"]["summary"]["gate_count"] += 1

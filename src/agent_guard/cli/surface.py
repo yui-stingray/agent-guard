@@ -11,7 +11,11 @@ from pathlib import Path
 from ..bounded_repo_reader import DistinctInputBudget
 from ..context_guard import MAX_CONTEXT_DISTINCT_INPUT_BYTES, load_context_policy
 from ..public_redaction import sanitize_public_mapping
-from ..surface_delta import SurfaceDeltaError, build_surface_delta_report
+from ..surface_delta import (
+    ERROR_SURFACE_DELTA_LIMIT,
+    SurfaceDeltaError,
+    build_surface_delta_report,
+)
 from ..surface_inventory import collect_agent_surface_inventory
 from ..surface_inventory_mcp import MAX_MCP_DISTINCT_INPUT_BYTES
 from .common import (
@@ -91,7 +95,7 @@ def _emit_surface_inventory_payload(
         )
         try:
             emit_public_output(
-                f"{json.dumps(sanitize_public_mapping(fallback), ensure_ascii=False)}\n",
+                f"{json.dumps(sanitize_public_mapping(fallback), allow_nan=False, ensure_ascii=False)}\n",
                 error=ERROR_SURFACE_INVENTORY_LIMIT,
             )
         except ValueError:
@@ -99,6 +103,64 @@ def _emit_surface_inventory_payload(
         return False
     try:
         emit_public_output(rendered, error=ERROR_SURFACE_INVENTORY_LIMIT)
+    except ValueError:
+        return False
+    return True
+
+
+def _emit_surface_delta_payload(
+    *,
+    args: argparse.Namespace,
+    root: Path,
+    payload: dict[str, object],
+    plain_text: str,
+) -> bool:
+    if not args.json:
+        try:
+            emit_public_output(
+                bounded_public_line(
+                    plain_text,
+                    error=ERROR_SURFACE_DELTA_LIMIT,
+                ),
+                error=ERROR_SURFACE_DELTA_LIMIT,
+            )
+        except ValueError:
+            return False
+        return True
+    try:
+        rendered = bounded_public_line(
+            bounded_public_json(
+                sanitize_public_mapping(payload),
+                error=ERROR_SURFACE_DELTA_LIMIT,
+                sort_keys=True,
+            ),
+            error=ERROR_SURFACE_DELTA_LIMIT,
+        )
+    except ValueError:
+        fallback = result_payload(
+            scanner="surface",
+            status="error",
+            exit_code=2,
+            policy_arg=args.context_policy,
+            root=root,
+            error=ERROR_SURFACE_DELTA_LIMIT,
+            extra={"command": "delta"},
+        )
+        try:
+            rendered = bounded_public_line(
+                bounded_public_json(
+                    sanitize_public_mapping(fallback),
+                    error=ERROR_SURFACE_DELTA_LIMIT,
+                    sort_keys=True,
+                ),
+                error=ERROR_SURFACE_DELTA_LIMIT,
+            )
+            emit_public_output(rendered, error=ERROR_SURFACE_DELTA_LIMIT)
+        except ValueError:
+            pass
+        return False
+    try:
+        emit_public_output(rendered, error=ERROR_SURFACE_DELTA_LIMIT)
     except ValueError:
         return False
     return True
@@ -196,14 +258,17 @@ def run_surface_delta(args: argparse.Namespace) -> int:
         },
         extra={"command": "delta", "delta": delta},
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-    else:
-        print(
+    if not _emit_surface_delta_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=(
             "surface-delta: OK "
             f"(added={summary.get('added', 0)} removed={summary.get('removed', 0)} "
             f"modified={summary.get('modified', 0)} unchanged={summary.get('unchanged', 0)})"
-        )
+        ),
+    ):
+        return 2
     return 0
 
 
@@ -217,8 +282,10 @@ def _emit_surface_delta_error(*, args: argparse.Namespace, root: Path, message: 
         error=message,
         extra={"command": "delta"},
     )
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-    else:
-        print(f"ERROR: {payload.get('error', 'unknown error')}")
+    _emit_surface_delta_payload(
+        args=args,
+        root=root,
+        payload=payload,
+        plain_text=f"ERROR: {payload.get('error', 'unknown error')}",
+    )
     return 2

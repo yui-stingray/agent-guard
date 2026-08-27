@@ -1134,23 +1134,6 @@ def rule_applies_to_path(rule: dict[str, object], path: Path, repo_root: Path) -
     return True
 
 
-def _allowed_rule_ids(line: str) -> set[str]:
-    match = re.search(r"agent-guard:\s*allow\s+([A-Za-z0-9_., -]+)", line)
-    if not match:
-        return set()
-
-    return {
-        item.strip()
-        for item in re.split(r"[,\s]+", match.group(1))
-        if item.strip()
-    }
-
-
-def line_allows_rule(line: str, rule_id: str) -> bool:
-    allowed = _allowed_rule_ids(line)
-    return "all" in allowed or rule_id in allowed
-
-
 def _path_is_lexically_under(path: Path, root: Path) -> bool:
     try:
         Path(os.path.abspath(path)).relative_to(Path(os.path.abspath(root)))
@@ -1313,12 +1296,8 @@ def _scan_file_unbounded(
     for idx, line in enumerate(text.splitlines(), start=1):
         if idx > MAX_CONTENT_LINES_PER_FILE or len(line) > MAX_CONTENT_LINE_CHARS:
             raise ValueError(ERROR_CONTENT_SCAN_LIMIT)
-        allowed_rules = _allowed_rule_ids(line)
         for rule in applicable_rules:
             rule_id = str(rule["id"])
-            if "all" in allowed_rules or rule_id in allowed_rules:
-                continue
-
             regex = rule["regex"]
             assert isinstance(regex, re.Pattern)
             if regex.search(line):

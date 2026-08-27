@@ -46,7 +46,7 @@ def run_conformance_check(args: argparse.Namespace) -> int:
             extra={"command": "check"},
         )
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            print(json.dumps(result, allow_nan=False, ensure_ascii=False, sort_keys=True))
         else:
             print(f"ERROR: {result.get('error', 'unknown error')}")
         return 2
@@ -76,7 +76,7 @@ def run_conformance_check(args: argparse.Namespace) -> int:
         extra={"command": "check", "conformance": conformance},
     )
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        print(json.dumps(result, allow_nan=False, ensure_ascii=False, sort_keys=True))
     elif exit_code == 0:
         print(f"conformance: OK ({conformance.get('profile', args.profile)})")
     else:

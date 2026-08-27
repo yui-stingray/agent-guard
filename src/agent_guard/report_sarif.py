@@ -181,4 +181,9 @@ def render_sarif_report(payload: Mapping[str, object]) -> str:
             }
         ],
     }
-    return json.dumps(sarif, ensure_ascii=False, sort_keys=True) + "\n"
+    return json.dumps(
+        sarif,
+        allow_nan=False,
+        ensure_ascii=False,
+        sort_keys=True,
+    ) + "\n"

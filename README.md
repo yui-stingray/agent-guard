@@ -7,10 +7,10 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.7` alpha. Package install examples use this release; copyable
-Action examples are pinned to the immutable `0.3.7` release under the
-post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+, with
-one runtime dependency (`PyYAML`).
+**Status**: source `0.3.8.dev0` development build. Published install and
+copyable Action examples remain pinned to the immutable `0.3.7` release under
+the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -880,6 +880,9 @@ comparable. Repository-external symlink targets are not followed; external,
 `.git`, cyclic, and otherwise unsafe targets fail closed, while context-excluded
 alias paths and resolved in-repo target paths are not expanded through
 context-selected symlinks. Target values are never published.
+Git queries and base materialization run with shared scanner deadlines and
+per-file, aggregate-input, selected-file, process-output, and tar-output ceilings;
+exceeding any ceiling fails with a fixed sanitized runtime error.
 Tracked submodules are opaque boundaries for the parent repository delta:
 initialized checkout contents and dirty/untracked submodule files are not
 inventoried, while a superproject gitlink pin change is reported only as
@@ -1029,9 +1032,8 @@ A ready-to-run copy lives in [`examples/content_security_policy.yaml`](examples/
 Content rules may define per-rule `include_globs` / `exclude_globs`. Use this
 when a repository contains intentional adversarial fixtures that should stay
 scannable for secrets but should not fail dangerous-command rules. For narrow
-documented examples, append an inline suppression such as
-`# agent-guard: allow pipe_to_shell` or `# agent-guard: allow all` on the same
-line.
+reviewed exceptions, scope the rule in the policy; inline `agent-guard: allow`
+text is scanned as ordinary content and cannot suppress a finding.
 
 ### Context guard policy
 

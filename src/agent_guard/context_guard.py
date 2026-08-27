@@ -577,12 +577,16 @@ def normalize_string_list(
     limit: int = MAX_CONTEXT_POLICY_LIST_ITEMS,
 ) -> list[str]:
     if not isinstance(values, list):
-        return []
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
     if len(values) > limit:
         raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
     out: list[str] = []
     for value in values:
-        text = str(value).strip()
+        if not isinstance(value, str):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        text = value.strip()
+        if len(text) > MAX_CONTEXT_GLOB_LENGTH:
+            raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
         if text:
             out.append(text)
     return out
@@ -590,12 +594,16 @@ def normalize_string_list(
 
 def policy_section(policy: dict[str, object]) -> dict[str, object]:
     raw = policy.get("policy", {})
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+    return raw
 
 
 def scan_section(policy: dict[str, object]) -> dict[str, object]:
     raw = policy.get("scan", {})
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+    return raw
 
 
 def has_glob_magic(pattern: str) -> bool:
@@ -1011,6 +1019,37 @@ def _iter_context_files_pruned(
         opaque_directories=opaque_directories,
     )
     glob_work_budget = _ContextGlobWorkBudget()
+    excluded_cache: dict[tuple[str, ...], bool] = {}
+    directory_excluded_cache: dict[tuple[str, ...], bool] = {}
+    excluded_ancestor_cache: dict[tuple[str, ...], bool] = {}
+
+    def path_is_excluded(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in excluded_cache:
+            excluded_cache[key] = _is_excluded_compiled(
+                path,
+                compiled_exclude,
+                work_budget=glob_work_budget,
+            )
+        return excluded_cache[key]
+
+    def directory_is_excluded(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in directory_excluded_cache:
+            directory_excluded_cache[key] = path_is_excluded(
+                path,
+            ) or path_is_excluded(path / "__agent_guard_probe__")
+        return directory_excluded_cache[key]
+
+    def has_excluded_ancestor(path: Path) -> bool:
+        key = _path_parts(path)
+        if key not in excluded_ancestor_cache:
+            excluded_ancestor_cache[key] = any(
+                directory_is_excluded(parent)
+                for parent in path.parents
+                if parent != Path(".")
+            )
+        return excluded_ancestor_cache[key]
 
     files: list[Path] = []
     seen_files: set[Path] = set()
@@ -1018,14 +1057,8 @@ def _iter_context_files_pruned(
         path = root / alias_relative
         if _relative_path_is_opaque(alias_relative, opaque_directories):
             continue
-        if _directory_is_excluded(
-            alias_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
-        ) or _has_excluded_ancestor(
-            alias_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
+        if directory_is_excluded(alias_relative) or has_excluded_ancestor(
+            alias_relative
         ):
             continue
         try:
@@ -1037,14 +1070,8 @@ def _iter_context_files_pruned(
             raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
         if _relative_path_is_opaque(resolved_relative, opaque_directories):
             continue
-        if _is_excluded_compiled(
-            resolved_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
-        ) or _has_excluded_ancestor(
-            resolved_relative,
-            compiled_exclude,
-            work_budget=glob_work_budget,
+        if path_is_excluded(resolved_relative) or has_excluded_ancestor(
+            resolved_relative
         ):
             continue
         try:
@@ -1096,14 +1123,8 @@ def _iter_context_files_pruned(
                 raise ValueError(ERROR_CONTEXT_SCAN_TARGET) from None
             if _relative_path_is_opaque(alias_relative, opaque_directories):
                 continue
-            if _directory_is_excluded(
-                alias_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
-            ) or _is_excluded_compiled(
-                alias_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
+            if directory_is_excluded(alias_relative) or path_is_excluded(
+                alias_relative
             ):
                 continue
             try:
@@ -1147,23 +1168,13 @@ def _iter_context_files_pruned(
             is_directory = stat.S_ISDIR(path_stat.st_mode)
             is_file = stat.S_ISREG(path_stat.st_mode)
             if is_directory:
-                if _directory_is_excluded(
-                    alias_relative,
-                    compiled_exclude,
-                    work_budget=glob_work_budget,
-                ) or _directory_is_excluded(
-                    resolved_relative,
-                    compiled_exclude,
-                    work_budget=glob_work_budget,
-                ):
+                if directory_is_excluded(
+                    alias_relative
+                ) or directory_is_excluded(resolved_relative):
                     continue
                 pending.append((path, child_ancestors))
                 continue
-            if not is_file or _is_excluded_compiled(
-                resolved_relative,
-                compiled_exclude,
-                work_budget=glob_work_budget,
-            ):
+            if not is_file or path_is_excluded(resolved_relative):
                 continue
             if not _context_candidate_matches(
                 alias_path=alias_relative,
@@ -1259,13 +1270,13 @@ def normalize_rule_patterns(policy: dict[str, object]) -> list[dict[str, object]
     cfg = policy_section(policy)
     raw_forbidden = cfg.get("forbidden_patterns", DEFAULT_FORBIDDEN_PATTERNS)
     if not isinstance(raw_forbidden, list):
-        raise ValueError("forbidden_patterns must be a list")
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
 
     raw_extra = cfg.get("extra_forbidden_patterns", [])
     if raw_extra is None:
         raw_extra = []
     if not isinstance(raw_extra, list):
-        raise ValueError("extra_forbidden_patterns must be a list")
+        raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
 
     return [*raw_forbidden, *raw_extra]
 
@@ -1279,22 +1290,31 @@ def build_rules(policy: dict[str, object]) -> list[dict[str, object]]:
         raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
     for rule_index, item in enumerate(raw_rules):
         if not isinstance(item, dict):
-            continue
-        rule_id = str(item.get("id", "")).strip()
-        pattern_text = str(item.get("pattern", "")).strip()
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        raw_rule_id = item.get("id", "")
+        raw_pattern = item.get("pattern", "")
+        raw_severity = item.get("severity", "high")
+        raw_message = item.get("message", "policy violation")
+        if not all(
+            isinstance(value, str)
+            for value in (raw_rule_id, raw_pattern, raw_severity, raw_message)
+        ):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID)
+        rule_id = raw_rule_id.strip()
+        pattern_text = raw_pattern.strip()
         if not rule_id or not pattern_text:
             continue
         if len(pattern_text) > MAX_CONTEXT_POLICY_REGEX_LENGTH:
             raise ValueError(ERROR_CONTEXT_POLICY_LIMIT)
         try:
             regex = re.compile(pattern_text)
-        except re.error as exc:
-            raise ValueError(f"invalid forbidden_patterns regex for {rule_id!r}: {exc}") from exc
+        except (OverflowError, RecursionError, re.error):
+            raise ValueError(ERROR_CONTEXT_POLICY_INVALID) from None
         rules.append(
             {
                 "id": rule_id,
-                "severity": str(item.get("severity", "high")).strip() or "high",
-                "message": str(item.get("message", "policy violation")).strip() or "policy violation",
+                "severity": raw_severity.strip() or "high",
+                "message": raw_message.strip() or "policy violation",
                 "regex": regex,
                 "default_rule": (
                     uses_default_patterns
@@ -1496,14 +1516,17 @@ def boundary_summary(context_files: tuple[ContextInventoryEntry, ...]) -> tuple[
 
 
 def _canonical_json_size(value: object) -> int:
-    return len(
-        json.dumps(
+    try:
+        rendered = json.dumps(
             value,
+            allow_nan=False,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
-        ).encode("utf-8", errors="surrogatepass")
-    )
+        )
+        return len(rendered.encode("utf-8", errors="surrogatepass"))
+    except (MemoryError, OverflowError, RecursionError, TypeError, ValueError):
+        raise ValueError(ERROR_CONTEXT_SCAN_LIMIT) from None
 
 
 class _ContextInventoryResultBudget:
@@ -1646,18 +1669,6 @@ def collect_context_inventory(
     if _canonical_json_size(inventory.to_dict()) > MAX_CONTEXT_AGGREGATE_RESULT_BYTES:
         raise ValueError(ERROR_CONTEXT_SCAN_LIMIT)
     return inventory
-
-
-def line_allows_rule(line: str, rule_id: str) -> bool:
-    match = re.search(r"agent-guard:\s*allow\s+([A-Za-z0-9_., -]+)", line)
-    if not match:
-        return False
-    allowed = {
-        item.strip()
-        for item in re.split(r"[,\s]+", match.group(1))
-        if item.strip()
-    }
-    return "all" in allowed or rule_id in allowed
 
 
 def _safe_negation_prefix_is_complete(
@@ -1808,9 +1819,6 @@ def _matching_rule_indices(
     )
     for index, rule in enumerate(rules):
         if complete_default_prohibitions and bool(rule.get("default_rule")):
-            continue
-        rule_id = str(rule["id"])
-        if line_allows_rule(line, rule_id):
             continue
         if _rule_matches_line(line, rule):
             matches.append(index)
@@ -2018,6 +2026,7 @@ def scan_context_files(
         runtime_error=ERROR_CONTEXT_SCAN_RUNTIME,
         result_limit_error=ERROR_CONTEXT_SCAN_LIMIT,
         safe_errors=(
+            ERROR_CONTEXT_POLICY_INVALID,
             ERROR_CONTEXT_POLICY_LIMIT,
             ERROR_CONTEXT_SCAN_LIMIT,
             ERROR_CONTEXT_SCAN_TARGET,
@@ -2040,6 +2049,7 @@ def scan_context_files_with_inventory(
         runtime_error=ERROR_CONTEXT_SCAN_RUNTIME,
         result_limit_error=ERROR_CONTEXT_SCAN_LIMIT,
         safe_errors=(
+            ERROR_CONTEXT_POLICY_INVALID,
             ERROR_CONTEXT_POLICY_LIMIT,
             ERROR_CONTEXT_SCAN_LIMIT,
             ERROR_CONTEXT_SCAN_TARGET,

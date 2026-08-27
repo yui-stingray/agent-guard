@@ -38,7 +38,7 @@ def run_workflow_check(args: argparse.Namespace) -> int:
             error=str(exc),
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -56,7 +56,7 @@ def run_workflow_check(args: argparse.Namespace) -> int:
         extra={"checked_items": checked_items},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
     elif findings:
         print(f"workflow-guard: NG ({len(findings)} findings)")
         for item in findings:
@@ -68,5 +68,4 @@ def run_workflow_check(args: argparse.Namespace) -> int:
         print(f"workflow-guard: OK ({checked_items} checks)")
 
     return 0 if not findings else 1
-
 

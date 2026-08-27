@@ -5,16 +5,25 @@ Why: ensure CI keeps running declared guard commands and required policy files.
 
 from __future__ import annotations
 
+import argparse
 import io
 import os
 import re
 import stat
 from collections import deque
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path, PureWindowsPath
 from typing import Any, Iterator, NoReturn
 
 import yaml
+
+from .bounded_repo_reader import (
+    BoundedRepoLimitError,
+    BoundedRepoReadError,
+    DistinctInputBudget,
+)
+from .init_guard import GITHUB_EVENT_BASE_SHA_EXPRESSION
 
 
 WORKFLOW_POLICY_SCHEMA_VERSION = "agent-guard.workflow_policy.v1"
@@ -68,6 +77,59 @@ _WORKFLOW_DECIMAL_LITERAL_RE = re.compile(
     r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z"
 )
 _WORKFLOW_HEX_LITERAL_RE = re.compile(r"-?0[xX][0-9a-fA-F]+\Z")
+_AGENT_GUARD_PYTHON_EXECUTABLE_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
+_AGENT_GUARD_ROUTE_PYTHON_EXECUTABLE_RE = re.compile(
+    r"python(?:3(?:\.\d+)?)?(?:\.exe)?\Z"
+)
+_SHELL_ENV_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
+_PYTHON_ROUTE_NO_ARGUMENT_OPTIONS = frozenset(
+    {
+        "-b",
+        "-bb",
+        "-B",
+        "-d",
+        "-E",
+        "-i",
+        "-I",
+        "-O",
+        "-OO",
+        "-P",
+        "-q",
+        "-R",
+        "-s",
+        "-S",
+        "-u",
+        "-v",
+    }
+)
+_PYTHON_ROUTE_STOP_OPTIONS = frozenset(
+    {
+        "-",
+        "--",
+        "-?",
+        "-h",
+        "--help",
+        "--help-all",
+        "--help-env",
+        "--help-xoptions",
+        "-V",
+        "-VV",
+        "--version",
+    }
+)
+_AGENT_GUARD_COMMAND_MARKER_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:agent-guard(?:\.exe)?|agent_guard\.cli)"
+    r"(?![A-Za-z0-9_.-])"
+)
+_AGENT_GUARD_LOOKING_EXPANSION_RE = re.compile(
+    r"\$(?:\{[^}\r\n]*\}|[A-Za-z_][A-Za-z0-9_]*)"
+    r"|%[^%\r\n]+%|![^!\r\n]+!"
+)
+_CMD_EXPANSION_RE = re.compile(r"%[^%\r\n]+%|%[0-9*~]|![^!\r\n]+!")
+_SIMPLE_QUOTED_SHELL_SCALAR_RE = re.compile(
+    r'"\$([A-Za-z_][A-Za-z0-9_]*)"'
+)
+_TRUSTED_GITHUB_BASE_SHA_MARKER = "\x00agent_guard_github_event_base_sha"
 
 _ARRAY_TOKEN_START = 0
 _ARRAY_TOKEN_NAME = 1
@@ -143,6 +205,7 @@ class WorkflowRunLine:
     step_index: int
     step_name: str
     command: str
+    shell: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1288,6 +1351,11 @@ def _collect_step_run_lines_iterative(
                         step_index=step_index,
                         step_name=step_name,
                         command=command,
+                        shell=(
+                            effective_shell
+                            if isinstance(effective_shell, str)
+                            else None
+                        ),
                     )
                 )
 
@@ -1579,14 +1647,761 @@ def has_preceding_same_list_or(segments: list[tuple[str, str | None]], *, start_
     return False
 
 
-def command_line_matches_required(command_line: str, required_command: str) -> bool:
+@dataclass(frozen=True)
+class _NormalizedAgentGuardCommand:
+    route: tuple[str, ...]
+    arguments: tuple[tuple[object, ...], ...]
+
+
+@dataclass(frozen=True)
+class _DynamicShellScalar:
+    name: str
+
+
+@dataclass(frozen=True)
+class _TrustedGitHubBaseSha:
+    pass
+
+
+_TRUSTED_GITHUB_BASE_SHA = _TrustedGitHubBaseSha()
+
+
+@dataclass(frozen=True)
+class _AmbiguousAgentGuardRoute:
+    pass
+
+
+_AMBIGUOUS_AGENT_GUARD_ROUTE = _AmbiguousAgentGuardRoute()
+
+
+_AgentGuardNormalizationCache = dict[
+    tuple[str, str | None],
+    _NormalizedAgentGuardCommand | bool | None,
+]
+
+
+def _looks_like_agent_guard_command(command: str) -> bool:
+    probe = _AGENT_GUARD_LOOKING_EXPANSION_RE.sub(
+        "",
+        command.replace("^", "").replace("`", ""),
+    )
+    return _AGENT_GUARD_COMMAND_MARKER_RE.search(probe) is not None
+
+
+def _agent_guard_redirection_operator(
+    command: str,
+    *,
+    index: int,
+) -> tuple[str, int] | None:
+    if command.startswith("<(", index) or command.startswith(">(", index):
+        return None
+    for operator in (
+        "&>>",
+        "<<<",
+        "<<-",
+        "&>",
+        ">&",
+        "<&",
+        ">>",
+        "<<",
+        "<>",
+        ">|",
+        ">",
+        "<",
+    ):
+        if command.startswith(operator, index):
+            return operator, index + len(operator)
+    return None
+
+
+def _consume_static_agent_guard_word(
+    command: str,
+    *,
+    index: int,
+    reject_dynamic: bool,
+    shell: str | None,
+) -> tuple[str | _DynamicShellScalar, int, bool] | None:
+    if reject_dynamic and shell in {None, "bash", "sh"}:
+        dynamic_scalar = _SIMPLE_QUOTED_SHELL_SCALAR_RE.match(command, index)
+        if dynamic_scalar is not None:
+            end = dynamic_scalar.end()
+            if (
+                end == len(command)
+                or command[end].isspace()
+                or _agent_guard_redirection_operator(command, index=end) is not None
+            ):
+                return _DynamicShellScalar(dynamic_scalar.group(1)), end, False
+    characters: list[str] = []
+    started = False
+    plain = True
+    while index < len(command):
+        character = command[index]
+        if character.isspace():
+            break
+        if _agent_guard_redirection_operator(command, index=index) is not None:
+            break
+        if command.startswith("<(", index) or command.startswith(">(", index):
+            return None
+        if character == "'":
+            plain = False
+            started = True
+            end = command.find("'", index + 1)
+            if end < 0:
+                return None
+            characters.append(command[index + 1 : end])
+            index = end + 1
+            continue
+        if character == '"':
+            plain = False
+            started = True
+            index += 1
+            while index < len(command) and command[index] != '"':
+                character = command[index]
+                if reject_dynamic and character in {"$", "`"}:
+                    return None
+                if character == "\\" and index + 1 < len(command):
+                    escaped = command[index + 1]
+                    if escaped in {'"', "\\", "$", "`"}:
+                        if reject_dynamic and escaped in {"$", "`"} and shell in {
+                            None,
+                            "pwsh",
+                            "powershell",
+                        }:
+                            return None
+                        characters.append(escaped)
+                        index += 2
+                        continue
+                characters.append(character)
+                index += 1
+            if index >= len(command):
+                return None
+            index += 1
+            continue
+        if character == "\\":
+            plain = False
+            started = True
+            if index + 1 >= len(command):
+                return None
+            escaped = command[index + 1]
+            if reject_dynamic and escaped in {"$", "`"} and shell in {
+                None,
+                "pwsh",
+                "powershell",
+            }:
+                return None
+            characters.append(escaped)
+            index += 2
+            continue
+        if reject_dynamic and character in {"$", "`", "*", "?", "[", "{", "}"}:
+            return None
+        if (
+            reject_dynamic
+            and shell in {"pwsh", "powershell"}
+            and character == "@"
+            and not started
+        ):
+            return None
+        started = True
+        characters.append(character)
+        index += 1
+    if not started:
+        return None
+    return "".join(characters), index, plain
+
+
+def _static_agent_guard_argv(
+    command: str,
+    *,
+    shell: str | None,
+) -> list[str | _DynamicShellScalar | _TrustedGitHubBaseSha] | None:
+    """Return static native argv while excluding shell redirections."""
+    command = command.replace(
+        f'"{GITHUB_EVENT_BASE_SHA_EXPRESSION}"',
+        f'"{_TRUSTED_GITHUB_BASE_SHA_MARKER}"',
+    )
+    if "${{" in command:
+        return None
+    if shell == "cmd" and ("^" in command or _CMD_EXPANSION_RE.search(command)):
+        return None
+    if shell in {"pwsh", "powershell"} and "`" in command:
+        return None
+
+    argv: list[str | _DynamicShellScalar | _TrustedGitHubBaseSha] = []
+    index = 0
+    while index < len(command):
+        while index < len(command) and command[index].isspace():
+            index += 1
+        if index >= len(command):
+            break
+
+        redirection = _agent_guard_redirection_operator(command, index=index)
+        if redirection is not None:
+            _, index = redirection
+            while index < len(command) and command[index].isspace():
+                index += 1
+            target = _consume_static_agent_guard_word(
+                command,
+                index=index,
+                reject_dynamic=False,
+                shell=shell,
+            )
+            if target is None:
+                return None
+            _, index, _ = target
+            continue
+
+        word = _consume_static_agent_guard_word(
+            command,
+            index=index,
+            reject_dynamic=True,
+            shell=shell,
+        )
+        if word is None:
+            return None
+        value, next_index, plain = word
+        redirection = _agent_guard_redirection_operator(
+            command,
+            index=next_index,
+        )
+        if redirection is not None and plain and value.isdigit():
+            index = next_index
+            continue
+        argv.append(
+            _TRUSTED_GITHUB_BASE_SHA
+            if value == _TRUSTED_GITHUB_BASE_SHA_MARKER
+            else value
+        )
+        index = next_index
+    return argv
+
+
+@cache
+def _agent_guard_cli_parser() -> argparse.ArgumentParser:
+    # Import lazily because the public CLI imports this workflow guard.
+    from .cli import build_parser
+
+    return build_parser()
+
+
+def _agent_guard_entrypoint_size(
+    argv: list[str | _DynamicShellScalar | _TrustedGitHubBaseSha],
+) -> int | None:
+    if argv[:1] == ["agent-guard"]:
+        return 1
+    if (
+        argv
+        and isinstance(argv[0], str)
+        and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0])
+    ):
+        module_index = 2 if argv[1:2] == ["-I"] else 1
+        if argv[module_index : module_index + 2] == ["-m", "agent_guard.cli"]:
+            return module_index + 2
+    return None
+
+
+def _command_basename(value: str) -> str:
+    """Return a portable executable basename for bounded route recognition."""
+
+    return value.replace("\\", "/").rsplit("/", maxsplit=1)[-1].casefold()
+
+
+def _ambiguous_route_mentions_agent_guard(
+    command: str,
+    argv: list[str],
+) -> bool:
+    """Recognize protected markers inside compact wrapper payloads."""
+
+    if _looks_like_agent_guard_command(command):
+        return True
+    return any(
+        value.startswith("-S")
+        and value != "-S"
+        and _looks_like_agent_guard_command(value[2:])
+        for value in argv
+    )
+
+
+def _agent_guard_route_entrypoint(
+    argv: list[str],
+) -> tuple[int, int] | _AmbiguousAgentGuardRoute | None:
+    """Locate a statically visible agent-guard entrypoint behind safe wrappers."""
+
+    index = 0
+    wrapper_count = 0
+    while index < len(argv) and _SHELL_ENV_ASSIGNMENT_RE.fullmatch(argv[index]):
+        index += 1
+    while index < len(argv):
+        if index >= len(argv):
+            return None
+        wrapper = _command_basename(argv[index])
+        if wrapper == "command":
+            if wrapper_count >= MAX_WORKFLOW_SHELL_NESTING:
+                return _AMBIGUOUS_AGENT_GUARD_ROUTE
+            index += 1
+            while index < len(argv) and argv[index].startswith("-"):
+                value = argv[index]
+                if value == "--":
+                    index += 1
+                    break
+                if not value.startswith("-") or value == "-":
+                    break
+                options = value[1:]
+                if not options or any(option in "Vv" for option in options):
+                    return None
+                if any(option != "p" for option in options):
+                    return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                index += 1
+        elif wrapper == "env":
+            if wrapper_count >= MAX_WORKFLOW_SHELL_NESTING:
+                return _AMBIGUOUS_AGENT_GUARD_ROUTE
+            index += 1
+            while index < len(argv):
+                value = argv[index]
+                if value == "--":
+                    index += 1
+                    break
+                if _SHELL_ENV_ASSIGNMENT_RE.fullmatch(value):
+                    index += 1
+                    continue
+                if value in {
+                    "-i",
+                    "--ignore-environment",
+                    "-v",
+                    "--debug",
+                }:
+                    index += 1
+                    continue
+                if value in {"-0", "--null", "--help", "--version"}:
+                    return None
+                if value in {"-u", "--unset", "-C", "--chdir"}:
+                    if index + 1 >= len(argv):
+                        return None
+                    index += 2
+                    continue
+                if value.startswith(("--unset=", "--chdir=")):
+                    index += 1
+                    continue
+                if value in {"-S", "--split-string"}:
+                    if index + 1 >= len(argv):
+                        return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                    return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                if value.startswith("--split-string="):
+                    return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                if value.startswith("-S") and value != "-S":
+                    return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                if (
+                    value.startswith("-u") and value != "-u"
+                ) or (
+                    value.startswith("-C") and value != "-C"
+                ):
+                    index += 1
+                    continue
+                if value.startswith("-"):
+                    return _AMBIGUOUS_AGENT_GUARD_ROUTE
+                break
+        else:
+            break
+        wrapper_count += 1
+
+    if index >= len(argv):
+        return None
+    executable = _command_basename(argv[index])
+    if executable in {"agent-guard", "agent-guard.exe"}:
+        return index, 1
+    if not _AGENT_GUARD_ROUTE_PYTHON_EXECUTABLE_RE.fullmatch(executable):
+        return None
+
+    module_index = index + 1
+    while module_index < len(argv):
+        value = argv[module_index]
+        if value in _PYTHON_ROUTE_STOP_OPTIONS or value.startswith("-c"):
+            return None
+        if value == "-m":
+            if argv[module_index + 1 : module_index + 2] == ["agent_guard.cli"]:
+                return index, module_index - index + 2
+            return None
+        if value.startswith("-m"):
+            if value[2:] == "agent_guard.cli":
+                return index, module_index - index + 1
+            return None
+        if value in _PYTHON_ROUTE_NO_ARGUMENT_OPTIONS:
+            module_index += 1
+            continue
+        if not value.startswith("-"):
+            return None
+        if value in {"-W", "-X", "--check-hash-based-pycs"}:
+            if module_index + 1 >= len(argv):
+                return _AMBIGUOUS_AGENT_GUARD_ROUTE
+            module_index += 2
+            continue
+        if (
+            (value.startswith("-W") and value != "-W")
+            or (value.startswith("-X") and value != "-X")
+            or value.startswith("--check-hash-based-pycs=")
+        ):
+            module_index += 1
+            continue
+        return _AMBIGUOUS_AGENT_GUARD_ROUTE
+    return None
+
+
+def _agent_guard_leaf_parser(
+    argv: list[str | _DynamicShellScalar | _TrustedGitHubBaseSha],
+) -> tuple[list[str], argparse.ArgumentParser, int] | None:
+    parser = _agent_guard_cli_parser()
+    route: list[str] = []
+    index = 0
+    while True:
+        subparsers = next(
+            (
+                action
+                for action in parser._actions
+                if isinstance(action, argparse._SubParsersAction)
+            ),
+            None,
+        )
+        if subparsers is None:
+            return route, parser, index
+        if index >= len(argv):
+            return None
+        route_value = argv[index]
+        if not isinstance(route_value, str):
+            return None
+        subparser = subparsers.choices.get(route_value)
+        if subparser is None:
+            return None
+        route.append(route_value)
+        parser = subparser
+        index += 1
+
+
+def _resolve_agent_guard_option(
+    value: str,
+    *,
+    options: dict[str, argparse.Action],
+) -> tuple[argparse.Action | None, str | None, bool]:
+    option, separator, inline_value = value.partition("=")
+    action = options.get(option)
+    if action is not None:
+        return action, inline_value if separator else None, False
+    if not option.startswith("--"):
+        return None, None, False
+
+    matching_actions = {
+        id(candidate): candidate
+        for option_name, candidate in options.items()
+        if option_name.startswith("--") and option_name.startswith(option)
+    }
+    if len(matching_actions) == 1:
+        return next(iter(matching_actions.values())), inline_value if separator else None, False
+    return None, None, bool(matching_actions)
+
+
+def _agent_guard_option_values(
+    argv: list[str | _DynamicShellScalar | _TrustedGitHubBaseSha],
+    *,
+    index: int,
+    action: argparse.Action,
+    inline_value: str | None,
+) -> tuple[tuple[object, ...], int] | None:
+    normalized_inline_value: object | None = inline_value
+    if inline_value == _TRUSTED_GITHUB_BASE_SHA_MARKER:
+        normalized_inline_value = _TRUSTED_GITHUB_BASE_SHA
+    if action.nargs == 0:
+        if inline_value is not None:
+            return None
+        return (), 1
+    if action.nargs is None:
+        if inline_value is not None:
+            return (normalized_inline_value,), 1
+        if index + 1 >= len(argv):
+            return None
+        value = argv[index + 1]
+        if value == "--" or (
+            isinstance(value, str) and value.startswith("-") and value != "-"
+        ):
+            return None
+        return (value,), 2
+    if action.nargs == "*":
+        if inline_value is not None:
+            return (normalized_inline_value,), 1
+        end = index + 1
+        while end < len(argv) and not (
+            isinstance(argv[end], str) and argv[end].startswith("-")
+        ):
+            end += 1
+        return tuple(argv[index + 1 : end]), end - index
+    return None
+
+
+def _closed_agent_guard_subshell(command: str) -> str | None:
+    """Return the single command enclosed by a complete shell subshell."""
+
+    stripped = command.strip()
+    if not (stripped.startswith("(") and stripped.endswith(")")):
+        return None
+    inner = stripped[1:-1].strip()
+    if not inner or not _looks_like_agent_guard_command(inner):
+        return None
+    try:
+        segments = list(_iter_bounded_command_segments(inner))
+    except ValueError:
+        return None
+    if len(segments) != 1 or segments[0][1] is not None:
+        return None
+    if normalize_command_text(segments[0][0]) != normalize_command_text(inner):
+        return None
+    return inner
+
+
+def _strip_static_compound_group_prefix(
+    command: str,
+) -> tuple[str, bool]:
+    """Strip bounded static Bash group openers before route-only parsing."""
+
+    stripped = command.lstrip()
+    stripped_count = 0
+    while stripped_count < MAX_WORKFLOW_SHELL_NESTING:
+        if stripped.startswith("(("):
+            break
+        if stripped.startswith("("):
+            stripped = stripped[1:].lstrip()
+            stripped_count += 1
+            continue
+        if stripped.startswith("{") and (
+            len(stripped) == 1 or stripped[1].isspace()
+        ):
+            stripped = stripped[1:].lstrip()
+            stripped_count += 1
+            continue
+        break
+    over_limit = stripped_count >= MAX_WORKFLOW_SHELL_NESTING and (
+        (stripped.startswith("(") and not stripped.startswith("(("))
+        or (
+            stripped.startswith("{")
+            and (len(stripped) == 1 or stripped[1].isspace())
+        )
+    )
+    return stripped, over_limit
+
+
+def _normalize_agent_guard_command(
+    command: str,
+    *,
+    shell: str | None = None,
+    _cache: _AgentGuardNormalizationCache | None = None,
+) -> _NormalizedAgentGuardCommand | bool | None:
+    cache_key = (command, shell)
+    if _cache is not None and cache_key in _cache:
+        return _cache[cache_key]
+
+    closed_subshell = _closed_agent_guard_subshell(command)
+    command_to_parse = closed_subshell if closed_subshell is not None else command
+    argv = _static_agent_guard_argv(command_to_parse, shell=shell)
+    if argv is None:
+        result: _NormalizedAgentGuardCommand | bool | None = (
+            False if _looks_like_agent_guard_command(command) else None
+        )
+        if _cache is not None:
+            _cache[cache_key] = result
+        return result
+    entrypoint_size = _agent_guard_entrypoint_size(argv)
+    if entrypoint_size is None:
+        if _cache is not None:
+            _cache[cache_key] = None
+        return None
+
+    leaf = _agent_guard_leaf_parser(argv[entrypoint_size:])
+    if leaf is None:
+        if _cache is not None:
+            _cache[cache_key] = False
+        return False
+    route, parser, route_size = leaf
+    options = {
+        option: action
+        for action in parser._actions
+        for option in action.option_strings
+    }
+    normalized: list[tuple[object, ...]] = []
+    if closed_subshell is not None:
+        normalized.append(("shell_boundary", "closed_subshell"))
+    normalized.extend(("literal", value) for value in argv[:entrypoint_size])
+    normalized.extend(("literal", value) for value in route)
+
+    tail = argv[entrypoint_size + route_size :]
+    index = 0
+    while index < len(tail):
+        value = tail[index]
+        if value == "--":
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        if not isinstance(value, str):
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        action, inline_value, ambiguous = _resolve_agent_guard_option(
+            value,
+            options=options,
+        )
+        if ambiguous:
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        if action is None:
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        if action.dest == "help":
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        option_values = _agent_guard_option_values(
+            tail,
+            index=index,
+            action=action,
+            inline_value=inline_value,
+        )
+        if option_values is None:
+            if _cache is not None:
+                _cache[cache_key] = False
+            return False
+        values, consumed = option_values
+        normalized.append(("option", action.dest, *values))
+        index += consumed
+
+    result = _NormalizedAgentGuardCommand(
+        route=tuple(route),
+        arguments=tuple(normalized),
+    )
+    if _cache is not None:
+        _cache[cache_key] = result
+    return result
+
+
+def _static_agent_guard_route_prefix(
+    command: str,
+    *,
+    shell: str | None = None,
+) -> tuple[str, ...] | _AmbiguousAgentGuardRoute | None:
+    """Return a proven route even when later argv cannot be normalized."""
+
+    command, compound_over_limit = _strip_static_compound_group_prefix(command)
+    if compound_over_limit:
+        return (
+            _AMBIGUOUS_AGENT_GUARD_ROUTE
+            if _looks_like_agent_guard_command(command)
+            else None
+        )
+    argv: list[str] = []
+    index = 0
+    while index < len(command):
+        while index < len(command) and command[index].isspace():
+            index += 1
+        if index >= len(command):
+            break
+        word = _consume_static_agent_guard_word(
+            command,
+            index=index,
+            reject_dynamic=True,
+            shell=shell,
+        )
+        if word is None:
+            permissive_word = _consume_static_agent_guard_word(
+                command,
+                index=index,
+                reject_dynamic=False,
+                shell=shell,
+            )
+            if permissive_word is None or not _SHELL_ENV_ASSIGNMENT_RE.fullmatch(
+                permissive_word[0]
+            ):
+                break
+            word = permissive_word
+        value, next_index, _ = word
+        if isinstance(value, _DynamicShellScalar):
+            break
+        argv.append(value)
+        index = next_index
+
+    route_entrypoint = _agent_guard_route_entrypoint(argv)
+    if isinstance(route_entrypoint, _AmbiguousAgentGuardRoute):
+        return (
+            route_entrypoint
+            if _ambiguous_route_mentions_agent_guard(command, argv)
+            else None
+        )
+    if route_entrypoint is None:
+        return None
+    entrypoint_index, entrypoint_size = route_entrypoint
+    leaf = _agent_guard_leaf_parser(
+        argv[entrypoint_index + entrypoint_size :]
+    )
+    if leaf is None:
+        return None
+    route, _, _ = leaf
+    return tuple(route)
+
+
+def command_prefix_matches_required(
+    candidate: str,
+    required: str,
+    *,
+    shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
+) -> bool:
+    required_command = _normalize_agent_guard_command(
+        required,
+        _cache=_normalization_cache,
+    )
+    candidate_command = _normalize_agent_guard_command(
+        candidate,
+        shell=shell,
+        _cache=_normalization_cache,
+    )
+    if isinstance(required_command, _NormalizedAgentGuardCommand) or isinstance(
+        candidate_command, _NormalizedAgentGuardCommand
+    ):
+        if not isinstance(required_command, _NormalizedAgentGuardCommand) or not isinstance(
+            candidate_command, _NormalizedAgentGuardCommand
+        ):
+            return False
+        required_arguments = required_command.arguments
+        candidate_arguments = candidate_command.arguments
+        if candidate_arguments[: len(required_arguments)] != required_arguments:
+            return False
+        required_option_destinations = {
+            argument[1]
+            for argument in required_arguments
+            if argument[0] == "option"
+        }
+        return not any(
+            argument[0] == "option" and argument[1] in required_option_destinations
+            for argument in candidate_arguments[len(required_arguments) :]
+        )
+
+    if (
+        required_command is False
+        or candidate_command is False
+        or _looks_like_agent_guard_command(required)
+    ):
+        return False
+    return candidate == required or candidate.startswith(required + " ")
+
+
+def command_line_matches_required(
+    command_line: str,
+    required_command: str,
+    *,
+    shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
+) -> bool:
     _validate_command_lexer_characters(command_line)
     _validate_command_lexer_characters(required_command)
     required = normalize_command_text(required_command)
     if not required:
         return False
 
-    required_prefix = required + " "
     candidate_matched = False
     preceding_same_list_or = False
     previous_operator: str | None = None
@@ -1603,9 +2418,11 @@ def command_line_matches_required(command_line: str, required_command: str) -> b
             and next_operator not in {"||", "|"}
             and not has_help_option(normalized)
             and not preceding_same_list_or
-            and (
-                normalized == required
-                or normalized.startswith(required_prefix)
+            and command_prefix_matches_required(
+                normalized,
+                required,
+                shell=shell,
+                _normalization_cache=_normalization_cache,
             )
         ):
             candidate_matched = True
@@ -1625,6 +2442,78 @@ def command_line_matches_required(command_line: str, required_command: str) -> b
     return candidate_matched
 
 
+def command_line_conflicts_with_required(
+    command_line: str,
+    required_command: str,
+    *,
+    shell: str | None = None,
+    _normalization_cache: _AgentGuardNormalizationCache | None = None,
+    _line_matches: bool | None = None,
+) -> bool:
+    """Reject a weaker invocation of the same protected agent-guard route."""
+
+    required = normalize_command_text(required_command)
+    required_normalized = _normalize_agent_guard_command(
+        required,
+        _cache=_normalization_cache,
+    )
+    if not isinstance(required_normalized, _NormalizedAgentGuardCommand):
+        return False
+    if not any(
+        isinstance(value, (_DynamicShellScalar, _TrustedGitHubBaseSha))
+        for argument in required_normalized.arguments
+        for value in argument
+    ):
+        return False
+
+    route_seen = False
+    conflicting_segment = False
+    for segment, _ in _iter_bounded_command_segments(command_line):
+        normalized = normalize_command_text(segment)
+        if not normalized or is_documentation_segment(normalized):
+            continue
+        candidate = _normalize_agent_guard_command(
+            normalized,
+            shell=shell,
+            _cache=_normalization_cache,
+        )
+        candidate_route = (
+            candidate.route
+            if isinstance(candidate, _NormalizedAgentGuardCommand)
+            else _static_agent_guard_route_prefix(normalized, shell=shell)
+        )
+        if isinstance(candidate_route, _AmbiguousAgentGuardRoute):
+            route_seen = True
+            conflicting_segment = True
+            continue
+        if candidate_route != required_normalized.route:
+            continue
+        route_seen = True
+        if not isinstance(candidate, _NormalizedAgentGuardCommand) or not (
+            command_prefix_matches_required(
+                normalized,
+                required,
+                shell=shell,
+                _normalization_cache=_normalization_cache,
+            )
+        ):
+            conflicting_segment = True
+
+    return route_seen and (
+        conflicting_segment
+        or not (
+            _line_matches
+            if _line_matches is not None
+            else command_line_matches_required(
+                command_line,
+                required_command,
+                shell=shell,
+                _normalization_cache=_normalization_cache,
+            )
+        )
+    )
+
+
 def validate_workflow_policy(policy: dict[str, Any]) -> None:
     schema_version = policy.get("schema_version")
     if isinstance(schema_version, str):
@@ -1633,7 +2522,12 @@ def validate_workflow_policy(policy: dict[str, Any]) -> None:
         raise ValueError(f"schema_version must be {WORKFLOW_POLICY_SCHEMA_VERSION!r}")
 
 
-def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[WorkflowGuardFinding], int]:
+def scan_workflow_policy(
+    *,
+    root: Path,
+    policy: dict[str, Any],
+    _input_budget: DistinctInputBudget | None = None,
+) -> tuple[list[WorkflowGuardFinding], int]:
     root = root.resolve()
     _validate_object_graph(policy)
     validate_workflow_policy(policy)
@@ -1645,6 +2539,8 @@ def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[Wo
     findings: list[WorkflowGuardFinding] = []
     budget = _WorkflowScanBudget()
     workflow_cache: dict[str, _CachedWorkflow] = {}
+    # Keep attacker-controlled cache state scoped to this already-budgeted scan.
+    normalization_cache: _AgentGuardNormalizationCache = {}
     checked_items = 0
     for required in required_files:
         target, rel_path = resolve_repo_file(root, required.path, label=required.check_id)
@@ -1697,6 +2593,16 @@ def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[Wo
                 amount=len(raw_workflow),
                 limit=MAX_WORKFLOW_DISTINCT_INPUT_BYTES,
             )
+            if _input_budget is not None:
+                try:
+                    _input_budget.charge_bytes(
+                        raw_workflow,
+                        identity=("workflow", rel_path),
+                    )
+                except BoundedRepoLimitError:
+                    _raise_configuration_limit()
+                except BoundedRepoReadError:
+                    raise ValueError(ERROR_WORKFLOW_SCAN_TARGET) from None
             workflow = load_workflow_file(raw_workflow, workflow_id=check.check_id)
             run_lines = tuple(
                 collect_run_lines(
@@ -1718,6 +2624,7 @@ def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[Wo
         for required in check.required_commands:
             checked_items += 1
             matched = False
+            conflicting = False
             for line in run_lines:
                 _consume_scan_budget(
                     budget,
@@ -1730,10 +2637,23 @@ def scan_workflow_policy(*, root: Path, policy: dict[str, Any]) -> tuple[list[Wo
                     amount=len(line.command) + len(required.command),
                     limit=MAX_WORKFLOW_MATCH_CHARS,
                 )
-                if command_line_matches_required(line.command, required.command):
+                line_matches = command_line_matches_required(
+                    line.command,
+                    required.command,
+                    shell=line.shell,
+                    _normalization_cache=normalization_cache,
+                )
+                if command_line_conflicts_with_required(
+                    line.command,
+                    required.command,
+                    shell=line.shell,
+                    _normalization_cache=normalization_cache,
+                    _line_matches=line_matches,
+                ):
+                    conflicting = True
+                if line_matches:
                     matched = True
-                    break
-            if matched:
+            if matched and not conflicting:
                 continue
             _append_workflow_finding(
                 findings,

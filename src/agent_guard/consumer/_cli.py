@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(BUNDLE_VALIDATION_ERROR, file=sys.stderr)
                 return 1
             return 0
-        print(json.dumps(summary, sort_keys=True))
+        print(json.dumps(summary, allow_nan=False, sort_keys=True))
         return 0
 
     try:
@@ -95,5 +95,5 @@ def main(argv: list[str] | None = None) -> int:
         print(f"agent-guard evidence invalid: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps(summary, sort_keys=True))
+    print(json.dumps(summary, allow_nan=False, sort_keys=True))
     return 0

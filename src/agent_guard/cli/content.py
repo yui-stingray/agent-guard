@@ -99,7 +99,7 @@ def run_content_check(args: argparse.Namespace) -> int:
             extra={"mode": args.mode},
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -117,7 +117,7 @@ def run_content_check(args: argparse.Namespace) -> int:
         extra={"mode": args.mode, "scanned_files": len(paths)},
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
     else:
         print_content_text(findings=findings, scanned_files=len(paths), mode=args.mode)
 

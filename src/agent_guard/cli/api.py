@@ -50,7 +50,7 @@ def run_api_check(args: argparse.Namespace) -> int:
             error=str(exc),
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
         else:
             print(f"ERROR: {payload.get('error', 'unknown error')}")
         return 2
@@ -67,7 +67,7 @@ def run_api_check(args: argparse.Namespace) -> int:
             scanned_unit="files",
         )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
         else:
             print(f"FAILED: {len(findings)} forbidden API endpoint(s) detected")
             for finding in findings:
@@ -85,8 +85,7 @@ def run_api_check(args: argparse.Namespace) -> int:
         scanned_unit="files",
     )
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
+        print(json.dumps(payload, allow_nan=False, ensure_ascii=False))
     else:
         print("OK: API surface guard passed")
     return 0
-

@@ -20,7 +20,9 @@ from ._redaction import validate_public_evidence_shape, validate_public_text_sha
 from ._report import validate_report
 from ._schema import (
     DuplicateJSONKeyError,
+    JSONStructureLimitError,
     MAX_REPORT_JSON_BYTES,
+    NonFiniteJSONNumberError,
     load_json_text,
     read_limited_bytes,
     require,
@@ -89,7 +91,17 @@ def _load_limited_json(path: Path, *, limit: int) -> object:
 def _load_json_text(text: str) -> object:
     try:
         return load_json_text(text)
-    except (DuplicateJSONKeyError, json.JSONDecodeError, RecursionError):
+    except JSONStructureLimitError:
+        raise ValueError(ERROR_PUBLIC_BUNDLE_LIMIT) from None
+    except (MemoryError, OverflowError, RecursionError):
+        raise ValueError(ERROR_PUBLIC_BUNDLE_LIMIT) from None
+    except (
+        DuplicateJSONKeyError,
+        NonFiniteJSONNumberError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ):
         raise ValueError(ERROR_PUBLIC_BUNDLE_INVALID) from None
 
 
