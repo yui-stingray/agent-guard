@@ -8,9 +8,9 @@
 > Deterministic static evidence for repositories maintained with coding agents.
 
 **Status**: `0.3.8` alpha. Package install examples use this release; copyable
-Action examples remain pinned to the immutable `0.3.7` release under the
-post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
-with one runtime dependency (`PyYAML`).
+Action examples use the immutable commit for the current published `v0.3.8`
+release under the post-release refresh contract. Vendor-neutral, static-only,
+Python 3.11.4+, with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -333,7 +333,7 @@ jobs:
             fail_preflight
           fi
       - id: agent-guard
-        uses: yui-stingray/agent-guard@67d8828ccf5b199d0cf9e99007de53436ac47f7a # v0.3.7
+        uses: yui-stingray/agent-guard@3d8c99ee502b914ccc3d605ad469d96b098d6212 # v0.3.8
         timeout-minutes: 1
         with:
           conformance-profile: recommended
@@ -357,8 +357,8 @@ jobs:
 The pull-request preflight derives the effective context-policy path from the
 same `root` and `context-policy` values passed to the Action. It requires a
 tracked regular file at that repository-relative path, rejects symlinked path
-components, and emits no diff or path value. Keep it before the immutable
-`0.3.7` Action and keep the one-minute step limit, which is GitHub Actions'
+components, and emits no diff or path value. Keep it before the current published
+`v0.3.8` Action and keep the one-minute step limit, which is GitHub Actions'
 smallest supported positive timeout. These controls remain useful as
 defense in depth after the regex isolation fix. If a pull request changes the
 effective context policy, review and merge that policy change separately before

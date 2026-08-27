@@ -40,8 +40,8 @@ COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
-ACTION_RELEASE_VERSION = "0.3.7"
-ACTION_RELEASE_COMMIT = "67d8828ccf5b199d0cf9e99007de53436ac47f7a"
+ACTION_RELEASE_VERSION = "0.3.8"
+ACTION_RELEASE_COMMIT = "3d8c99ee502b914ccc3d605ad469d96b098d6212"
 PACKAGE_RELEASE_VERSION = "0.3.8"
 
 
@@ -468,7 +468,7 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "immutable\n`0.3.7` Action" in readme
+    assert "current published\n`v0.3.8` Action" in readme
     assert "unreviewed" in readme
     assert "context" in readme
     assert "defense in depth" in readme
@@ -478,17 +478,22 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     assert "context" in security
     assert "regular expression" in security
     assert "0.3.5" in security
+    assert f"immutable `v{ACTION_RELEASE_VERSION}` Action" in security
+    assert "immutable `0.3.7` Action" not in security
     for docs in (evidence_contracts, compatibility, quickstart):
-        normalized = " ".join(docs.split())
+        normalized = " ".join(
+            line.removeprefix("> ").strip() for line in docs.splitlines()
+        )
         assert "Version gate" in docs
         assert "agent-guard.public_agent_policy_audit_event.v1" in docs
         assert PACKAGE_RELEASE_VERSION in docs
         assert "Action" in docs
         assert (
-            f"immutable `{ACTION_RELEASE_VERSION}` release commit" in normalized
+            f"immutable commit for the current published `v{ACTION_RELEASE_VERSION}` "
+            "release" in normalized
         )
     assert re.findall(r"published `([^`]+)` Action", quickstart) == [
-        ACTION_RELEASE_VERSION
+        f"v{ACTION_RELEASE_VERSION}"
     ]
     for docs in (evidence_contracts, quickstart):
         normalized = " ".join(docs.split())
