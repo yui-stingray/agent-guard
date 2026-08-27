@@ -985,9 +985,11 @@ target. Static redirections remain supported. Workflow-, job-, or step-level
 environment declarations make the step ineligible. Any job-container
 declaration is also ineligible because its image, mounts, environment, and
 runtime options can change executable resolution. This includes Python
-user-site and import selectors such as `PYTHONUSERBASE`, `PYTHONNOUSERSITE`,
-`PYTHONSAFEPATH`, `PYTHONPLATLIBDIR`, `PYTHONCASEOK`, `HOME`, `USERPROFILE`, and
-`APPDATA`. An effective `working-directory` declaration is also ineligible.
+startup, warning, user-site, and import selectors such as `PYTHONSTARTUP`,
+`PYTHONINSPECT`, `PYTHONWARNINGS`, `PYTHON_PRESITE`, `PYTHONUSERBASE`,
+`PYTHONNOUSERSITE`, `PYTHONSAFEPATH`, `PYTHONPLATLIBDIR`, `PYTHONCASEOK`, `HOME`,
+`USERPROFILE`, and `APPDATA`. An effective `working-directory` declaration is
+also ineligible.
 
 This boundary proves only the checked repository text has that restricted
 static shape. It does not prove which host executable a runner resolves, runner

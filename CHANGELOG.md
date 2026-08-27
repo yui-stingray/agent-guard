@@ -9,7 +9,7 @@ Why: keep static guard releases auditable while the package is still alpha.
 - Started `0.3.9.dev0` development while generated install and Action examples
   remain pinned to the published `0.3.8` release.
 - Restricted required workflow-command evidence to dedicated direct commands,
-  rejecting same-step control flow, Python user-site/import resolution changes,
+  rejecting same-step control flow, Python startup/import resolution changes,
   job-container declarations, and dynamic redirection; generated and
   self-dogfood policy commands now use dedicated steps.
 - Bound relative report outputs to the selected root and added traversal,

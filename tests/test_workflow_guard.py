@@ -1428,9 +1428,13 @@ def test_scan_workflow_policy_rejects_declared_resolution_changes(
     "variable",
     [
         "PYTHONCASEOK",
+        "PYTHONINSPECT",
         "PYTHONNOUSERSITE",
         "PYTHONPLATLIBDIR",
         "PYTHONSAFEPATH",
+        "PYTHONSTARTUP",
+        "PYTHONWARNINGS",
+        "PYTHON_PRESITE",
     ],
 )
 def test_scan_workflow_policy_rejects_python_import_resolution_environment(
