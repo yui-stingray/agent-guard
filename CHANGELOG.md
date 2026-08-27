@@ -6,15 +6,19 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-- Started `0.3.8.dev0` development while generated install and Action examples
-  remain pinned to the published `0.3.7` release.
+## 0.3.8 - 2026-08-27
+
+- Kept development builds on PEP 440 `0.3.8.dev0` until this final `0.3.8`
+  release. Generated install examples now target `0.3.8`; copyable Action
+  examples remain pinned to the immutable `0.3.7` release under the
+  post-release refresh contract.
 - Made required workflow-command matching parse and normalize native
   `agent-guard` options, rejecting duplicate or meaning-changing overrides.
 - Bound generated drift baselines directly to the pull-request base SHA or the
   push event's previous SHA, so shell-variable reassignment and push
   self-comparison cannot satisfy the required-command contract. Generated
-  installs remain pinned to public `0.3.7`; cross-invocation conflict detection
-  therefore remains gated on the next published package pin.
+  installs now target `0.3.8`, making the bound baseline behavior available to
+  generated workflows from this release.
 - Isolated surface and drift Git inspection behind the bounded Git runner and
   applied file, count, byte, output, and deadline budgets to repository
   inventory, YAML loading, and surface materialization.

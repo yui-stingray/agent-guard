@@ -885,11 +885,11 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "trap 'rm -rf -- \"$verify_dir\"' EXIT" in readme
     assert 'python - "$verify_dir"' in readme
     assert (
-        'gh attestation verify "$verify_dir/yui_agent_guard-0.3.7-py3-none-any.whl"'
+        'gh attestation verify "$verify_dir/yui_agent_guard-0.3.8-py3-none-any.whl"'
         in readme
     )
-    assert 'gh attestation verify "$verify_dir/yui_agent_guard-0.3.7.tar.gz"' in readme
-    assert "--source-ref refs/tags/v0.3.7\n)\n```" in readme
+    assert 'gh attestation verify "$verify_dir/yui_agent_guard-0.3.8.tar.gz"' in readme
+    assert "--source-ref refs/tags/v0.3.8\n)\n```" in readme
     assert "https://pypi.org/pypi/yui-agent-guard/" in readme
     assert 'f"yui_agent_guard-{version}-py3-none-any.whl": "bdist_wheel"' in readme
     assert 'f"yui_agent_guard-{version}.tar.gz": "sdist"' in readme
@@ -925,7 +925,7 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "target / filename" in readme
     assert 'python -m pip download --no-deps "yui-agent-guard==' not in readme
     assert "--signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml" in readme
-    assert "--source-ref refs/tags/v0.3.7" in readme
+    assert "--source-ref refs/tags/v0.3.8" in readme
     assert "version tag triggers" in readme
     assert "annotated tag triggers" not in readme
     assert "proof of code correctness" in readme
