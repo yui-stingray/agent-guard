@@ -35,6 +35,7 @@ def _open_temp_file(
     directory: Path | int,
     *,
     use_dir_fd: bool,
+    creation_mode: int = 0o600,
 ) -> tuple[int, str | Path]:
     flags = (
         os.O_WRONLY
@@ -50,9 +51,9 @@ def _open_temp_file(
         target: str | Path = name if use_dir_fd else Path(directory) / name
         try:
             file_fd = (
-                os.open(name, flags, 0o600, dir_fd=directory)
+                os.open(name, flags, creation_mode, dir_fd=directory)
                 if use_dir_fd
-                else os.open(target, flags, 0o600)
+                else os.open(target, flags, creation_mode)
             )
         except FileExistsError:
             continue
@@ -71,11 +72,16 @@ def _write_in_posix_directory(
     file_fd: int | None = None
     temp_name: str | None = None
     try:
-        file_fd, raw_temp_name = _open_temp_file(directory_fd, use_dir_fd=True)
+        file_fd, raw_temp_name = _open_temp_file(
+            directory_fd,
+            use_dir_fd=True,
+            creation_mode=0o666,
+        )
         temp_name = str(raw_temp_name)
-        _write_all(file_fd, data)
-        os.fsync(file_fd)
         opened = os.fstat(file_fd)
+        creation_mode = stat.S_IMODE(opened.st_mode)
+        os.fchmod(file_fd, 0o600)
+        _write_all(file_fd, data)
         staged = os.stat(
             temp_name,
             dir_fd=directory_fd,
@@ -86,6 +92,22 @@ def _write_in_posix_directory(
             or (staged.st_dev, staged.st_ino) != (opened.st_dev, opened.st_ino)
         ):
             raise OSError
+        try:
+            existing = os.stat(
+                final_name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            output_mode = creation_mode
+        else:
+            output_mode = (
+                stat.S_IMODE(existing.st_mode)
+                if stat.S_ISREG(existing.st_mode)
+                else creation_mode
+            )
+        os.fchmod(file_fd, output_mode)
+        os.fsync(file_fd)
         os.replace(
             temp_name,
             final_name,

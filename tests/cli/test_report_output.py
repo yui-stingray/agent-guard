@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -568,6 +569,31 @@ def test_report_output_rejects_replaced_temp_entry(
 
     assert output.read_text(encoding="utf-8") == "attacker\n"
     assert displaced.read_text(encoding="utf-8") == "public\n"
+
+
+def test_report_output_preserves_existing_regular_file_mode(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    output = root / "report.json"
+    output.write_text("old\n", encoding="utf-8")
+    output.chmod(0o640)
+
+    report_render.emit_report_output("public\n", "report.json", root=root)
+
+    assert stat.S_IMODE(output.stat().st_mode) == 0o640
+
+
+def test_report_output_new_file_honors_process_umask(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    output = root / "report.json"
+    previous_umask = os.umask(0o027)
+    try:
+        report_render.emit_report_output("public\n", "report.json", root=root)
+    finally:
+        os.umask(previous_umask)
+
+    assert stat.S_IMODE(output.stat().st_mode) == 0o640
 
 
 def test_report_cli_allows_explicit_absolute_output_outside_root(tmp_path: Path) -> None:
