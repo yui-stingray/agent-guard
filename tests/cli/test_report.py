@@ -234,7 +234,7 @@ def test_report_cli_recommended_preset_defaults_are_root_relative_for_relative_s
         "--format",
         "json",
         "--output",
-        "services/api/.agent-guard/evidence/agent-guard-report.json",
+        ".agent-guard/evidence/agent-guard-report.json",
     )
 
     assert result.returncode == 0, result.stdout

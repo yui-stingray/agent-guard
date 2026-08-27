@@ -273,6 +273,18 @@ runs:
         report_json="${evidence_dir%/}/agent-guard-report.json"
         report_markdown="${evidence_dir%/}/agent-guard-report.md"
         report_sarif="${evidence_dir%/}/agent-guard-results.sarif"
+        case "$report_json" in
+          /*) report_output_json="$report_json" ;;
+          *) report_output_json="${PWD%/}/${report_json#./}" ;;
+        esac
+        case "$report_markdown" in
+          /*) report_output_markdown="$report_markdown" ;;
+          *) report_output_markdown="${PWD%/}/${report_markdown#./}" ;;
+        esac
+        case "$report_sarif" in
+          /*) report_output_sarif="$report_sarif" ;;
+          *) report_output_sarif="${PWD%/}/${report_sarif#./}" ;;
+        esac
         conformance_json="${evidence_dir%/}/agent-guard-conformance.json"
         evidence_pack_json="${evidence_dir%/}/agent-guard-evidence-pack.json"
         surface_inventory_json="${evidence_dir%/}/agent-surface-inventory.json"
@@ -696,7 +708,7 @@ runs:
 
         report_args+=(--conformance-profile "$conformance_profile")
 
-        agent-guard report "${report_args[@]}" --format json --output "$report_json" > /dev/null 2>&1
+        agent-guard report "${report_args[@]}" --format json --output "$report_output_json" > /dev/null 2>&1
         record_status "$?"
 
         agent-guard surface inventory \
@@ -707,15 +719,15 @@ runs:
         validate_raw_result "$?" "$surface_inventory_json"
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_json" --format markdown --output "$report_markdown" > /dev/null 2>&1
+        agent-guard render-report --root "$root" --input "$report_output_json" --format markdown --output "$report_output_markdown" > /dev/null 2>&1
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_json" --format sarif --output "$report_sarif" > /dev/null 2>&1
+        agent-guard render-report --root "$root" --input "$report_output_json" --format sarif --output "$report_output_sarif" > /dev/null 2>&1
         record_status "$?"
 
         agent-guard conformance check \
           --root "$root" \
-          --evidence "$report_json" \
+          --evidence "$report_output_json" \
           --profile "$conformance_profile" \
           --json 2>/dev/null > "$conformance_json"
         validate_raw_result "$?" "$conformance_json"
@@ -723,14 +735,14 @@ runs:
 
         agent-guard evidence-pack manifest \
           --root "$root" \
-          --report "$report_json" \
-          --artifact "$report_json" \
+          --report "$report_output_json" \
+          --artifact "$report_output_json" \
           --json 2>/dev/null > "$evidence_pack_json"
         validate_raw_result "$?" "$evidence_pack_json"
         record_status "$?"
 
         if [ "$github_annotations" = "true" ]; then
-          agent-guard render-report --root "$root" --input "$report_json" --format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"
+          agent-guard render-report --root "$root" --input "$report_output_json" --format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"
           validate_raw_result "$?" "$raw_dir/annotations.txt"
           record_status "$?"
         fi

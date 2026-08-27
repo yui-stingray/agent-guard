@@ -1696,11 +1696,12 @@ def main() -> int:
             "  test:\n"
             "    runs-on: ubuntu-latest\n"
             "    steps:\n"
-            "      - name: Run guard checks\n"
-            "        run: |\n"
-            "          python -m agent_guard.cli context check --root . --policy context-policy.yaml --json\n"
-            "          python -m agent_guard.cli digest check --root . --policy digest-policy.yaml --json\n"
-            "          python -m agent_guard.cli mcp check --root . --json\n",
+            "      - name: Run context guard\n"
+            "        run: python -m agent_guard.cli context check --root . --policy context-policy.yaml --json\n"
+            "      - name: Run digest guard\n"
+            "        run: python -m agent_guard.cli digest check --root . --policy digest-policy.yaml --json\n"
+            "      - name: Run MCP guard\n"
+            "        run: python -m agent_guard.cli mcp check --root . --json\n",
             encoding="utf-8",
         )
         workflow_policy = repo / "workflow-policy.yaml"

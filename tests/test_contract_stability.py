@@ -207,7 +207,14 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.4 - 2026-08-01",
         "## 0.3.3 - 2026-07-27",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Started `0.3.9.dev0` development while generated install and Action examples remain pinned to the published `0.3.8` release.",
+            "- Restricted required workflow-command evidence to dedicated direct commands, rejecting same-step control flow, Python user-site/import resolution changes, and dynamic redirection; generated and self-dogfood policy commands now use dedicated steps.",
+            "- Bound relative report outputs to the selected root and added traversal, linked-ancestor, exclusive regular-temp, and atomic no-follow replacement controls for report and render-report artifacts. Windows replacement remains bound to the open temporary-file and parent-directory handles.",
+            "- Centralized security-sensitive YAML construction and rejected duplicate constructed mapping keys, including equivalent scalar spellings, at every nesting depth while retaining bounded aliases and rejecting merge expansion.",
+        ]
+    )
     assert normalized_candidate == " ".join(
         [
             "- Kept development builds on PEP 440 `0.3.8.dev0` until this final `0.3.8` release. Generated install examples now target `0.3.8`; copyable Action examples remain pinned to the immutable `0.3.7` release under the post-release refresh contract.",

@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Literal, Sequence
 
-import yaml
-
 from .bounded_repo_reader import (
     BoundedRepoContainmentError,
     BoundedRepoFile,
@@ -555,8 +553,7 @@ def load_context_policy(
 ) -> dict[str, object]:
     try:
         loaded = load_bounded_yaml(
-            _read_context_policy_text(path, _input_budget=_input_budget),
-            construct=yaml.safe_load,
+            _read_context_policy_text(path, _input_budget=_input_budget)
         )
         if loaded is None:
             loaded = {}

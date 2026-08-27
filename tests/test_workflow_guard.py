@@ -381,7 +381,7 @@ def test_command_match_accepts_in_segment_redirections(redirection: str) -> None
     assert command_line_matches_required(f"{required} --root . --json {redirection}", required)
 
 
-def test_scan_workflow_policy_ok_with_multiline_run(tmp_path: Path) -> None:
+def test_scan_workflow_policy_ok_with_dedicated_run_steps(tmp_path: Path) -> None:
     write(tmp_path / ".agent-guard" / "context-policy.yaml", "{}\n")
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",
@@ -393,14 +393,18 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     steps:
-      - name: Run CLI smoke tests
+      - name: Keep documentation and heredoc text separate
         run: |
           # documented but ignored
           echo "python -m agent_guard.cli digest check"
           python - <<'PY'
           print("python -m agent_guard.cli path check")
           PY
+      - name: Check context
+        run: |
           python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+      - name: Check paths
+        run: |
           python -m agent_guard.cli path check --root . --policy examples/path-policy.yaml --json
 """,
     )
@@ -866,7 +870,7 @@ def test_command_match_binds_generated_baseline_to_exact_github_event_expression
     assert not command_line_matches_required(reassigned, required)
 
 
-def test_command_match_preserves_closed_subshell_execution_boundary() -> None:
+def test_command_match_rejects_dynamic_redirection_in_closed_subshell() -> None:
     inner = (
         "agent-guard drift check --root . --profile recommended "
         "--schema-version v2 "
@@ -875,7 +879,7 @@ def test_command_match_preserves_closed_subshell_execution_boundary() -> None:
     )
     required = f"( {inner} )"
 
-    assert command_line_matches_required(required, required)
+    assert not command_line_matches_required(required, required)
     assert not command_line_matches_required(inner, required)
     assert not command_line_matches_required(
         required.replace(" --json ", " --base-ref HEAD --json "),
@@ -996,18 +1000,25 @@ def test_scan_does_not_treat_wrapped_argument_text_as_guard_invocation(
     non_execution: str,
 ) -> None:
     required = (
-        "( agent-guard drift check --root . --profile recommended "
+        "agent-guard drift check --root . --profile recommended "
         "--schema-version v2 "
-        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}" )'
+        f'--base-ref "{GITHUB_EVENT_BASE_SHA_EXPRESSION}"'
     )
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",
-        "jobs:\n"
-        "  test:\n"
-        "    steps:\n"
-        "      - run: |\n"
-        f"          {required}\n"
-        f"          {non_execution}\n",
+        yaml.safe_dump(
+            {
+                "jobs": {
+                    "test": {
+                        "steps": [
+                            {"name": "Required drift check", "run": required},
+                            {"name": "Unrelated lookalike", "run": non_execution},
+                        ]
+                    }
+                }
+            },
+            sort_keys=False,
+        ),
     )
     policy = {
         "schema_version": "agent-guard.workflow_policy.v1",
@@ -1242,6 +1253,208 @@ jobs:
 
     assert checked_items == 1
     assert [finding.reason for finding in findings] == ["missing_required_workflow_command"]
+
+
+@pytest.mark.parametrize(
+    ("required", "run"),
+    [
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "hash -p /bin/true agent-guard\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "agent-guard() { return 0; }\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "python -m agent_guard.cli context check --root . --policy context.yaml",
+            "python() { return 0; }\n"
+            "python -m agent_guard.cli context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "PATH=/attacker:$PATH\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "PATH=/attacker:$PATH "
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "exit 0\nagent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "if false; then\n"
+            "  agent-guard context check --root . --policy context.yaml\n"
+            "fi",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "source ./shadow.sh\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            ". ./shadow.sh\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            'eval "$SETUP"\n'
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            "alias agent-guard=true\n"
+            "agent-guard context check --root . --policy context.yaml",
+        ),
+        (
+            "agent-guard context check --root . --policy context.yaml",
+            'agent-guard context check --root . --policy context.yaml > "$TARGET"',
+        ),
+    ],
+)
+def test_scan_workflow_policy_rejects_non_dedicated_or_dynamic_command_evidence(
+    tmp_path: Path,
+    required: str,
+    run: str,
+) -> None:
+    workflow = {
+        "jobs": {
+            "test": {
+                "runs-on": "ubuntu-latest",
+                "steps": [{"run": run}],
+            }
+        }
+    }
+    write(
+        tmp_path / ".github/workflows/ci.yml",
+        yaml.safe_dump(workflow, sort_keys=False),
+    )
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {"id": "context_guard", "command": required},
+                ],
+            }
+        ],
+    }
+
+    findings, checked_items = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("target", "key", "value"),
+    [
+        ("workflow", "env", {"PATH": "/attacker"}),
+        ("job", "env", {"PYTHONPATH": "/attacker"}),
+        ("step", "env", {"PYTHONUSERBASE": "/attacker"}),
+        ("step", "env", {"HOME": "/attacker"}),
+        ("step", "env", {"USERPROFILE": r"C:\\attacker"}),
+        ("step", "env", {"APPDATA": r"C:\\attacker"}),
+        ("step", "env", {"BASH_ENV": "shadow.sh"}),
+        ("workflow", "defaults", {"run": {"working-directory": "nested"}}),
+        ("job", "defaults", {"run": {"working-directory": "nested"}}),
+        ("step", "working-directory", "nested"),
+    ],
+)
+def test_scan_workflow_policy_rejects_declared_resolution_changes(
+    tmp_path: Path,
+    target: str,
+    key: str,
+    value: object,
+) -> None:
+    step: dict[str, object] = {
+        "run": "python -m agent_guard.cli context check --root . --json",
+    }
+    job: dict[str, object] = {
+        "runs-on": "ubuntu-latest",
+        "steps": [step],
+    }
+    workflow: dict[str, object] = {"jobs": {"test": job}}
+    selected = workflow if target == "workflow" else job if target == "job" else step
+    selected[key] = value
+
+    findings, checked_items = scan_required_context_command(tmp_path, workflow)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+@pytest.mark.parametrize("target", ["workflow", "job", "step"])
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "PYTHONCASEOK",
+        "PYTHONNOUSERSITE",
+        "PYTHONPLATLIBDIR",
+        "PYTHONSAFEPATH",
+    ],
+)
+def test_scan_workflow_policy_rejects_python_import_resolution_environment(
+    tmp_path: Path,
+    target: str,
+    variable: str,
+) -> None:
+    step: dict[str, object] = {
+        "run": "python -m agent_guard.cli context check --root . --json",
+    }
+    job: dict[str, object] = {
+        "runs-on": "ubuntu-latest",
+        "steps": [step],
+    }
+    workflow: dict[str, object] = {"jobs": {"test": job}}
+    selected = workflow if target == "workflow" else job if target == "job" else step
+    selected["env"] = {variable: "1"}
+
+    findings, checked_items = scan_required_context_command(tmp_path, workflow)
+
+    assert checked_items == 1
+    assert [finding.reason for finding in findings] == [
+        "missing_required_workflow_command"
+    ]
+
+
+def test_scan_workflow_policy_accepts_dedicated_command_with_static_redirection(
+    tmp_path: Path,
+) -> None:
+    workflow = {
+        "jobs": {
+            "test": {
+                "runs-on": "ubuntu-latest",
+                "steps": [
+                    {
+                        "env": {"REPORT_KIND": "context"},
+                        "run": (
+                            "python -m agent_guard.cli context check --root . "
+                            "--json 2>/dev/null > evidence/context.json"
+                        ),
+                    }
+                ],
+            }
+        }
+    }
+
+    findings, checked_items = scan_required_context_command(tmp_path, workflow)
+
+    assert checked_items == 1
+    assert findings == []
 
 
 @pytest.mark.parametrize(
@@ -1722,12 +1935,26 @@ def test_load_workflow_file_enforces_yaml_budgets_before_construction(
     def unexpected_safe_load(_text: str) -> object:
         raise AssertionError("YAML object construction started before preflight budget check")
 
-    monkeypatch.setattr(workflow_guard.yaml, "safe_load", unexpected_safe_load)
+    monkeypatch.setattr(workflow_guard, "strict_safe_load", unexpected_safe_load)
 
     with pytest.raises(
         ValueError,
         match="^workflow configuration exceeds safety limits$",
     ):
+        workflow_guard.load_workflow_file(raw_workflow, workflow_id="ci_smoke")
+
+
+@pytest.mark.parametrize(
+    "raw_workflow",
+    [
+        b"jobs:\n  test:\n    steps: []\n    steps: []\n",
+        b"jobs:\n  test:\n    1: first\n    01: second\n",
+    ],
+)
+def test_load_workflow_file_rejects_duplicate_constructed_mapping_keys(
+    raw_workflow: bytes,
+) -> None:
+    with pytest.raises(ValueError, match=r"^ci_smoke: workflow YAML is invalid"):
         workflow_guard.load_workflow_file(raw_workflow, workflow_id="ci_smoke")
 
 

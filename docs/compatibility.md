@@ -122,14 +122,20 @@ at 256 KiB, individual policy strings at 4 KiB, and workflow files at 1 MiB.
 Distinct workflow input is capped in aggregate, while duplicate normalized paths
 share one descriptor-bound read and parse without merging their independent
 check identities. YAML aliases, nodes, depth, and the constructed object graph
-are bounded; YAML merge-key expansion is rejected. Jobs, steps, active shell
+are bounded; duplicate constructed mapping keys are rejected at every depth,
+including equivalent scalar spellings, and YAML merge-key expansion is
+rejected. Jobs, steps, active shell
 commands, traversal, comparison work, findings, and serialized finding size also
 have fixed ceilings checked before result construction. The command recognizer
 tracks supported quoting,
 substitutions, arrays, continuations, comments, and here-documents across lines;
-unsupported or unterminated shell structure is a sanitized exit `2`. This is a
-bounded lexical contract, not a complete Bash interpreter or proof of workflow
-exit behavior.
+unsupported or unterminated shell structure is a sanitized exit `2`. Required
+commands count only in dedicated steps with one direct command, static
+redirection targets, no same-step setup/control flow, and no declared
+resolution-sensitive environment or working directory. This is a bounded
+lexical contract, not a complete shell interpreter, proof of host executable
+provenance, or proof of workflow exit behavior; prior-step runner-state changes
+remain outside it.
 
 Git metadata and content-diff commands use bounded output and deadlines in an
 environment that ignores inherited Git routing and global/system configuration,

@@ -7,10 +7,10 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.8` alpha. Package install examples use this release; copyable
-Action examples use the immutable commit for the current published `v0.3.8`
-release under the post-release refresh contract. Vendor-neutral, static-only,
-Python 3.11.4+, with one runtime dependency (`PyYAML`).
+**Status**: source `0.3.9.dev0` development build. Published install and
+copyable Action examples remain pinned to the immutable `0.3.8` release under
+the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -805,6 +805,13 @@ location, and message metadata, but not snippets, raw context text, raw
 workflow commands, raw repository/content/digest hash values, raw evidence
 URLs, secrets, or absolute local paths.
 
+Relative report and render-report output paths are resolved beneath `--root`;
+parent traversal and symlink or Windows reparse-point ancestors are rejected.
+An absolute output path is an explicit trusted destination. Both forms write
+through an exclusive regular temporary file in the validated destination
+directory and atomically replace the final entry without following a final
+symlink.
+
 Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean
 reports are quiet in this format. Annotation titles and messages contain only
@@ -967,10 +974,24 @@ count when its job or step has a recognized literal-false `if`, when job/step
 `continue-on-error` is not absent or explicitly false, or when its effective
 shell is an explicit custom template instead of `bash`, `sh`, `pwsh`,
 `powershell`, or `cmd`.
-Other context- or matrix-dependent `if` expressions are not evaluated. Matching
-also rejects an unconditional same-line `;` tail after a required command while
-retaining simple command-chain matching; it is not a complete shell parser or
-proof that a command runs on every workflow path.
+Other context- or matrix-dependent `if` expressions are not evaluated.
+
+A requirement is satisfied only by a dedicated supported-shell step whose
+active shell body reduces to one direct command. The evidence step cannot also
+contain setup, another active command, a shell list/control operator, a compound
+group, a leading assignment or command wrapper, or a dynamic redirection
+target. Static redirections remain supported. Workflow-, job-, or step-level
+`PATH`, Python/import, shell-startup, loader, or equivalent resolution-sensitive
+environment declarations make the step ineligible. This includes Python
+user-site and import selectors such as `PYTHONUSERBASE`, `PYTHONNOUSERSITE`,
+`PYTHONSAFEPATH`, `PYTHONPLATLIBDIR`, `PYTHONCASEOK`, `HOME`, `USERPROFILE`, and
+`APPDATA`. An effective `working-directory` declaration is also ineligible.
+
+This boundary proves only the checked repository text has that restricted
+static shape. It does not prove which host executable a runner resolves, runner
+integrity, shell startup behavior, mutations persisted by prior steps (including
+`GITHUB_PATH` / `GITHUB_ENV`), or that a context-dependent job or step executes
+on every workflow path.
 Findings include repository-relative paths, rule ids, workflow ids, requirement ids, reasons, and controlled messages; they do not include raw workflow `run` bodies or raw command text.
 
 It returns:

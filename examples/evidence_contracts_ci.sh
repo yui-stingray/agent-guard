@@ -64,6 +64,19 @@ evidence_path() {
   esac
 }
 
+absolute_path() {
+  AGENT_GUARD_PATH_TO_ABSOLUTIZE="$1" \
+    "$python_bin" -I - <<'PY'
+import os
+
+try:
+    path = os.environ["AGENT_GUARD_PATH_TO_ABSOLUTIZE"]
+except KeyError:
+    raise SystemExit(1)
+print(os.path.abspath(path))
+PY
+}
+
 validate_relative_evidence_location() {
   AGENT_GUARD_ROOT_TO_INSPECT="$root" \
     AGENT_GUARD_EVIDENCE_INPUT_TO_INSPECT="$evidence_dir_input" \
@@ -126,7 +139,8 @@ if ! validate_relative_evidence_location; then
 fi
 
 evidence_dir="$(evidence_path "$evidence_dir_input")"
-report_json="${AGENT_GUARD_REPORT_JSON:-$evidence_dir/agent-guard-report.json}"
+report_output="${AGENT_GUARD_REPORT_JSON:-${evidence_dir_input%/}/agent-guard-report.json}"
+report_json="$(absolute_path "$(evidence_path "$report_output")")"
 
 run_agent_guard_report() {
   if run_agent_guard "$@" >/dev/null 2>&1; then
@@ -177,7 +191,7 @@ generate_recommended_report() {
   set -- "$@" \
     --conformance-profile "$conformance_profile" \
     --format json \
-    --output "$report_json"
+    --output "$report_output"
   run_agent_guard_report "$@"
 }
 
@@ -191,12 +205,14 @@ generate_strict_report() {
     --conformance-profile strict \
     --evidence-pack-manifest \
     --format json \
-    --output "$report_json"
+    --output "$report_output"
 }
 
 render_public_artifacts() {
-  markdown="$evidence_dir/agent-guard-report.md"
-  sarif="$evidence_dir/agent-guard-results.sarif"
+  markdown_output="${evidence_dir_input%/}/agent-guard-report.md"
+  sarif_output="${evidence_dir_input%/}/agent-guard-results.sarif"
+  markdown="$(evidence_path "$markdown_output")"
+  sarif="$(evidence_path "$sarif_output")"
   annotations="$evidence_dir/agent-guard-annotations.txt"
   if [ ! -e "$markdown" ] && [ ! -L "$markdown" ]; then
     render_status=0
@@ -204,7 +220,7 @@ render_public_artifacts() {
       --root "$root" \
       --input "$report_json" \
       --format markdown \
-      --output "$markdown" >/dev/null 2>&1 || render_status="$?"
+      --output "$markdown_output" >/dev/null 2>&1 || render_status="$?"
     if [ "$render_status" -ge 2 ] || [ ! -f "$markdown" ] || [ -L "$markdown" ]; then
       public_validation_failed
     fi
@@ -215,7 +231,7 @@ render_public_artifacts() {
       --root "$root" \
       --input "$report_json" \
       --format sarif \
-      --output "$sarif" >/dev/null 2>&1 || render_status="$?"
+      --output "$sarif_output" >/dev/null 2>&1 || render_status="$?"
     if [ "$render_status" -ge 2 ] || [ ! -f "$sarif" ] || [ -L "$sarif" ]; then
       public_validation_failed
     fi

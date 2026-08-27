@@ -84,7 +84,14 @@ def _emit_report_error(
         },
     )
     payload = sanitize_public_mapping(payload)
-    emit_report_output(_render_bounded_report(payload, args.format), args.output)
+    try:
+        emit_report_output(
+            _render_bounded_report(payload, args.format),
+            args.output,
+            root=root,
+        )
+    except ValueError:
+        return 2
     return 2
 
 
@@ -122,6 +129,9 @@ def run_report_render(args: argparse.Namespace) -> int:
             input_arg=input_arg,
             error=ERROR_REPORT_OUTPUT_LIMIT,
         )
-    emit_report_output(rendered, args.output)
+    try:
+        emit_report_output(rendered, args.output, root=root)
+    except ValueError:
+        return 2
     exit_code = payload.get("exit_code", 0)
     return exit_code if isinstance(exit_code, int) and exit_code in {0, 1, 2} else 0

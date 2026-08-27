@@ -317,8 +317,22 @@ def test_mcp_policy_rejects_exactly_one_byte_over_before_yaml(
     def unexpected_safe_load(_text: str) -> object:
         raise AssertionError("oversized MCP policy reached YAML construction")
 
-    monkeypatch.setattr(mcp_guard.yaml, "safe_load", unexpected_safe_load)
+    monkeypatch.setattr(bounded_yaml, "strict_safe_load", unexpected_safe_load)
     with pytest.raises(ValueError, match=f"^{mcp_guard.ERROR_MCP_POLICY_LIMIT}$"):
+        mcp_guard.load_mcp_policy(policy_path)
+
+
+def test_mcp_policy_rejects_duplicate_equivalent_mapping_keys(tmp_path: Path) -> None:
+    policy_path = tmp_path / "mcp-policy.yaml"
+    policy_path.write_text(
+        "schema_version: agent-guard.mcp_policy.v1\n"
+        "policy:\n"
+        "  true: first\n"
+        "  1: second\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=f"^{mcp_guard.ERROR_MCP_POLICY_INVALID}$"):
         mcp_guard.load_mcp_policy(policy_path)
 
 

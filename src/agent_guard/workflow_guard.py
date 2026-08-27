@@ -18,6 +18,7 @@ from typing import Any, Iterator, NoReturn
 
 import yaml
 
+from .bounded_yaml import strict_safe_load
 from .bounded_repo_reader import (
     BoundedRepoLimitError,
     BoundedRepoReadError,
@@ -82,6 +83,49 @@ _AGENT_GUARD_ROUTE_PYTHON_EXECUTABLE_RE = re.compile(
     r"python(?:3(?:\.\d+)?)?(?:\.exe)?\Z"
 )
 _SHELL_ENV_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
+_RESOLUTION_SENSITIVE_ENVIRONMENT = frozenset(
+    {
+        "BASH_ENV",
+        "BASHOPTS",
+        "APPDATA",
+        "CDPATH",
+        "COMSPEC",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "ENV",
+        "GITHUB_ENV",
+        "GITHUB_PATH",
+        "HOME",
+        "IFS",
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "PATH",
+        "PATHEXT",
+        "PSMODULEPATH",
+        "PYTHONHOME",
+        "PYTHONCASEOK",
+        "PYTHONNOUSERSITE",
+        "PYTHONPATH",
+        "PYTHONPLATLIBDIR",
+        "PYTHONSAFEPATH",
+        "PYTHONUSERBASE",
+        "SHELLOPTS",
+        "USERPROFILE",
+    }
+)
+_INDIRECT_COMMAND_PREFIXES = frozenset(
+    {
+        ".",
+        "builtin",
+        "command",
+        "env",
+        "eval",
+        "exec",
+        "function",
+        "hash",
+        "source",
+    }
+)
 _PYTHON_ROUTE_NO_ARGUMENT_OPTIONS = frozenset(
     {
         "-b",
@@ -206,6 +250,7 @@ class WorkflowRunLine:
     step_name: str
     command: str
     shell: str | None = None
+    evidence_eligible: bool = False
 
 
 @dataclass(frozen=True)
@@ -449,7 +494,7 @@ def _parse_bounded_yaml(raw: bytes) -> Any:
     text = raw.decode("utf-8")
     try:
         _preflight_yaml_events(text)
-        loaded = yaml.safe_load(text)
+        loaded = strict_safe_load(text)
     except _WorkflowConfigurationLimit:
         raise
     except (OverflowError, RecursionError, ValueError):
@@ -1213,6 +1258,7 @@ def collect_run_lines(
         _raise_configuration_limit()
 
     workflow_shell = _default_run_shell(workflow, inherited=_DEFAULT_WORKFLOW_SHELL)
+    workflow_evidence_context = _scope_preserves_command_resolution(workflow)
     lines: list[WorkflowRunLine] = []
     for raw_job_id, raw_job in raw_jobs.items():
         _consume_scan_budget(budget, field_name="jobs", limit=MAX_WORKFLOW_JOBS)
@@ -1227,6 +1273,10 @@ def collect_run_lines(
         job_name = str(raw_job.get("name", "")).strip()
         job_eligible = not _condition_is_statically_false(raw_job) and not (
             _continue_on_error_may_mask(raw_job)
+        )
+        job_evidence_context = (
+            workflow_evidence_context
+            and _scope_preserves_command_resolution(raw_job)
         )
         job_shell = _default_run_shell(raw_job, inherited=workflow_shell)
         raw_steps = raw_job.get("steps", [])
@@ -1246,6 +1296,7 @@ def collect_run_lines(
                 lines=lines,
                 budget=budget,
                 execution_eligible=job_eligible,
+                evidence_context_eligible=job_evidence_context,
                 default_shell=job_shell,
             )
     return lines
@@ -1270,6 +1321,7 @@ def collect_step_run_lines(
         lines=lines,
         budget=_WorkflowScanBudget(),
         execution_eligible=True,
+        evidence_context_eligible=True,
         default_shell=_DEFAULT_WORKFLOW_SHELL,
     )
     return lines
@@ -1285,10 +1337,13 @@ def _collect_step_run_lines_iterative(
     lines: list[WorkflowRunLine],
     budget: _WorkflowScanBudget,
     execution_eligible: bool,
+    evidence_context_eligible: bool,
     default_shell: object,
 ) -> None:
     active: set[int] = set()
-    stack: list[tuple[int, Iterator[tuple[int, Any]], int, bool, object]] = []
+    stack: list[
+        tuple[int, Iterator[tuple[int, Any]], int, bool, bool, object]
+    ] = []
 
     def enter(
         step: Any,
@@ -1296,6 +1351,7 @@ def _collect_step_run_lines_iterative(
         parallel_depth: int,
         parallel_index: int | None,
         inherited_eligible: bool,
+        inherited_evidence_context: bool,
         inherited_shell: object,
     ) -> None:
         _consume_scan_budget(budget, field_name="steps", limit=MAX_WORKFLOW_STEPS)
@@ -1323,6 +1379,10 @@ def _collect_step_run_lines_iterative(
 
         step_eligible = inherited_eligible and not _condition_is_statically_false(step)
         step_eligible = step_eligible and not _continue_on_error_may_mask(step)
+        step_evidence_context = (
+            inherited_evidence_context
+            and _scope_preserves_command_resolution(step)
+        )
         effective_shell = step.get("shell", inherited_shell)
         run = step.get("run")
         if (
@@ -1331,7 +1391,9 @@ def _collect_step_run_lines_iterative(
             and _shell_can_run_required_command(effective_shell)
         ):
             step_name = str(step.get("name", "")).strip()
-            for command in _iter_active_shell_lines(run):
+            commands = tuple(_iter_active_shell_lines(run))
+            dedicated_step = step_evidence_context and len(commands) == 1
+            for command in commands:
                 _consume_scan_budget(
                     budget,
                     field_name="commands",
@@ -1356,6 +1418,7 @@ def _collect_step_run_lines_iterative(
                             if isinstance(effective_shell, str)
                             else None
                         ),
+                        evidence_eligible=dedicated_step,
                     )
                 )
 
@@ -1375,6 +1438,7 @@ def _collect_step_run_lines_iterative(
                 iter(enumerate(raw_parallel, start=1)),
                 parallel_depth,
                 step_eligible,
+                step_evidence_context,
                 effective_shell,
             )
         )
@@ -1384,6 +1448,7 @@ def _collect_step_run_lines_iterative(
         parallel_depth=0,
         parallel_index=None,
         inherited_eligible=execution_eligible,
+        inherited_evidence_context=evidence_context_eligible,
         inherited_shell=default_shell,
     )
     while stack:
@@ -1392,6 +1457,7 @@ def _collect_step_run_lines_iterative(
             children,
             parallel_depth,
             inherited_eligible,
+            inherited_evidence_context,
             inherited_shell,
         ) = stack[-1]
         try:
@@ -1405,6 +1471,7 @@ def _collect_step_run_lines_iterative(
             parallel_depth=parallel_depth + 1,
             parallel_index=parallel_index,
             inherited_eligible=inherited_eligible,
+            inherited_evidence_context=inherited_evidence_context,
             inherited_shell=inherited_shell,
         )
 
@@ -1466,6 +1533,36 @@ def _shell_can_run_required_command(shell: object) -> bool:
     if shell is _DEFAULT_WORKFLOW_SHELL:
         return True
     return isinstance(shell, str) and shell in _SUPPORTED_WORKFLOW_COMMAND_SHELLS
+
+
+def _scope_preserves_command_resolution(container: dict[str, Any]) -> bool:
+    raw_env = container.get("env")
+    if raw_env is not None:
+        if not isinstance(raw_env, dict):
+            return False
+        for raw_name in raw_env:
+            if not isinstance(raw_name, str):
+                return False
+            name = raw_name.strip().upper()
+            if (
+                name in _RESOLUTION_SENSITIVE_ENVIRONMENT
+                or name.startswith("BASH_FUNC_")
+            ):
+                return False
+
+    if "working-directory" in container:
+        return False
+    defaults = container.get("defaults")
+    if defaults is None:
+        return True
+    if not isinstance(defaults, dict):
+        return False
+    run_defaults = defaults.get("run")
+    if run_defaults is None:
+        return True
+    if not isinstance(run_defaults, dict):
+        return False
+    return "working-directory" not in run_defaults
 
 
 def normalize_command_text(command: str) -> str:
@@ -1842,10 +1939,10 @@ def _static_agent_guard_argv(
             target = _consume_static_agent_guard_word(
                 command,
                 index=index,
-                reject_dynamic=False,
+                reject_dynamic=True,
                 shell=shell,
             )
-            if target is None:
+            if target is None or isinstance(target[0], _DynamicShellScalar):
                 return None
             _, index, _ = target
             continue
@@ -2442,6 +2539,28 @@ def command_line_matches_required(
     return candidate_matched
 
 
+def _is_direct_evidence_command(command: str, *, shell: str | None) -> bool:
+    segments = list(_iter_bounded_command_segments(command))
+    if len(segments) != 1 or segments[0][1] is not None:
+        return False
+    segment = normalize_command_text(segments[0][0])
+    if not segment or segment[0] in {"!", "(", "{", "@"}:
+        return False
+    index = len(command) - len(command.lstrip())
+    first_word = _consume_static_agent_guard_word(
+        command,
+        index=index,
+        reject_dynamic=True,
+        shell=shell,
+    )
+    if first_word is None or isinstance(first_word[0], _DynamicShellScalar):
+        return False
+    value = first_word[0]
+    if _SHELL_ENV_ASSIGNMENT_RE.fullmatch(value):
+        return False
+    return _command_basename(value) not in _INDIRECT_COMMAND_PREFIXES
+
+
 def command_line_conflicts_with_required(
     command_line: str,
     required_command: str,
@@ -2637,6 +2756,11 @@ def scan_workflow_policy(
                     amount=len(line.command) + len(required.command),
                     limit=MAX_WORKFLOW_MATCH_CHARS,
                 )
+                if not line.evidence_eligible or not _is_direct_evidence_command(
+                    line.command,
+                    shell=line.shell,
+                ):
+                    continue
                 line_matches = command_line_matches_required(
                     line.command,
                     required.command,

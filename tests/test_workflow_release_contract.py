@@ -475,13 +475,13 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert 'validate_no_control_chars "surface-delta-base-ref" "$AGENT_GUARD_SURFACE_DELTA_BASE_REF"' in action_script
     assert "agent-guard conformance check" in action_script
     assert (
-        'agent-guard conformance check --root "$root" --evidence "$report_json" '
+        'agent-guard conformance check --root "$root" --evidence "$report_output_json" '
         '--profile "$conformance_profile" --json'
     ) in normalized_action_script
     assert "agent-guard evidence-pack manifest" in action_script
-    assert 'agent-guard render-report --root "$root" --input "$report_json" --format github-annotations' in action_script
+    assert 'agent-guard render-report --root "$root" --input "$report_output_json" --format github-annotations' in action_script
     assert "render_report_output" not in action_script
-    assert '--format sarif --output "$report_sarif"' in action_script
+    assert '--format sarif --output "$report_output_sarif"' in action_script
     assert "agent-guard-results.sarif" in action_script
     rendered_report_lines = [
         line.strip()
@@ -489,7 +489,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
         if line.strip().startswith("agent-guard report")
     ]
     assert rendered_report_lines == [
-        'agent-guard report "${report_args[@]}" --format json --output "$report_json" > /dev/null 2>&1',
+        'agent-guard report "${report_args[@]}" --format json --output "$report_output_json" > /dev/null 2>&1',
     ]
     assert 'agent-guard report "${report_args[@]}" --format github-annotations' not in action_script
     assert 'policy_path()' in action_script

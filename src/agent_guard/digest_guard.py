@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES
 from .bounded_repo_reader import (
     BoundedRepoContainmentError,
@@ -114,7 +112,7 @@ def load_digest_policy(
     except (BoundedRepoContainmentError, BoundedRepoReadError, UnicodeDecodeError):
         raise ValueError(ERROR_DIGEST_POLICY_INVALID) from None
     try:
-        loaded = load_bounded_yaml(text, construct=yaml.safe_load) or {}
+        loaded = load_bounded_yaml(text) or {}
     except BoundedYamlLimitError:
         raise ValueError(ERROR_DIGEST_POLICY_LIMIT) from None
     except BoundedYamlInvalidError:

@@ -10,8 +10,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from .bounded_repo_reader import (
     BoundedRepoContainmentError,
     BoundedRepoFileNotFoundError,
@@ -66,7 +64,7 @@ def load_mcp_policy(
         raise ValueError(ERROR_MCP_POLICY_INVALID) from None
     try:
         text = raw.decode("utf-8")
-        loaded = load_bounded_yaml(text, construct=yaml.safe_load)
+        loaded = load_bounded_yaml(text)
         if loaded is None:
             loaded = {}
         if not isinstance(loaded, dict):

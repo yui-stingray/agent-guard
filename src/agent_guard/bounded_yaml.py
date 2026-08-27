@@ -5,10 +5,12 @@ Why: prevent policy aliases, nesting, and object graphs from exhausting scanners
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from typing import Any, NoReturn
 
 import yaml
+from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode
 
 
 MAX_YAML_ALIASES = 128
@@ -26,6 +28,51 @@ class BoundedYamlInvalidError(Exception):
 
 class BoundedYamlLimitError(Exception):
     """YAML exceeded a construction or traversal safety bound."""
+
+
+class StrictSafeLoader(yaml.SafeLoader):
+    """SafeLoader variant that rejects duplicate constructed mapping keys."""
+
+    def construct_mapping(
+        self,
+        node: yaml.Node,
+        deep: bool = False,
+    ) -> dict[Any, Any]:
+        if not isinstance(node, MappingNode):
+            raise ConstructorError(
+                None,
+                None,
+                "expected a mapping node",
+                node.start_mark,
+            )
+        self.flatten_mapping(node)
+        mapping: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                hash(key)
+            except TypeError:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    "found an unhashable mapping key",
+                    key_node.start_mark,
+                ) from None
+            if key in mapping:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    "found a duplicate mapping key",
+                    key_node.start_mark,
+                )
+            mapping[key] = self.construct_object(value_node, deep=deep)
+        return mapping
+
+
+def strict_safe_load(text: str) -> Any:
+    """Safely construct YAML while rejecting duplicate Python mapping keys."""
+
+    return yaml.load(text, Loader=StrictSafeLoader)
 
 
 def _raise_invalid() -> NoReturn:
@@ -147,14 +194,13 @@ def _validate_object_graph(
 def load_bounded_yaml(
     text: str,
     *,
-    construct: Callable[[str], Any],
     max_expanded_bytes: int | None = None,
 ) -> Any:
-    """Construct YAML only after event bounds, then validate its object graph."""
+    """Strictly construct YAML after event bounds, then validate its graph."""
 
     try:
         _preflight_yaml_events(text)
-        loaded = construct(text)
+        loaded = strict_safe_load(text)
         _validate_object_graph(loaded, max_expanded_bytes=max_expanded_bytes)
     except (BoundedYamlInvalidError, BoundedYamlLimitError):
         raise

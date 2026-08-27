@@ -14,10 +14,18 @@ from agent_guard import __version__ as AGENT_GUARD_VERSION
 from agent_guard.cli import build_parser
 import agent_guard.cli.common as cli_common
 import agent_guard.cli.report as report_cli
+import agent_guard.report_render as report_render
 from agent_guard.context_guard import ContextInventory
 
 from tests.audit_event_helpers import write_audit_event
-from tests.cli.helpers import assert_shared_envelope, create_report_violation_fixture_repo, read_report_fixture, run_cli, write
+from tests.cli.helpers import (
+    assert_shared_envelope,
+    create_report_violation_fixture_repo,
+    read_report_fixture,
+    run_cli,
+    run_cli_from,
+    write,
+)
 
 
 def normalize_report_fixture_output(text: str) -> str:
@@ -362,6 +370,181 @@ def test_report_cli_json_output_writes_file_and_suppresses_stdout(tmp_path: Path
     assert content_marker not in serialized
     assert "snippet" not in serialized
     assert "matched_text" not in serialized
+
+
+def test_report_cli_binds_relative_output_to_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    cwd = tmp_path / "caller"
+    root.mkdir()
+    cwd.mkdir()
+    policy = root / "context-policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+
+    result = run_cli_from(
+        cwd,
+        "report",
+        "--root",
+        str(root),
+        "--context-policy",
+        str(policy),
+        "--format",
+        "json",
+        "--output",
+        "evidence/report.json",
+    )
+
+    assert result.returncode == 0
+    assert (root / "evidence/report.json").is_file()
+    assert not (cwd / "evidence/report.json").exists()
+
+
+def test_report_cli_rejects_relative_output_traversal(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    cwd = tmp_path / "caller"
+    root.mkdir()
+    cwd.mkdir()
+    policy = root / "context-policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+
+    result = run_cli_from(
+        cwd,
+        "report",
+        "--root",
+        str(root),
+        "--context-policy",
+        str(policy),
+        "--format",
+        "json",
+        "--output",
+        "../outside.json",
+    )
+
+    assert result.returncode == 2
+    assert not (tmp_path / "outside.json").exists()
+
+
+def test_report_output_rejects_linked_relative_ancestor(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    linked = root / "evidence"
+    try:
+        linked.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(ValueError, match="^report output path is unsafe$"):
+        report_render.emit_report_output(
+            "public\n",
+            "evidence/report.json",
+            root=root,
+        )
+
+    assert not (outside / "report.json").exists()
+
+
+def test_report_output_atomically_replaces_final_symlink_without_following(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("private\n", encoding="utf-8")
+    output = root / "report.json"
+    try:
+        output.symlink_to(outside)
+    except OSError:
+        pytest.skip("file symlinks are unavailable")
+
+    report_render.emit_report_output("public\n", "report.json", root=root)
+
+    assert not output.is_symlink()
+    assert output.read_text(encoding="utf-8") == "public\n"
+    assert outside.read_text(encoding="utf-8") == "private\n"
+
+
+def test_report_output_absolute_destination_replaces_final_symlink_without_following(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    trusted = tmp_path / "trusted"
+    root.mkdir()
+    trusted.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("private\n", encoding="utf-8")
+    output = trusted / "report.json"
+    try:
+        output.symlink_to(outside)
+    except OSError:
+        pytest.skip("file symlinks are unavailable")
+
+    report_render.emit_report_output("public\n", str(output), root=root)
+
+    assert not output.is_symlink()
+    assert output.read_text(encoding="utf-8") == "public\n"
+    assert outside.read_text(encoding="utf-8") == "private\n"
+
+
+def test_report_output_final_symlink_replacement_race_does_not_follow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("private\n", encoding="utf-8")
+    output = root / "report.json"
+    real_replace = report_render.os.replace
+
+    def race_replace(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        try:
+            output.symlink_to(outside)
+        except OSError:
+            pytest.skip("file symlinks are unavailable")
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(report_render.os, "replace", race_replace)
+
+    report_render.emit_report_output("public\n", "report.json", root=root)
+
+    assert not output.is_symlink()
+    assert output.read_text(encoding="utf-8") == "public\n"
+    assert outside.read_text(encoding="utf-8") == "private\n"
+
+
+def test_report_cli_allows_explicit_absolute_output_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    outside = tmp_path / "trusted" / "report.json"
+    root.mkdir()
+    policy = root / "context-policy.yaml"
+    policy.write_text("{}\n", encoding="utf-8")
+
+    result = run_cli(
+        "report",
+        "--root",
+        str(root),
+        "--context-policy",
+        str(policy),
+        "--format",
+        "json",
+        "--output",
+        str(outside),
+    )
+
+    assert result.returncode == 0
+    assert outside.is_file()
 
 
 def test_report_cli_audit_event_implies_evidence_pack_manifest(tmp_path: Path) -> None:

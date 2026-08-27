@@ -14,6 +14,7 @@ from agent_guard import (
     bounded_repo_reader,
     content_guard,
     evidence_pack,
+    report_render,
     surface_inventory_mcp,
     workflow_guard,
 )
@@ -265,6 +266,39 @@ def test_windows_mcp_launcher_paths_preserve_package_metadata_without_disclosure
 
 
 @WINDOWS_ONLY
+def test_windows_report_output_renames_the_open_temp_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    real_rename = report_render._windows_rename_open_file
+
+    def race_temp_path(
+        file_fd: int,
+        *,
+        directory_handle: int,
+        final_name: str,
+    ) -> None:
+        temp_path = next(repo.glob(".agent-guard-*.tmp"))
+        displaced = repo / "displaced.tmp"
+        os.replace(temp_path, displaced)
+        temp_path.write_text("attacker\n", encoding="utf-8")
+        real_rename(
+            file_fd,
+            directory_handle=directory_handle,
+            final_name=final_name,
+        )
+
+    monkeypatch.setattr(report_render, "_windows_rename_open_file", race_temp_path)
+
+    report_render.emit_report_output("public\n", "report.txt", root=repo)
+
+    assert (repo / "report.txt").read_text(encoding="utf-8") == "public\n"
+    assert next(repo.glob(".agent-guard-*.tmp")).read_text(encoding="utf-8") == "attacker\n"
+
+
+@WINDOWS_ONLY
 def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     outside = tmp_path / "outside"
@@ -301,6 +335,13 @@ def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> N
                 event_profile=AUDIT_EVENT_PROFILE,
                 repo_root=repo,
             )
+        with pytest.raises(ValueError, match="^report output path is unsafe$"):
+            report_render.emit_report_output(
+                "public\n",
+                "linked/report.txt",
+                root=repo,
+            )
+        assert not (outside / "report.txt").exists()
 
         # The final-handle check also rejects an already-external path passed
         # directly to the opener, independently of caller-side resolution.
