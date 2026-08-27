@@ -982,7 +982,8 @@ contain setup, another active command, a shell list/control operator, a compound
 group, a leading assignment or command wrapper, or a dynamic redirection
 target. Static redirections remain supported. Workflow-, job-, or step-level
 `PATH`, Python/import, shell-startup, loader, or equivalent resolution-sensitive
-environment declarations make the step ineligible. This includes Python
+environment declarations, including job-container environment declarations,
+make the step ineligible. This includes Python
 user-site and import selectors such as `PYTHONUSERBASE`, `PYTHONNOUSERSITE`,
 `PYTHONSAFEPATH`, `PYTHONPLATLIBDIR`, `PYTHONCASEOK`, `HOME`, `USERPROFILE`, and
 `APPDATA`. An effective `working-directory` declaration is also ineligible.

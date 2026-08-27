@@ -10,8 +10,9 @@ Why: keep static guard releases auditable while the package is still alpha.
   remain pinned to the published `0.3.8` release.
 - Restricted required workflow-command evidence to dedicated direct commands,
   rejecting same-step control flow, Python user-site/import resolution changes,
-  and dynamic redirection; generated and self-dogfood policy commands now use
-  dedicated steps.
+  job-container resolution-sensitive environment changes, and dynamic
+  redirection; generated and self-dogfood policy commands now use dedicated
+  steps.
 - Bound relative report outputs to the selected root and added traversal,
   linked-ancestor, exclusive regular-temp, and atomic no-follow replacement
   controls for report and render-report artifacts. Windows replacement remains

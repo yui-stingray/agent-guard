@@ -1536,8 +1536,7 @@ def _shell_can_run_required_command(shell: object) -> bool:
     return isinstance(shell, str) and shell in _SUPPORTED_WORKFLOW_COMMAND_SHELLS
 
 
-def _scope_preserves_command_resolution(container: dict[str, Any]) -> bool:
-    raw_env = container.get("env")
+def _environment_preserves_command_resolution(raw_env: object) -> bool:
     if raw_env is not None:
         if not isinstance(raw_env, dict):
             return False
@@ -1550,6 +1549,28 @@ def _scope_preserves_command_resolution(container: dict[str, Any]) -> bool:
                 or name.startswith("BASH_FUNC_")
             ):
                 return False
+    return True
+
+
+def _scope_preserves_command_resolution(container: dict[str, Any]) -> bool:
+    if not _environment_preserves_command_resolution(container.get("env")):
+        return False
+
+    raw_job_container = container.get("container")
+    if raw_job_container is not None:
+        if isinstance(raw_job_container, str):
+            if not raw_job_container.strip():
+                return False
+        elif isinstance(raw_job_container, dict):
+            image = raw_job_container.get("image")
+            if not isinstance(image, str) or not image.strip():
+                return False
+            if not _environment_preserves_command_resolution(
+                raw_job_container.get("env")
+            ):
+                return False
+        else:
+            return False
 
     if "working-directory" in container:
         return False
