@@ -162,6 +162,9 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.8 - 2026-08-27", maxsplit=1
+    )[0]
+    candidate_release = changelog.split("## 0.3.8 - 2026-08-27", maxsplit=1)[1].split(
         "## 0.3.7 - 2026-08-24", maxsplit=1
     )[0]
     newest_release = changelog.split("## 0.3.7 - 2026-08-24", maxsplit=1)[1].split(
@@ -191,23 +194,25 @@ def test_changelog_records_latest_release_entry() -> None:
     normalized_older = " ".join(older_release.split())
     normalized_oldest = " ".join(oldest_release.split())
     normalized_legacy = " ".join(legacy_release.split())
+    normalized_candidate = " ".join(candidate_release.split())
     normalized_newest = " ".join(newest_release.split())
     normalized_unreleased = " ".join(unreleased.split())
 
     assert headings[:7] == [
         "## Unreleased",
+        "## 0.3.8 - 2026-08-27",
         "## 0.3.7 - 2026-08-24",
         "## 0.3.6 - 2026-08-23",
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
         "## 0.3.3 - 2026-07-27",
-        "## 0.3.2 - 2026-07-19",
     ]
-    assert normalized_unreleased == " ".join(
+    assert normalized_unreleased == ""
+    assert normalized_candidate == " ".join(
         [
-            "- Started `0.3.8.dev0` development while generated install and Action examples remain pinned to the published `0.3.7` release.",
+            "- Kept development builds on PEP 440 `0.3.8.dev0` until this final `0.3.8` release. Generated install examples now target `0.3.8`; copyable Action examples remain pinned to the immutable `0.3.7` release under the post-release refresh contract.",
             "- Made required workflow-command matching parse and normalize native `agent-guard` options, rejecting duplicate or meaning-changing overrides.",
-            "- Bound generated drift baselines directly to the pull-request base SHA or the push event's previous SHA, so shell-variable reassignment and push self-comparison cannot satisfy the required-command contract. Generated installs remain pinned to public `0.3.7`; cross-invocation conflict detection therefore remains gated on the next published package pin.",
+            "- Bound generated drift baselines directly to the pull-request base SHA or the push event's previous SHA, so shell-variable reassignment and push self-comparison cannot satisfy the required-command contract. Generated installs now target `0.3.8`, making the bound baseline behavior available to generated workflows from this release.",
             "- Isolated surface and drift Git inspection behind the bounded Git runner and applied file, count, byte, output, and deadline budgets to repository inventory, YAML loading, and surface materialization.",
             "- Removed self-authorizing inline context/content suppressions and bounded YAML alias expansion before policy normalization.",
             "- Bound evidence gate status and counts to their canonical component sections, and applied bounded JSON parsing, structural limits, finite-number checks, and public-output budgets to consumer and transform entry points.",

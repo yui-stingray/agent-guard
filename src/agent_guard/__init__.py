@@ -32,4 +32,4 @@ __all__ = [
     "WorkflowGuardFinding",
 ]
 
-__version__ = "0.3.8.dev0"
+__version__ = "0.3.8"

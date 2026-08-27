@@ -42,8 +42,7 @@ SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.7"
 ACTION_RELEASE_COMMIT = "67d8828ccf5b199d0cf9e99007de53436ac47f7a"
-PACKAGE_RELEASE_VERSION = "0.3.7"
-SOURCE_PACKAGE_VERSION = "0.3.8.dev0"
+PACKAGE_RELEASE_VERSION = "0.3.8"
 
 
 def pyproject_version() -> str:
@@ -51,24 +50,23 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_source_and_published_package_identity() -> None:
+def test_readme_matches_release_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == SOURCE_PACKAGE_VERSION
-    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
-    assert "examples remain pinned to the immutable `0.3.7` release" in readme
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    release_notes = changelog.split("## 0.3.7 - 2026-08-24", maxsplit=1)[1].split(
-        "## 0.3.6 - 2026-08-23", maxsplit=1
+    release_notes = changelog.split("## 0.3.8 - 2026-08-27", maxsplit=1)[1].split(
+        "## 0.3.7 - 2026-08-24", maxsplit=1
     )[0]
 
-    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
-    assert "PyPI-specific long description" in release_notes
-    assert "self-Action pin" in release_notes
+    assert "required workflow-command matching" in release_notes
+    assert "bounded JSON parsing" in release_notes
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
@@ -331,8 +329,8 @@ def test_evidence_sample_uses_the_tracked_release_tree_path_count() -> None:
     payload = json.loads(EVIDENCE_SAMPLE_REPORT.read_text(encoding="utf-8"))
 
     # Measured by regenerating the sample in a tracked-only temporary worktree.
-    assert payload["path"]["checked_count"] == 328
-    assert payload["summary"]["path_checked_count"] == 328
+    assert payload["path"]["checked_count"] == 332
+    assert payload["summary"]["path_checked_count"] == 332
 
 
 def test_evidence_sample_only_describes_committed_evidence_artifacts() -> None:
@@ -367,6 +365,7 @@ def test_onboarding_commands_pin_the_published_package_version() -> None:
     assert consumer_contracts.count(
         f"python -m pip install yui-agent-guard=={version}"
     ) == 2
+    assert f"published `{version}`" not in consumer_contracts
     assert re.search(r"pip install yui-agent-guard(?:\s|$)", consumer_contracts) is None
 
     bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
