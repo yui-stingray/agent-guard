@@ -354,11 +354,17 @@ def _windows_rename_open_file(
     import msvcrt
     from ctypes import wintypes
 
+    class IoStatusBlock(ctypes.Structure):
+        _fields_ = [
+            ("Status", ctypes.c_ssize_t),
+            ("Information", ctypes.c_size_t),
+        ]
+
     class FileRenameInfo(ctypes.Structure):
         _fields_ = [
             ("ReplaceIfExists", wintypes.BOOLEAN),
             ("RootDirectory", wintypes.HANDLE),
-            ("FileNameLength", wintypes.DWORD),
+            ("FileNameLength", wintypes.ULONG),
             ("FileName", wintypes.WCHAR * 1),
         ]
 
@@ -371,20 +377,25 @@ def _windows_rename_open_file(
     info.FileNameLength = len(encoded_name)
     ctypes.memmove(ctypes.addressof(buffer) + offset, encoded_name, len(encoded_name))
 
-    set_info = ctypes.WinDLL("kernel32", use_last_error=True).SetFileInformationByHandle
+    # The native information class preserves the opened parent-directory binding.
+    set_info = ctypes.WinDLL("ntdll").NtSetInformationFile
     set_info.argtypes = [
         wintypes.HANDLE,
-        ctypes.c_int,
+        ctypes.POINTER(IoStatusBlock),
         wintypes.LPVOID,
-        wintypes.DWORD,
+        wintypes.ULONG,
+        ctypes.c_int,
     ]
-    set_info.restype = wintypes.BOOL
-    if not set_info(
+    set_info.restype = ctypes.c_long
+    io_status = IoStatusBlock()
+    status = set_info(
         msvcrt.get_osfhandle(file_fd),
-        3,  # FileRenameInfo
-        ctypes.byref(buffer),
+        ctypes.byref(io_status),
+        buffer,
         len(buffer),
-    ):
+        10,  # FileRenameInformation
+    )
+    if status < 0:
         raise OSError
 
 
