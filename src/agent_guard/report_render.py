@@ -75,12 +75,33 @@ def _write_in_posix_directory(
         temp_name = str(raw_temp_name)
         _write_all(file_fd, data)
         os.fsync(file_fd)
+        opened = os.fstat(file_fd)
+        staged = os.stat(
+            temp_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISREG(staged.st_mode)
+            or (staged.st_dev, staged.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise OSError
         os.replace(
             temp_name,
             final_name,
             src_dir_fd=directory_fd,
             dst_dir_fd=directory_fd,
         )
+        installed = os.stat(
+            final_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISREG(installed.st_mode)
+            or (installed.st_dev, installed.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise OSError
         temp_name = None
     except (OSError, TypeError, ValueError):
         _raise_output_path_error()

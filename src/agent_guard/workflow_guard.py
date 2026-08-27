@@ -98,6 +98,7 @@ _RESOLUTION_SENSITIVE_ENVIRONMENT = frozenset(
         "HOME",
         "IFS",
         "LD_LIBRARY_PATH",
+        "LD_AUDIT",
         "LD_PRELOAD",
         "PATH",
         "PATHEXT",

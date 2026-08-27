@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -522,6 +523,51 @@ def test_report_output_final_symlink_replacement_race_does_not_follow(
     assert not output.is_symlink()
     assert output.read_text(encoding="utf-8") == "public\n"
     assert outside.read_text(encoding="utf-8") == "private\n"
+
+
+def test_report_output_rejects_replaced_temp_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    output = root / "report.json"
+    displaced = root / "displaced.tmp"
+    real_replace = report_render.os.replace
+
+    def race_replace(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is not None
+        os.rename(source, displaced.name, src_dir_fd=src_dir_fd, dst_dir_fd=src_dir_fd)
+        attacker_fd = os.open(
+            source,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=src_dir_fd,
+        )
+        try:
+            os.write(attacker_fd, b"attacker\n")
+        finally:
+            os.close(attacker_fd)
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(report_render.os, "replace", race_replace)
+
+    with pytest.raises(ValueError, match="^report output path is unsafe$"):
+        report_render.emit_report_output("public\n", "report.json", root=root)
+
+    assert output.read_text(encoding="utf-8") == "attacker\n"
+    assert displaced.read_text(encoding="utf-8") == "public\n"
 
 
 def test_report_cli_allows_explicit_absolute_output_outside_root(tmp_path: Path) -> None:
