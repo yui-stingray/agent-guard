@@ -41,7 +41,7 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-guard-evidence-pack.json",
     "agent-surface-inventory.json",
 )
-TOOLKIT_COMPATIBILITY_COMMIT = "e78944091264fd927e7c0fe6fae7bc4eb3de2ec0"
+TOOLKIT_COMPATIBILITY_COMMIT = "8ea48dc9926c55ac70af7a623c3ebcd8b35178c9"
 APPROVED_ACTION_PIP_COMMANDS = (
     'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"',
     'python -I -m pip install "$GITHUB_ACTION_PATH"',
