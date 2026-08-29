@@ -6,7 +6,7 @@ Use Python 3.11.4+ as the `agent-guard` tool interpreter. In the POSIX examples,
 > **Version gate:** package install examples use `0.3.9`, including bound
 > audit-event report/manifest v2 and the `agent-guard.public_agent_policy_audit_event.v1`
 > profile. Copyable Action examples use the immutable commit for the current
-> published `v0.3.8` release.
+> published `v0.3.9` release.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
 > Package `0.3.9` requires consumer `--repo-root` for bound v2 evidence.
 
@@ -222,7 +222,7 @@ jobs:
             fail_preflight
           fi
       - id: agent-guard
-        uses: yui-stingray/agent-guard@3d8c99ee502b914ccc3d605ad469d96b098d6212 # v0.3.8
+        uses: yui-stingray/agent-guard@9c4680f0a2da01505bb12782b8b720c29e3dee43 # v0.3.9
         timeout-minutes: 1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: >-
@@ -241,7 +241,7 @@ jobs:
           if-no-files-found: error
 ```
 
-Keep the pull-request preflight before the current published `v0.3.8` Action
+Keep the pull-request preflight before the current published `v0.3.9` Action
 and keep the one-minute step limit. The preflight uses the same `root` and
 `context-policy` values as the Action, emits no diff or path value, and refuses
 symlinked or pull-request-modified policy files. Review and merge such a policy
