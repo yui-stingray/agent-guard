@@ -211,7 +211,12 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Started `0.3.10.dev0` development while generated install and Action examples remain pinned to the published `0.3.9` release.",
+            "- Tightened the public v2 digest grammar to canonical unpadded base32 and kept producer redaction aligned with the consumer's controlled private-key-header rejection contract.",
+        ]
+    )
     assert normalized_current == " ".join(
         [
             "- Kept development builds on PEP 440 `0.3.9.dev0` until this final `0.3.9` release. Generated install examples now target `0.3.9`; copyable Action examples remain pinned to the immutable `0.3.8` release under the post-release refresh contract.",

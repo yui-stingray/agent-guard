@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yui-agent-guard"
-version = "0.3.9"
+version = "0.3.10.dev0"
 description = "Static repository guardrails for agent-touched codebases."
 readme = "README.pypi.md"
 requires-python = ">=3.11.4"

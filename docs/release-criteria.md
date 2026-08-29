@@ -1,5 +1,10 @@
 # Release Criteria
 
+Operational exceptions, mispublication response, yanking, immutable-tag handling,
+and toolkit follow-up are governed by
+[`operations-governance.md`](operations-governance.md). A release checklist does
+not authorize bypassing required CI or publishing from a moved tag.
+
 `agent-guard` is still `0.x` alpha. When feature releases are allowed, they
 should stay small, batched, and evidence driven. The default is to protect
 schema/contract stability rather than publish every isolated change immediately.

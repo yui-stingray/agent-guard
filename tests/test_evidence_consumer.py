@@ -781,6 +781,36 @@ def test_current_consumer_rejects_non_event_json_with_recognized_profile(
     assert str(event) not in str(exc_info.value)
 
 
+def test_current_consumer_rejects_noncanonical_binding_digest_tail_without_leak(
+    tmp_path: Path,
+) -> None:
+    event = tmp_path / "synthetic-reviewed-event.json"
+    write_audit_event(event)
+    payload = _bound_v2_report(event)
+    noncanonical_digest = "b" + ("a" * 51) + "b"
+    binding = payload["evidence_pack_manifest"]["artifacts"][-1]["content_binding"]
+    assert isinstance(binding, dict)
+    binding["digest"] = noncanonical_digest
+
+    with pytest.raises(ValueError) as schema_exc_info:
+        validate_report(payload, select_report_schema(payload))
+
+    assert noncanonical_digest not in str(schema_exc_info.value)
+
+    permissive_schema = json.loads(json.dumps(select_report_schema(payload)))
+    digest_schema = permissive_schema["properties"]["evidence_pack_manifest"][
+        "properties"
+    ]["artifacts"]["items"]["properties"]["content_binding"]["properties"]["digest"]
+    digest_schema.pop("pattern")
+    with pytest.raises(
+        ValueError,
+        match=r"content_binding is invalid$",
+    ) as runtime_exc_info:
+        validate_report(payload, permissive_schema)
+
+    assert noncanonical_digest not in str(runtime_exc_info.value)
+
+
 def test_bound_v2_verification_failures_are_sanitized(tmp_path: Path) -> None:
     event_marker = "synthetic-event-body-marker"
     event = tmp_path / "synthetic-sensitive-event-name.json"

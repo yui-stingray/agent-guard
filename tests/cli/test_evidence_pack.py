@@ -588,6 +588,37 @@ def test_audit_event_binding_is_canonical_and_detects_content_change(tmp_path: P
     assert changed["digest"] != first["digest"]
 
 
+def test_audit_event_binding_shape_requires_canonical_base32_tail() -> None:
+    binding = {
+        "schema_version": "agent-guard.agent_policy_audit_event_binding.v1",
+        "event_profile": AUDIT_EVENT_PROFILE,
+        "canonicalization": "canonical-json-v1",
+        "digest_algorithm": "sha256",
+        "digest_encoding": "base32-lower-no-padding",
+        "digest": "",
+    }
+    for digest in (
+        "b" + ("a" * 52),
+        "b" + ("a" * 51) + "q",
+    ):
+        parsed = evidence_pack.validate_agent_policy_audit_event_binding_shape(
+            binding | {"digest": digest}
+        )
+
+        assert parsed["digest"] == digest
+
+    noncanonical_digest = "b" + ("a" * 51) + "b"
+    with pytest.raises(
+        ValueError,
+        match="^agent-policy audit event is not valid bounded JSON$",
+    ) as exc_info:
+        evidence_pack.validate_agent_policy_audit_event_binding_shape(
+            binding | {"digest": noncanonical_digest}
+        )
+
+    assert noncanonical_digest not in str(exc_info.value)
+
+
 def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     tmp_path: Path,
 ) -> None:
@@ -615,6 +646,76 @@ def test_audit_event_binding_preserves_distinct_large_number_lexemes(
     )
 
     assert changed["digest"] != first["digest"]
+
+
+def test_audit_event_binding_matches_canonical_json_v1_conformance_vector(
+    tmp_path: Path,
+) -> None:
+    raw = (
+        '{"repo":"repo","context":{"\\ud800\\udc00":"supplementary",'
+        '"z":"last","\\ue000":"bmp","number":1e0,"label":"caf\\u00e9"},'
+        '"decision":{"reason":"repo_policy","mode":"auto_allow",'
+        '"matched_repo":"repo"},"capability":"read","path":"reviewed/event.json"}'
+    ).encode("ascii")
+    expected_canonical = (
+        '{"capability":"read","context":{"label":"caf\u00e9",'
+        '"number":1e0,"z":"last","\ue000":"bmp","\U00010000":"supplementary"},'
+        '"decision":{"matched_repo":"repo","mode":"auto_allow",'
+        '"reason":"repo_policy"},"path":"reviewed/event.json","repo":"repo"}'
+    ).encode("utf-8")
+
+    canonical = evidence_pack._canonical_agent_policy_audit_event(
+        raw,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    literal_unicode = raw.replace(b"caf\\u00e9", "caf\u00e9".encode("utf-8"))
+    assert canonical == expected_canonical
+    assert evidence_pack._canonical_agent_policy_audit_event(
+        literal_unicode,
+        event_profile=AUDIT_EVENT_PROFILE,
+    ) == canonical
+
+    numeric_canonical = [
+        evidence_pack._canonical_agent_policy_audit_event(
+            raw.replace(b"1e0", lexeme),
+            event_profile=AUDIT_EVENT_PROFILE,
+        )
+        for lexeme in (b"1", b"1.0", b"1e0")
+    ]
+    assert all(
+        b'"number":' + lexeme in value
+        for lexeme, value in zip((b"1", b"1.0", b"1e0"), numeric_canonical)
+    )
+    assert len(set(numeric_canonical)) == 3
+
+    event = tmp_path / "canonical-event.json"
+    event.write_bytes(raw)
+    binding = build_agent_policy_audit_event_binding(
+        event,
+        event_profile=AUDIT_EVENT_PROFILE,
+    )
+    assert binding["digest"] == "bty7c5xtdv7sz2efqv6vi3ndzlp7hjyn5dpwdlxo6nh5ghvnf7dfq"
+    assert binding["digest"][-1] in {"a", "q"}
+
+    invalid_path = b"reviewed/" + b"sk-" + (b"x" * 16) + b".json"
+    invalid_events = (
+        raw.replace(b'"repo":"repo"', b'"repo":"repo","repo":"duplicate"', 1),
+        raw.replace(b"1e0", b"NaN"),
+        raw.replace(b"1e0", b"Infinity"),
+        raw.replace(b"1e0", b"-Infinity"),
+        raw.replace(b"reviewed/event.json", invalid_path),
+    )
+    for invalid_event in invalid_events:
+        with pytest.raises(
+            ValueError,
+            match="^agent-policy audit event is not valid bounded JSON$",
+        ) as exc_info:
+            evidence_pack._canonical_agent_policy_audit_event(
+                invalid_event,
+                event_profile=AUDIT_EVENT_PROFILE,
+            )
+
+        assert "sk-" not in str(exc_info.value)
 
 
 @pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
