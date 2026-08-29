@@ -21,7 +21,7 @@
 
 | Repository | Protected default branch基準 | Review candidate実装基準 | 公開基準 | 役割 |
 | --- | --- | --- | --- | --- |
-| [`agent-guard`](https://github.com/yui-stingray/agent-guard) | `5960ba97032399f27cef1f49c96dbcd3477ad97d` | `1f6e7e4d0997436bcafa057ef0842b7aeaf9bbde` | `v0.3.9`、release commit `9c4680f0a2da01505bb12782b8b720c29e3dee43` | 決定論的な静的evidence gate |
+| [`agent-guard`](https://github.com/yui-stingray/agent-guard) | `5960ba97032399f27cef1f49c96dbcd3477ad97d` | `0d55d8dd6bcfd0d0572aef6d8e28beaa1dddf162` | `v0.3.9`、release commit `9c4680f0a2da01505bb12782b8b720c29e3dee43` | 決定論的な静的evidence gate |
 | [`agent-policy`](https://github.com/yui-stingray/agent-policy) | `002570ea8c2a36189c56e186ec2e60e1e49cb85a` | `2b575ba4126cf9029052a3a2fe1fad09738e8bbc` | `v0.1.18` | 任意導入の実行時admission evaluator |
 | [`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example) | `15e44eef41e639190e340b4ffa67a278ba19874b` | `05578477a270c8848e758c80d0bce4ebbab740f9` | Package releaseなし | public-safeな参照統合 |
 
@@ -980,17 +980,17 @@ informativeであり、symbol/schema/check nameをstable anchorとする。
 | Requirement | Normative statement | Repo / baseline commit | Implementation / config anchor | Test / control | CI / live query | Evidence / status | Last verified |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `AG-ECO-REQ-001` | 責務境界を維持 | 3 repo / 1.1節 | 5.1、各README positioning | docs contract tests | 3 required aggregates | Documented | 2026-08-29 |
-| `AG-ECO-REQ-002` | Untrusted inputをbounded処理 | guard / `1f6e7e4` | `bounded_io`、`bounded_yaml`、`bounded_scan`、`bounded_git` | bounded/input/resource test群 | `agent-guard required CI` | Implemented | 2026-08-29 |
-| `AG-ECO-REQ-003` | Evidence保証を限定 | guard / `1f6e7e4` | `docs/threat-model.md`、`docs/evidence-contracts.md` | `tests/test_docs_contract.py` | `agent-guard required CI` | Implemented | 2026-08-29 |
-| `AG-GUARD-REQ-001` | Canonical event binding | guard / `1f6e7e4` | `evidence_pack._canonical_agent_policy_audit_event`、`_AUDIT_EVENT_PROFILE_RE`、`_AUDIT_EVENT_DIGEST_RE`、`SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN`、`public_redaction.SECRET_SHAPED_PUBLIC_TEXT_RE`、両v2 schema | evidence-pack/consumer/schema conformance corpus | `agent-guard required CI` | Implemented; noncanonical final base32 bits fail closed | 2026-08-29 |
-| `AG-GUARD-REQ-002` | Integrityとfreshnessを分離 | guard / `1f6e7e4` | packaged consumer、`examples/evidence_contracts_ci.sh consume` | consumer contract examples | `agent-guard required CI` | Implemented; whole-tree identity out of scope | 2026-08-29 |
-| `AG-GUARD-REQ-003` | Resource ceilings | guard / `1f6e7e4` | 11.3のconstant anchors | bounded/resource one-over tests | `agent-guard required CI` | Implemented | 2026-08-29 |
+| `AG-ECO-REQ-002` | Untrusted inputをbounded処理 | guard / `0d55d8d` | `bounded_io`、`bounded_yaml`、`bounded_scan`、`bounded_git` | bounded/input/resource test群 | `agent-guard required CI` | Implemented | 2026-08-29 |
+| `AG-ECO-REQ-003` | Evidence保証を限定 | guard / `0d55d8d` | `docs/threat-model.md`、`docs/evidence-contracts.md` | `tests/test_docs_contract.py` | `agent-guard required CI` | Implemented | 2026-08-29 |
+| `AG-GUARD-REQ-001` | Canonical event binding | guard / `0d55d8d` | `evidence_pack._canonical_agent_policy_audit_event`、`_AUDIT_EVENT_PROFILE_RE`、`_AUDIT_EVENT_DIGEST_RE`、`SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN`、`public_redaction.SECRET_SHAPED_PUBLIC_TEXT_RE`、両v2 schema | evidence-pack/consumer/schema conformance corpus | `agent-guard required CI` | Implemented; noncanonical final base32 bits fail closed | 2026-08-29 |
+| `AG-GUARD-REQ-002` | Integrityとfreshnessを分離 | guard / `0d55d8d` | packaged consumer、`examples/evidence_contracts_ci.sh consume` | consumer contract examples | `agent-guard required CI` | Implemented; whole-tree identity out of scope | 2026-08-29 |
+| `AG-GUARD-REQ-003` | Resource ceilings | guard / `0d55d8d` | 11.3のconstant anchors | bounded/resource one-over tests | `agent-guard required CI` | Implemented | 2026-08-29 |
 | `AG-POLICY-REQ-001` | Decision/approvalをoperationへbind | policy / `2b575ba` | `docs/integration-contract.md`; current v1 event is evidence-only | wrapper/hook tests、future approval-envelope conformance | `agent-policy required CI` | Normative integration contract; persisted approval API not implemented | 2026-08-29 |
 | `AG-TOOLKIT-REQ-001` | Crash-consistent publication | toolkit / `0557847` | `scripts/evidence_publication.py` journal/state constants、`docs/evidence-publication-protocol.md` | fault-injection、concurrency、byte-stability/restore-mode tests | `Safety evidence demo` | Implemented/documented for local Linux FS | 2026-08-29 |
-| `AG-ECO-REQ-004` | Candidate wheelを公開前にToolkit検証 | guard `1f6e7e4` / policy `2b575ba` / toolkit `0557847` | candidate compatibility helper + immutable validated artifact handoff + upstream release-contract/release-build steps | candidate wheel smoke、artifact-order contract、Toolkit full gate | 上流required aggregateとrelease build | Implemented in review branches; required CI pending | 2026-08-29 |
+| `AG-ECO-REQ-004` | Candidate wheelを公開前にToolkit検証 | guard `0d55d8d` / policy `2b575ba` / toolkit `0557847` | candidate compatibility helper + immutable validated artifact handoff + upstream release-contract/release-build steps | candidate wheel smoke、artifact-order contract、Toolkit full gate | 上流required aggregateとrelease build | Implemented in review branches; required CI pending | 2026-08-29 |
 | `AG-OPS-REQ-001` | Audited break-glass | 3 repo / live rulesets | 17.1、operations runbook | API before/after comparison | `gh api repos/{owner}/{repo}/rulesets` | No current bypass actors | 2026-08-29 |
 | `AG-OPS-REQ-002` | Yank/rollback/replacement | guard/policy release workflows | 17.2、release criteria、PyPI state checker | release recovery/package tests | PyPI JSON + GitHub release/workflow APIs | Documented; incident-triggered | 2026-08-29 |
-| `AG-OPS-REQ-003` | Demand GO/NO-GO | guard / `1f6e7e4` | `docs/demand-validation.md` | reviewed signal record | GitHub/PyPI aggregate observations | Decision due 2026-09-21 | 2026-08-29 |
+| `AG-OPS-REQ-003` | Demand GO/NO-GO | guard / `0d55d8d` | `docs/demand-validation.md` | reviewed signal record | GitHub/PyPI aggregate observations | Decision due 2026-09-21 | 2026-08-29 |
 
 Exact live ruleset assertions are queried, not inferred from repository YAML:
 
