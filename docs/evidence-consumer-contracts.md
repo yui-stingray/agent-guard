@@ -146,8 +146,14 @@ object member names at any nesting depth before semantic validation. Duplicate
 failures use a stable sanitized error and do not include the member name, value,
 or JSON path. `report --output` and `render-report --output` write UTF-8 bytes
 with LF line endings on every platform for canonical JSON, Markdown, SARIF, and
-GitHub annotations. Bundle validation compares rendered artifacts exactly; it
-does not normalize CRLF or otherwise repair producer drift.
+GitHub annotations. Relative output paths are bound to `--root`; parent
+traversal and symlink or Windows reparse-point ancestors are rejected. Absolute
+output paths are explicit trusted destinations, but their final entry is still
+never followed. Both forms use an exclusive regular temporary file in the
+validated destination directory and atomic replacement, so an existing or
+racing final symlink is replaced as a directory entry rather than followed.
+Bundle validation compares rendered artifacts exactly; it does not normalize
+CRLF or otherwise repair producer drift.
 
 Untrusted report JSON consumed by these validators and transform commands is
 capped at 1 MiB before UTF-8 decoding, then reuses the existing 64-level and
@@ -225,7 +231,7 @@ snapshot. Run it against a quiescent checkout without a concurrent writer.
 ```text
 AGENT_GUARD_ROOT=services/api
 AGENT_GUARD_EVIDENCE_DIR=.agent-guard/evidence
-AGENT_GUARD_REPORT_JSON=services/api/.agent-guard/evidence/agent-guard-report.json
+AGENT_GUARD_REPORT_JSON=.agent-guard/evidence/agent-guard-report.json
 ```
 
 The stale-report check must regenerate evidence with the same selected root,

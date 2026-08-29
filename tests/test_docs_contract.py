@@ -43,6 +43,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.8"
 ACTION_RELEASE_COMMIT = "3d8c99ee502b914ccc3d605ad469d96b098d6212"
 PACKAGE_RELEASE_VERSION = "0.3.8"
+SOURCE_PACKAGE_VERSION = "0.3.9.dev0"
 
 
 def pyproject_version() -> str:
@@ -50,11 +51,12 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_release_package_identity() -> None:
+def test_readme_matches_source_and_published_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
-    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
+    assert "examples remain pinned to the immutable `0.3.8` release" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
@@ -63,7 +65,7 @@ def test_release_identity_contains_the_executable_change_notes() -> None:
         "## 0.3.7 - 2026-08-24", maxsplit=1
     )[0]
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
     assert "required workflow-command matching" in release_notes
     assert "bounded JSON parsing" in release_notes
@@ -826,12 +828,16 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert consumer_environment == {
         "root": "services/api",
         "evidence_dir": ".agent-guard/evidence",
-        "report_json": "services/api/.agent-guard/evidence/agent-guard-report.json",
+        "report_json": ".agent-guard/evidence/agent-guard-report.json",
     }
     resolved_evidence_dir = (
         REPO_ROOT / consumer_environment["root"] / consumer_environment["evidence_dir"]
     ).resolve()
-    assert (REPO_ROOT / consumer_environment["report_json"]).resolve() == (
+    assert (
+        REPO_ROOT
+        / consumer_environment["root"]
+        / consumer_environment["report_json"]
+    ).resolve() == (
         resolved_evidence_dir / "agent-guard-report.json"
     )
 
@@ -899,7 +905,7 @@ def test_existing_repo_quickstart_and_github_docs_are_copyable() -> None:
     assert "selected root" in quickstart
     assert "policy paths relative to that root" in quickstart
     assert "--root services/api" in quickstart
-    assert "--output services/api/.agent-guard/evidence/agent-guard-report.json" in quickstart
+    assert "--output .agent-guard/evidence/agent-guard-report.json" in quickstart
     assert "repo-external policy files do not satisfy recommended or strict" in quickstart_single_line
     assert "Common rule ids map to these first checks" in quickstart
     assert "`mcp_policy_missing`" in quickstart

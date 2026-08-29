@@ -33,13 +33,13 @@ def test_changelog_versions_extract_semver_headings(tmp_path: Path) -> None:
     assert MODULE.changelog_versions(changelog) == ["0.1.1", "0.1.0"]
 
 
-def test_current_project_release_version_has_changelog_entry() -> None:
+def test_current_project_development_version_has_unreleased_changelog_entry() -> None:
     root = Path(__file__).resolve().parents[1]
     version = MODULE.load_project_version(root / "pyproject.toml")
 
-    assert version == "0.3.8"
-    assert MODULE.changelog_heading(version) == "0.3.8"
-    assert MODULE._extract_heading_notes(root / "CHANGELOG.md", version)
+    assert version == "0.3.9.dev0"
+    assert MODULE.changelog_heading(version) == "Unreleased"
+    assert MODULE._extract_heading_notes(root / "CHANGELOG.md", "Unreleased")
 
 
 def test_development_version_maps_to_unreleased_without_becoming_release_heading() -> None:
@@ -47,7 +47,7 @@ def test_development_version_maps_to_unreleased_without_becoming_release_heading
     assert MODULE.changelog_heading("0.3.5") == "0.3.5"
 
 
-def test_release_mode_accepts_current_final_version() -> None:
+def test_release_mode_rejects_current_development_version() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--release"],
@@ -57,19 +57,20 @@ def test_release_mode_accepts_current_final_version() -> None:
         check=False,
     )
 
-    assert result.returncode == 0
-    assert result.stderr == ""
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "requires a final versioned heading for release 0.3.9.dev0" in result.stderr
 
 
 def test_release_notes_include_the_executable_changes() -> None:
     root = Path(__file__).resolve().parents[1]
     version = MODULE.load_project_version(root / "pyproject.toml")
-    notes = MODULE._extract_heading_notes(root / "CHANGELOG.md", version)
+    notes = MODULE._extract_heading_notes(root / "CHANGELOG.md", "Unreleased")
 
-    assert "required workflow-command matching" in notes
-    assert "bounded JSON parsing" in notes
-    assert not MODULE.DEVELOPMENT_VERSION_RE.fullmatch(version)
-    assert version == "0.3.8"
+    assert "dedicated direct commands" in notes
+    assert "constructed mapping keys" in notes
+    assert MODULE.DEVELOPMENT_VERSION_RE.fullmatch(version)
+    assert version == "0.3.9.dev0"
 
 
 def test_extract_release_notes_returns_selected_body(tmp_path: Path) -> None:

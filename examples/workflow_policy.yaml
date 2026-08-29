@@ -13,14 +13,14 @@ workflow_checks:
     path: .github/workflows/ci.yml
     required_commands:
       - id: content_guard
-        command: python -m agent_guard.cli content check
+        command: python -I -m agent_guard.cli content check
       - id: context_guard
-        command: python -m agent_guard.cli context check
+        command: python -I -m agent_guard.cli context check
       - id: context_lock
-        command: python -m agent_guard.cli context lock
+        command: python -I -m agent_guard.cli context lock
       - id: path_guard
-        command: python -m agent_guard.cli path check
+        command: python -I -m agent_guard.cli path check
       - id: digest_guard
-        command: python -m agent_guard.cli digest check
+        command: python -I -m agent_guard.cli digest check
       - id: workflow_guard
-        command: python -m agent_guard.cli workflow check
+        command: python -I -m agent_guard.cli workflow check

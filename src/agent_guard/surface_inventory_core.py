@@ -277,7 +277,7 @@ def rel_path(path: Path, root: Path) -> str:
 
 def parse_agent_guard_command(command: str) -> dict[str, object] | None:
     match = re.search(
-        r"(?:^|\s)(?:python(?:3(?:\.\d+)?)?\s+-m\s+agent_guard\.cli|agent-guard)\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?",
+        r"(?:^|\s)(?:python(?:3(?:\.\d+)?)?\s+(?:-I\s+)?-m\s+agent_guard\.cli|agent-guard)\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?",
         command,
     )
     if not match:

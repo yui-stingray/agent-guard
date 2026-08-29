@@ -229,7 +229,7 @@ jobs:
     steps:
       - name: Run guard checks
         run: |
-          python -m agent_guard.cli context check --root . --policy context_policy.yaml --json
+          python -I -m agent_guard.cli context check --root . --policy context_policy.yaml --json
 """,
     )
     workflow_policy = tmp_path / "workflow_policy.yaml"
@@ -243,7 +243,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
         encoding="utf-8",
     )
 
@@ -265,14 +265,14 @@ jobs:
     assert "| Workflow drift findings | 0 |" in result.stdout
     assert "## Workflow Drift Evidence" in result.stdout
     assert "No workflow drift was detected." in result.stdout
-    assert "python -m agent_guard.cli context check" not in result.stdout
+    assert "python -I -m agent_guard.cli context check" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 def test_report_cli_markdown_workflow_missing_command_is_sanitized(tmp_path: Path) -> None:
     context_policy = tmp_path / "context_policy.yaml"
     context_policy.write_text("{}\n", encoding="utf-8")
     write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
-    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    raw_command = "python -I -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",
         f"""
@@ -297,7 +297,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: digest_guard\n"
-        "        command: python -m agent_guard.cli digest check\n",
+        "        command: python -I -m agent_guard.cli digest check\n",
         encoding="utf-8",
     )
 
@@ -466,7 +466,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
         encoding="utf-8",
     )
 
@@ -489,7 +489,7 @@ jobs:
     assert "| Digest drift findings | 0 |" in result.stdout
     assert "| Workflow checks | 1 |" in result.stdout
     assert "| Workflow drift findings | 1 |" in result.stdout
-    assert "python -m agent_guard.cli context check" not in result.stdout
+    assert "python -I -m agent_guard.cli context check" not in result.stdout
     assert sha256_text(agent_context) not in result.stdout
     assert str(tmp_path) not in result.stdout
 
@@ -537,7 +537,7 @@ def test_report_cli_markdown_all_enabled_evidence_ok(tmp_path: Path) -> None:
         "  test:\n"
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
-        "      - run: python -m agent_guard.cli context check --root . --policy context_policy.yaml --json\n",
+        "      - run: python -I -m agent_guard.cli context check --root . --policy context_policy.yaml --json\n",
     )
     workflow_policy = tmp_path / "workflow_policy.yaml"
     workflow_policy.write_text(
@@ -547,7 +547,7 @@ def test_report_cli_markdown_all_enabled_evidence_ok(tmp_path: Path) -> None:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
         encoding="utf-8",
     )
 
@@ -584,7 +584,7 @@ def test_report_cli_markdown_all_enabled_evidence_ok(tmp_path: Path) -> None:
     assert "## Content Guard Evidence" in result.stdout
     assert "## API Guard Evidence" in result.stdout
     assert "https://example.com" not in result.stdout
-    assert "python -m agent_guard.cli context check" not in result.stdout
+    assert "python -I -m agent_guard.cli context check" not in result.stdout
     assert sha256_text(agent_context) not in result.stdout
     assert str(tmp_path) not in result.stdout
 
@@ -719,7 +719,7 @@ def test_report_cli_github_annotations_static_scanner_violations_are_sanitized(
         encoding="utf-8",
     )
     raw_required_command = (
-        "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+        "python -I -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
     )
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",
@@ -731,7 +731,7 @@ jobs:
     steps:
       - name: Run guard checks
         run: |
-          python -m agent_guard.cli context check --root . --policy context_policy.yaml --json
+          python -I -m agent_guard.cli context check --root . --policy context_policy.yaml --json
 """,
     )
     workflow_policy = tmp_path / "workflow_policy.yaml"

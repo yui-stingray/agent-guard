@@ -6,6 +6,22 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Started `0.3.9.dev0` development while generated install and Action examples
+  remain pinned to the published `0.3.8` release.
+- Restricted required workflow-command evidence to dedicated direct commands,
+  rejecting same-step control flow, Python startup/import resolution changes,
+  job-container declarations, and dynamic redirection; generated and
+  self-dogfood policy commands now use dedicated steps. Python module
+  requirements now also require isolated mode (`python -I -m agent_guard.cli`)
+  so repository-local packages cannot shadow the installed command.
+- Bound relative report outputs to the selected root and added traversal,
+  linked-ancestor, exclusive regular-temp, and atomic no-follow replacement
+  controls for report and render-report artifacts. Windows replacement remains
+  bound to the open temporary-file and parent-directory handles.
+- Centralized security-sensitive YAML construction and rejected duplicate
+  constructed mapping keys, including equivalent scalar spellings, at every
+  nesting depth while retaining bounded aliases and rejecting merge expansion.
+
 ## 0.3.8 - 2026-08-27
 
 - Kept development builds on PEP 440 `0.3.8.dev0` until this final `0.3.8`

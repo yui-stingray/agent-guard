@@ -5,7 +5,7 @@
 checks:
   - id: root_agents_md
     path: AGENTS.md
-    sha256: "b247d624eb6ec164a2baf8100fac5144a4a1c43b5d9c7b9fac2c4efb280d53ff"
+    sha256: "cb1cc077829cef4d209e9169b08650ba582373f94547b7ed276414dd581469a9"
   - id: path_policy
     path: .agent-guard/path-policy.yaml
     sha256: "1a8b016701266b064f01bc3e1029a43e7315bea0013d02f013214faad0621251"
@@ -20,4 +20,4 @@ checks:
     sha256: "c63d5d58c5b17db80e09fef8b9c8f3c11a9c02c628c1c3ff8add9d924f7d0c34"
   - id: workflow_policy
     path: .agent-guard/workflow-policy.yaml
-    sha256: "8e2a2423f51a7695ec9f7fe2d19a4e0b6ec409a8a5f1b5c5c7797b56838975ae"
+    sha256: "daa955f31c0d23a293d15028115792866fd66627ee0fa437ffb4c0131f2a55fc"

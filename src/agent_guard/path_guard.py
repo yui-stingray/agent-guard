@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES, run_isolated_scan
 from .bounded_yaml import (
     BoundedYamlInvalidError,
@@ -104,10 +102,7 @@ def _read_policy_text(path: Path) -> str:
 
 def load_path_policy(path: Path) -> dict[str, Any]:
     try:
-        loaded = load_bounded_yaml(
-            _read_policy_text(path),
-            construct=yaml.safe_load,
-        ) or {}
+        loaded = load_bounded_yaml(_read_policy_text(path)) or {}
         if not isinstance(loaded, dict):
             raise BoundedYamlInvalidError
     except BoundedYamlLimitError:

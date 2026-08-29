@@ -54,6 +54,17 @@ termination cannot portably contain a descendant that deliberately creates a new
 session, so helper-disabled Git command shapes reduce that path but do not turn
 the runner into a process sandbox.
 
+Workflow required-command evidence is likewise repository-static. It requires
+one direct command in a dedicated supported-shell step and rejects same-step
+control flow, command-resolution setup, dynamic redirection, and declared
+resolution-sensitive workflow, job, or step environment, job-container
+declarations, and working-directory settings. The installed console script is
+supported; a Python module requirement must use `python -I -m agent_guard.cli`
+so a same-name package in the reviewed checkout cannot satisfy the evidence
+while changing the imported implementation. It does not
+attest the host executable selected at runtime, shell startup state, or state
+persisted by earlier workflow steps.
+
 ## What It Can Catch
 
 `agent-guard` can provide static evidence for:

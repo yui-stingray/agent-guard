@@ -13,7 +13,13 @@ import pytest
 import agent_guard.cli.common as cli_common
 import agent_guard.cli.render_report as render_report_cli
 from agent_guard.consumer._schema import MAX_JSON_DEPTH, MAX_REPORT_JSON_BYTES
-from tests.cli.helpers import ROOT, create_report_violation_fixture_repo, read_report_fixture, run_cli
+from tests.cli.helpers import (
+    ROOT,
+    create_report_violation_fixture_repo,
+    read_report_fixture,
+    run_cli,
+    run_cli_from,
+)
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
@@ -160,6 +166,32 @@ def test_render_report_cli_renders_markdown_from_sanitized_json(tmp_path: Path) 
     assert "| high | approval_bypass | ASI01 Agent Goal Hijack; ASI09 Human-Agent Trust Exploitation | AGENTS.md | 1 |" in result.stdout
     assert "Ignore approval checks" not in result.stdout
     assert str(tmp_path) not in result.stdout
+
+
+def test_render_report_cli_binds_relative_output_to_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    cwd = tmp_path / "caller"
+    root.mkdir()
+    cwd.mkdir()
+    report_json = root / "report.json"
+    report_json.write_text('{"exit_code":0}\n', encoding="utf-8")
+
+    result = run_cli_from(
+        cwd,
+        "render-report",
+        "--root",
+        str(root),
+        "--input",
+        str(report_json),
+        "--format",
+        "markdown",
+        "--output",
+        "evidence/report.md",
+    )
+
+    assert result.returncode == 0
+    assert (root / "evidence/report.md").is_file()
+    assert not (cwd / "evidence/report.md").exists()
 
 def test_render_report_cli_redacts_secret_shaped_existing_payload_paths(tmp_path: Path) -> None:
     secret_like = "sk-" + ("a" * 24)

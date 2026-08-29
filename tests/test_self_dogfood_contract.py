@@ -26,6 +26,9 @@ SELF_WORKFLOW_POLICY = REPO_ROOT / ".agent-guard" / "workflow-policy.yaml"
 
 def test_self_dogfood_guard_policies_are_present_and_clean() -> None:
     assert (REPO_ROOT / "AGENTS.md").is_file()
+    agent_instructions = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "python -m agent_guard.cli" not in agent_instructions
+    assert "python -I -m agent_guard.cli" in agent_instructions
     assert SELF_PATH_POLICY.is_file()
     assert SELF_CONTEXT_POLICY.is_file()
     assert SELF_CONTENT_POLICY.is_file()

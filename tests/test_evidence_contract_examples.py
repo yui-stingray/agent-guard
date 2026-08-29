@@ -333,9 +333,11 @@ def write_contract_repo(repo: Path) -> None:
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
         "      - uses: actions/checkout@v7\n"
-        "      - name: Guard checks\n"
-        "        run: |\n"
-        + "".join(f"          {line}\n" for line in STRICT_WORKFLOW_RUN.splitlines())
+        + "".join(
+            f"      - name: Guard check {index}\n"
+            f"        run: {line}\n"
+            for index, line in enumerate(STRICT_WORKFLOW_RUN.splitlines(), start=1)
+        )
         + "      - uses: actions/upload-artifact@v7\n"
         "        if: always()\n"
         "        with:\n"

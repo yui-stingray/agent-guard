@@ -290,7 +290,7 @@ agent-guard report \
   --evidence-preset recommended \
   --mcp-policy .agent-guard/mcp-policy.yaml \
   --format json \
-  --output services/api/.agent-guard/evidence/agent-guard-report.json
+  --output .agent-guard/evidence/agent-guard-report.json
 agent-guard conformance check \
   --root services/api \
   --evidence services/api/.agent-guard/evidence/agent-guard-report.json \
@@ -303,7 +303,7 @@ The evidence consumer example uses the same root discipline:
 ```text
 AGENT_GUARD_ROOT=services/api \
 AGENT_GUARD_EVIDENCE_DIR=.agent-guard/evidence \
-AGENT_GUARD_REPORT_JSON=services/api/.agent-guard/evidence/agent-guard-report.json \
+AGENT_GUARD_REPORT_JSON=.agent-guard/evidence/agent-guard-report.json \
 sh examples/evidence_contracts_ci.sh consume
 ```
 

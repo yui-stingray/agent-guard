@@ -9,8 +9,6 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
-import yaml
-
 from .bounded_yaml import (
     BoundedYamlInvalidError,
     BoundedYamlLimitError,
@@ -127,7 +125,6 @@ def collect_workflow_surfaces(
             text = opened.data.decode("utf-8")
             loaded = load_bounded_yaml(
                 text,
-                construct=yaml.safe_load,
                 max_expanded_bytes=MAX_SURFACE_INVENTORY_FILE_BYTES,
             ) or {}
         except BoundedYamlLimitError:

@@ -206,9 +206,11 @@ def emit_rendered_report_payload(
     args: argparse.Namespace,
     payload: dict[str, object],
     rendered: str,
+    *,
+    root: Path,
 ) -> None:
     if str(args.output).strip():
-        emit_report_output(rendered, args.output)
+        emit_report_output(rendered, args.output, root=root)
     else:
         emit_public_output(rendered, error=ERROR_REPORT_OUTPUT_LIMIT)
     if not bool(args.stderr_summary):
@@ -224,6 +226,7 @@ def emit_report_payload(
     args: argparse.Namespace,
     payload: dict[str, object],
     *,
+    root: Path,
     _enforce_budget: bool = True,
 ) -> None:
     emit_rendered_report_payload(
@@ -234,6 +237,7 @@ def emit_report_payload(
             payload,
             _enforce_budget=_enforce_budget,
         ),
+        root=root,
     )
 
 
@@ -463,7 +467,7 @@ def run_report(args: argparse.Namespace) -> int:
             },
         )
         try:
-            emit_report_payload(args, payload)
+            emit_report_payload(args, payload, root=root)
         except ValueError:
             return 2
         return 2
@@ -550,7 +554,7 @@ def run_report(args: argparse.Namespace) -> int:
             },
         )
         try:
-            emit_report_payload(args, payload)
+            emit_report_payload(args, payload, root=root)
         except ValueError:
             return 2
         return 2
@@ -794,13 +798,14 @@ def run_report(args: argparse.Namespace) -> int:
             emit_report_payload(
                 args,
                 sanitize_public_mapping(fallback),
+                root=root,
                 _enforce_budget=False,
             )
         except ValueError:
             return 2
         return 2
     try:
-        emit_rendered_report_payload(args, payload, rendered)
+        emit_rendered_report_payload(args, payload, rendered, root=root)
     except ValueError:
         return 2
     return exit_code

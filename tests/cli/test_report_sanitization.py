@@ -116,7 +116,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+      - run: python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
 """,
     )
     write(
@@ -130,7 +130,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
     )
     for policy_arg in (
         context_policy_arg,
@@ -484,7 +484,7 @@ def test_report_cli_markdown_workflow_policy_error_scrubs_paths(tmp_path: Path) 
     assert str(tmp_path) not in result.stdout
 
 def test_report_cli_markdown_malformed_workflow_yaml_omits_run_body(tmp_path: Path) -> None:
-    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    raw_command = "python -I -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
     context_policy = tmp_path / "context_policy.yaml"
     context_policy.write_text("{}\n", encoding="utf-8")
     write(tmp_path / "AGENTS.md", "Use project tests before reporting success.\n")
@@ -505,7 +505,7 @@ def test_report_cli_markdown_malformed_workflow_yaml_omits_run_body(tmp_path: Pa
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: digest_guard\n"
-        "        command: python -m agent_guard.cli digest check\n",
+        "        command: python -I -m agent_guard.cli digest check\n",
         encoding="utf-8",
     )
 
@@ -523,11 +523,11 @@ def test_report_cli_markdown_malformed_workflow_yaml_omits_run_body(tmp_path: Pa
     assert "| Status | error |" in result.stdout
     assert "workflow YAML is invalid" in result.stdout
     assert raw_command not in result.stdout
-    assert "python -m agent_guard.cli" not in result.stdout
+    assert "python -I -m agent_guard.cli" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
 def test_scrub_report_error_message_omits_workflow_run_variants() -> None:
-    raw_command = "python -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
+    raw_command = "python -I -m agent_guard.cli digest check --root . --policy digest_policy.yaml --json"
     messages = [
         f'      - run: "{raw_command}',
         f'      - run : "{raw_command}',
@@ -538,5 +538,5 @@ def test_scrub_report_error_message_omits_workflow_run_variants() -> None:
     for message in messages:
         scrubbed = scrub_report_error_message(message)
         assert raw_command not in scrubbed
-        assert "python -m agent_guard.cli" not in scrubbed
+        assert "python -I -m agent_guard.cli" not in scrubbed
         assert "<workflow-run>" in scrubbed

@@ -1197,7 +1197,7 @@ def test_context_policy_rejects_exactly_one_byte_over_limit_before_yaml_parse(
     def unexpected_safe_load(_text: str) -> object:
         raise AssertionError("oversized context policy reached YAML parsing")
 
-    monkeypatch.setattr(context_guard.yaml, "safe_load", unexpected_safe_load)
+    monkeypatch.setattr(bounded_yaml, "strict_safe_load", unexpected_safe_load)
 
     with pytest.raises(ValueError, match=f"^{ERROR_CONTEXT_POLICY_LIMIT}$") as exc_info:
         load_context_policy(policy_path)
@@ -1223,7 +1223,7 @@ def test_context_policy_rejects_nested_yaml_structure_before_object_construction
     def unexpected_safe_load(_text: str) -> object:
         raise AssertionError("nested context policy reached YAML construction")
 
-    monkeypatch.setattr(context_guard.yaml, "safe_load", unexpected_safe_load)
+    monkeypatch.setattr(bounded_yaml, "strict_safe_load", unexpected_safe_load)
 
     with pytest.raises(ValueError, match=f"^{ERROR_CONTEXT_POLICY_LIMIT}$") as exc_info:
         load_context_policy(policy_path)

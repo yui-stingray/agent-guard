@@ -10,8 +10,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
-
 from .bounded_git import (
     BoundedGitOutputLimitError,
     BoundedGitProcessError,
@@ -272,7 +270,7 @@ def _load_drift_workflow_policy(
         return None
     try:
         text = raw.decode("utf-8")
-        return load_bounded_yaml(text, construct=yaml.safe_load) or {}
+        return load_bounded_yaml(text) or {}
     except BoundedYamlLimitError:
         raise ValueError(ERROR_POLICY_SPEC_DRIFT_LIMIT) from None
     except (BoundedYamlInvalidError, UnicodeDecodeError):

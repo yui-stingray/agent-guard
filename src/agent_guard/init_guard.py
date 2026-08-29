@@ -258,13 +258,13 @@ workflow_checks:
       - id: workflow_guard
         command: agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml
       - id: drift_guard
-        command: ( agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json 2>/dev/null > "$raw_dir/drift.json" )
+        command: agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
       - id: evidence_report_with_drift
-        command: ( agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --format json --output "$report_json" > /dev/null 2>&1 )
+        command: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --format json --output /tmp/agent-guard-policy-report.json
       - id: conformance_check
-        command: agent-guard conformance check --root . --evidence "$report_json" --profile recommended
+        command: agent-guard conformance check --root . --evidence /tmp/agent-guard-policy-report.json --profile recommended
       - id: evidence_pack_manifest
-        command: agent-guard evidence-pack manifest --root . --report "$report_json"
+        command: agent-guard evidence-pack manifest --root . --report /tmp/agent-guard-policy-report.json
 """
 
 
@@ -503,6 +503,36 @@ __PUBLISHED_CONTEXT_POLICY_PREFLIGHT__
             ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-guard-evidence-pack.json
             ${{ steps.generate-evidence.outputs.evidence-dir }}/agent-surface-inventory.json
           if-no-files-found: error
+      - name: Verify workflow policy context guard
+        if: always()
+        run: agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json > /dev/null
+      - name: Verify workflow policy path guard
+        if: always()
+        run: agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json > /dev/null
+      - name: Verify workflow policy content guard
+        if: always()
+        run: agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json > /dev/null
+      - name: Verify workflow policy MCP guard
+        if: always()
+        run: agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json > /dev/null
+      - name: Verify workflow policy surface inventory
+        if: always()
+        run: agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json > /dev/null
+      - name: Verify workflow policy workflow guard
+        if: always()
+        run: agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json > /dev/null
+      - name: Verify workflow policy drift guard
+        if: always()
+        run: agent-guard drift check --root . --profile recommended --schema-version v2 --base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json > /dev/null
+      - name: Verify workflow policy evidence report
+        if: always()
+        run: agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --mcp-policy .agent-guard/mcp-policy.yaml --drift-base-ref "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --format json --output /tmp/agent-guard-policy-report.json > /dev/null
+      - name: Verify workflow policy conformance
+        if: always()
+        run: agent-guard conformance check --root . --evidence /tmp/agent-guard-policy-report.json --profile recommended --json > /dev/null
+      - name: Verify workflow policy evidence pack
+        if: always()
+        run: agent-guard evidence-pack manifest --root . --report /tmp/agent-guard-policy-report.json --json > /dev/null
 """.replace(
     "__PUBLISHED_CONTEXT_POLICY_PREFLIGHT__",
     "\n".join(

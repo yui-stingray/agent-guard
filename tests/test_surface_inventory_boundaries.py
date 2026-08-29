@@ -97,6 +97,29 @@ def test_workflow_inventory_rejects_bounded_yaml_merge_expansion(tmp_path: Path)
     assert str(raised.value) == surface_inventory_core.ERROR_SURFACE_INVENTORY_LIMIT
 
 
+def test_workflow_inventory_marks_duplicate_constructed_keys_as_parse_error(
+    tmp_path: Path,
+) -> None:
+    write(
+        tmp_path / ".github" / "workflows" / "duplicate.yml",
+        "jobs:\n"
+        "  test:\n"
+        "    steps: []\n"
+        "    steps: []\n",
+    )
+
+    surfaces = surface_inventory_workflow.collect_workflow_surfaces(tmp_path)
+
+    assert surfaces == [
+        {
+            "surface": "workflow_file",
+            "path": ".github/workflows/duplicate.yml",
+            "kind": "github_actions",
+            "status": "parse_error",
+        }
+    ]
+
+
 def test_document_inventory_enforces_aggregate_distinct_input_limit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

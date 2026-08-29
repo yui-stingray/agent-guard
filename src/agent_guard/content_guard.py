@@ -14,8 +14,6 @@ from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable, Sequence
 
-import yaml
-
 from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES, run_isolated_scan
 from .bounded_git import (
     UNTRUSTED_GIT_ENVIRONMENT_VARIABLES,
@@ -349,10 +347,7 @@ def _read_policy_text(path: Path) -> str:
 
 def load_content_policy(path: Path) -> dict[str, object]:
     try:
-        loaded = load_bounded_yaml(
-            _read_policy_text(path),
-            construct=yaml.safe_load,
-        ) or {}
+        loaded = load_bounded_yaml(_read_policy_text(path)) or {}
         if not isinstance(loaded, dict):
             raise BoundedYamlInvalidError
         merged = merge_policy(DEFAULT_POLICY, loaded)

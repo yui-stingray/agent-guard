@@ -219,7 +219,7 @@ def test_path_policy_yaml_resource_failures_are_sanitized_limits(
     def fail_safe_load(_text: str) -> object:
         raise failure_type(YAML_POLICY_SENTINEL)
 
-    monkeypatch.setattr(path_guard.yaml, "safe_load", fail_safe_load)
+    monkeypatch.setattr(bounded_yaml, "strict_safe_load", fail_safe_load)
 
     with pytest.raises(
         ValueError,
@@ -253,7 +253,7 @@ def test_path_policy_preflights_yaml_before_object_construction(
     def unexpected_safe_load(_text: str) -> object:
         raise AssertionError("YAML object construction started before preflight")
 
-    monkeypatch.setattr(path_guard.yaml, "safe_load", unexpected_safe_load)
+    monkeypatch.setattr(bounded_yaml, "strict_safe_load", unexpected_safe_load)
 
     with pytest.raises(ValueError, match="^path policy exceeds configured limits$"):
         load_path_policy(policy_path)
