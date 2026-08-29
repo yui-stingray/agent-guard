@@ -1,9 +1,13 @@
 # Operations Governance
 
-This runbook owns the operational controls shared by `agent-guard`,
-`agent-policy`, and the reference toolkit. The normative system baseline is
-[`architecture/agent-guard-ecosystem-design.md`](architecture/agent-guard-ecosystem-design.md).
-Repository-specific release commands remain in each repository.
+This runbook owns only `agent-guard` operational controls and the integration
+sequence initiated from this repository. The system coordination baseline is
+[`architecture/agent-guard-ecosystem-design.md`](architecture/agent-guard-ecosystem-design.md),
+but it does not transfer operational authority over `agent-policy` or the
+reference toolkit. Each repository maintainer owns and approves that
+repository's rulesets, release controls, incident actions, and implementation.
+Cross-repository requirements take effect in an affected repository only through
+that repository's reviewed change and local controls.
 
 ## Normal Path
 
@@ -19,13 +23,15 @@ Repository-specific release commands remain in each repository.
 
 ## Break-Glass
 
-A required check failure blocks merge by default. Repeated reruns are not a
-substitute for diagnosis. A provider outage or verified CI infrastructure defect
+A required check failure blocks merge by default in the affected repository.
+Repeated reruns are not a substitute for diagnosis. A provider outage or
+verified CI infrastructure defect
 may use break-glass only when all of the following are recorded in the pull
 request or incident record:
 
 1. affected repository, pull request, check, and outage evidence;
-2. explicit maintainer authorization and an independent read-only diff review;
+2. explicit authorization by the affected repository's maintainer and an
+   independent read-only diff review;
 3. the current active ruleset, required checks, and bypass actors captured from
    the GitHub API;
 4. equivalent local or alternate-CI verification for the affected contract;
@@ -64,7 +70,8 @@ Permanent bypass actors are not an emergency mechanism.
 ## Live Control Audit
 
 Rulesets are live GitHub configuration, not immutable files in the repository.
-Before a release or break-glass action, confirm that each configured ruleset is
+Before an `agent-guard` release or integration change, observe the relevant
+configured rulesets to confirm that each is
 active, targets the expected ref, has the expected stable check, and has no
 bypass actor:
 
@@ -74,7 +81,9 @@ gh api repos/yui-stingray/agent-policy/rulesets
 gh api repos/yui-stingray/agent-safety-toolkit-example/rulesets
 ```
 
-The expected stable checks are `agent-guard required CI`,
+This cross-repository query is an observational compatibility check; it does not
+authorize this repository to change another repository's ruleset. The expected
+stable checks are `agent-guard required CI`,
 `agent-policy required CI`, and `Safety evidence demo`. The branch rules must
 remain strict and the release-tag rules for the two packages must reject update
 and deletion.

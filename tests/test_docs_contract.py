@@ -712,6 +712,7 @@ def test_ecosystem_design_is_a_traceable_normative_baseline() -> None:
     assert "PUBLISHED_UNCOMMITTED" in design
     assert "commit linearization" in normalized
     assert "SIGKILL相当" in design
+    assert "recovery用の positive identity" in normalized
     assert "Protected default branch基準" in design
     assert "Review candidate実装基準" in design
     assert "immutable workflow artifact" in normalized
@@ -744,6 +745,19 @@ def test_operations_governance_covers_break_glass_and_replacement() -> None:
     assert "new patch version" in normalized
     assert "exact `==` installs" in operations
     assert "operations-governance.md" in release
+    assert "owns only `agent-guard` operational controls" in operations
+    assert "does not transfer operational authority" in operations
+    assert "owns the operational controls shared" not in operations
+    design = ECOSYSTEM_DESIGN.read_text(encoding="utf-8")
+    assert (
+        "| Document custodian | `agent-guard` repository maintainer。保管・同期責任であり、"
+        "他repositoryの運用権限ではない |"
+    ) in design
+    assert (
+        "| Requirement owner / Approver | 各要件を実装するrepositoryのmaintainer。"
+        "Cross-repository contract変更は全affected repositoryのreviewが必要 |"
+    ) in design
+    assert "Repository-local authority" in design
     assert "Decision owner" in demand
     assert "Measurement owner" in demand
     assert "2026-09-21" in demand

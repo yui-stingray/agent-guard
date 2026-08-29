@@ -10,8 +10,8 @@
 | 文書ID | `AG-ECO-DESIGN-001` |
 | 規範版 | `1.1` |
 | Canonical保管場所 | `agent-guard/docs/architecture/agent-guard-ecosystem-design.md` |
-| Owner | `agent-guard` repository maintainer |
-| Approver | 影響repositoryのmaintainer。Cross-repository contract変更は3 repositoryのreviewが必要 |
+| Document custodian | `agent-guard` repository maintainer。保管・同期責任であり、他repositoryの運用権限ではない |
+| Requirement owner / Approver | 各要件を実装するrepositoryのmaintainer。Cross-repository contract変更は全affected repositoryのreviewが必要 |
 | Supersedes | 2026-08-29に作成したunversioned review copy |
 | 主対象 | `agent-guard` |
 | 関連対象 | `agent-policy`、`agent-safety-toolkit-example` |
@@ -36,6 +36,12 @@ pinは引き続き`0.3.9` / `0.1.18`であり、未公開版へ先行更新し�
 informativeであり、それ自体は新しい保証を作らない。実装、schema、test、CI、live
 rulesetが規範記述と矛盾する場合は、より安全な側へfail closedにしたうえで文書または
 実装を同じchange setで修正する。
+
+Canonical保管場所はcoordination baselineの所在だけを定める。各repositoryは、その
+implementation、ruleset、release、incident actionの唯一の運用ownerであり、本書または
+`agent-guard` maintainerが他repositoryのcontrolを直接変更する権限を持つことを意味しない。
+他repositoryに作用する要件は、affected repository自身のreviewed changeとlocal CI/controlへ
+反映された時点でのみ有効になる。
 
 ### 1.3 改訂履歴
 
@@ -508,8 +514,12 @@ Unknown field、entry、symlink、non-regular file、wrong device/inode、noncan
 MUST含めない。
 
 Stage markerは`schema_version`、`parent_pid`、`parent_start`、`child_pid`、
-`child_start`、`nonce`、`worktree_device`、`worktree_inode`だけを持つ。Child launch前は
-`child_pid=0`、`child_start=null`を使用する。Journalは`schema_version`、`root_device`、
+`child_start`、`nonce`、`worktree_device`、`worktree_inode`だけを持つ。Staged childのrelease前と、
+successful cleanupをdurable markerへ記録した後、publisherは`child_pid=0`、
+`child_start=null`を使用する。そのmarker rewrite間は、childが終了済みでもrecovery用の
+positive identityを保持する。Recovery parserは`child_pid=0`とinteger `child_start`のstale
+stateをinactive recordとして受理できるが、そのidentityをsignalしてはならない。
+Journalは`schema_version`、`root_device`、
 `root_inode`、`artifacts`だけを持ち、各artifact entryは`role`、`path`、`old_present`、
 `old_digest`、`old_mode`、`new_digest`、`rollback_temp`だけを持つ。
 
@@ -821,6 +831,11 @@ Schema、profile、path grammar、decision identity、exit semantics、fixed art
 
 ## 17. Operations governance
 
+本節はcross-repository invariantを調整するが、実行主体と証跡ownerは常にaffected
+repositoryである。`agent-guard`のrunbookは`agent-guard`自身と同repoから開始する
+integration sequenceだけに規範的であり、他repositoryのruleset、release、incident対応を
+代行または上書きしない。
+
 ### 17.1 Audited break-glass
 
 `AG-OPS-REQ-001`として、required CI failureは既定でmerge停止を意味する。Security fixで
@@ -988,7 +1003,7 @@ informativeであり、symbol/schema/check nameをstable anchorとする。
 | `AG-POLICY-REQ-001` | Decision/approvalをoperationへbind | policy / `2b575ba` | `docs/integration-contract.md`; current v1 event is evidence-only | wrapper/hook tests、future approval-envelope conformance | `agent-policy required CI` | Normative integration contract; persisted approval API not implemented | 2026-08-29 |
 | `AG-TOOLKIT-REQ-001` | Crash-consistent publication | toolkit / `0557847` | `scripts/evidence_publication.py` journal/state constants、`docs/evidence-publication-protocol.md` | fault-injection、concurrency、byte-stability/restore-mode tests | `Safety evidence demo` | Implemented/documented for local Linux FS | 2026-08-29 |
 | `AG-ECO-REQ-004` | Candidate wheelを公開前にToolkit検証 | guard `0d55d8d` / policy `2b575ba` / toolkit `0557847` | candidate compatibility helper + immutable validated artifact handoff + upstream release-contract/release-build steps | candidate wheel smoke、artifact-order contract、Toolkit full gate | 上流required aggregateとrelease build | Implemented in review branches; required CI pending | 2026-08-29 |
-| `AG-OPS-REQ-001` | Audited break-glass | 3 repo / live rulesets | 17.1、operations runbook | API before/after comparison | `gh api repos/{owner}/{repo}/rulesets` | No current bypass actors | 2026-08-29 |
+| `AG-OPS-REQ-001` | Audited break-glass | each affected repo / live ruleset | 17.1、affected repositoryのlocal control、guard operations runbookはguardのみ | API before/after comparison | `gh api repos/{owner}/{repo}/rulesets` | Repository-local authority; no current bypass actors | 2026-08-29 |
 | `AG-OPS-REQ-002` | Yank/rollback/replacement | guard/policy release workflows | 17.2、release criteria、PyPI state checker | release recovery/package tests | PyPI JSON + GitHub release/workflow APIs | Documented; incident-triggered | 2026-08-29 |
 | `AG-OPS-REQ-003` | Demand GO/NO-GO | guard / `0d55d8d` | `docs/demand-validation.md` | reviewed signal record | GitHub/PyPI aggregate observations | Decision due 2026-09-21 | 2026-08-29 |
 
