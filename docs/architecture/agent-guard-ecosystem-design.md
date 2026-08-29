@@ -629,7 +629,7 @@ negative corpusに合格しなければならない。
 
 | Grammar | Authoritative implementation / schema anchor | Owning conformance test |
 | --- | --- | --- |
-| Audit-event profile | `evidence_pack._AUDIT_EVENT_PROFILE_RE`、`agent-guard.report_evidence.v2.schema.json`と`agent-guard.evidence_pack_manifest.v2.schema.json`の`event_profile.pattern` | `tests/test_evidence_pack.py`、`tests/test_evidence_consumer.py`、`tests/test_schemas.py` |
+| Audit-event profile | `evidence_pack._AUDIT_EVENT_PROFILE_RE`、`agent-guard.report_evidence.v2.schema.json`と`agent-guard.evidence_pack_manifest.v2.schema.json`の`content_binding.event_profile.const` | `tests/test_evidence_pack.py`、`tests/test_evidence_consumer.py`、`tests/test_schemas.py` |
 | Audit-event digest | `evidence_pack._AUDIT_EVENT_DIGEST_RE`、両v2 schemaの`digest.pattern` | canonical digest vector、noncanonical-final-bit負例 |
 | Repository-relative path | `evidence_pack.SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN`、両v2 schemaのartifact path pattern | path alias/outside-root/secret-shape負例 |
 | Secret-shaped public text | `public_redaction.SECRET_SHAPED_PUBLIC_TEXT_RE`; consumerは同一objectをimport | `tests/test_public_redaction.py`、producer/consumer parity corpus |

@@ -909,10 +909,9 @@ def test_release_workflow_attests_built_distributions() -> None:
         str(step.get("uses", "")).startswith("actions/attest@")
         for step in build_steps
     )
-    upload_step = next(
-        name for name in build_named_steps if name.startswith("actions/upload-artifact@")
-    )
-    assert build_named_steps["Verify wheel public contract"] < build_named_steps[upload_step]
+    assert build_named_steps["Verify wheel public contract"] < build_named_steps[
+        "Upload validated distributions"
+    ]
 
     assert attest_job["needs"] == "build"
     assert "github.event_name == 'push'" in attest_job["if"]
