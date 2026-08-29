@@ -700,9 +700,22 @@ def test_ecosystem_design_is_a_traceable_normative_baseline() -> None:
     assert "canonical-json-v1" in design
     assert "ASCII(binding schema) || 0x00" in design
     assert "末尾は`a`または`q`だけ" in design
+    for grammar_anchor in (
+        "evidence_pack._AUDIT_EVENT_PROFILE_RE",
+        "evidence_pack._AUDIT_EVENT_DIGEST_RE",
+        "evidence_pack.SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN",
+        "public_redaction.SECRET_SHAPED_PUBLIC_TEXT_RE",
+        "agent-guard.report_evidence.v2.schema.json",
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
+    ):
+        assert grammar_anchor in design
     assert "PUBLISHED_UNCOMMITTED" in design
     assert "commit linearization" in normalized
     assert "SIGKILL相当" in design
+    assert "Protected default branch基準" in design
+    assert "Review candidate実装基準" in design
+    assert "immutable workflow artifact" in normalized
+    assert "helperの誤動作" in normalized
 
     for stable_check in (
         "agent-guard required CI",

@@ -803,7 +803,7 @@ def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
     assert "pytest" not in ci_commands
 
 
-def test_candidate_wheel_passes_exact_toolkit_gate_before_artifact_handoff() -> None:
+def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> None:
     release_workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     ci_workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
@@ -856,7 +856,22 @@ def test_candidate_wheel_passes_exact_toolkit_gate_before_artifact_handoff() -> 
         for index, step in enumerate(release_steps)
         if str(step.get("uses", "")).startswith("actions/upload-artifact@")
     )
-    assert gate_index < upload_index
+    contract_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if step.get("name") == "Verify wheel public contract"
+    )
+    toolkit_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if step.get("name") == "Checkout exact Toolkit compatibility contract"
+    )
+    assert contract_index < upload_index < toolkit_index < gate_index
+    assert release_steps[upload_index].get("name") == "Upload validated distributions"
+    assert sum(
+        str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        for step in release_steps
+    ) == 1
 
 
 def test_release_workflow_attests_built_distributions() -> None:
