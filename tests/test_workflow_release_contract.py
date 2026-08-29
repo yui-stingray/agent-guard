@@ -607,39 +607,39 @@ def test_ci_self_dogfood_renders_from_single_json_report() -> None:
     report_lines = [
         line.strip()
         for line in normalized_self_dogfood.splitlines()
-        if "python -m agent_guard.cli report " in line
+        if "python -I -m agent_guard.cli report " in line
     ]
     assert report_lines == [
-        "python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
+        "python -I -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --api-policy examples/architecture_policy.yaml --mcp-policy .agent-guard/mcp-policy.yaml --digest-policy .agent-guard/context-digest-policy.yaml --format json --output .agent-guard/evidence/agent-guard-report.json"
     ]
     assert (
-        "python -m agent_guard.cli conformance check --root . "
+        "python -I -m agent_guard.cli conformance check --root . "
         "--evidence .agent-guard/evidence/agent-guard-report.json "
         "--profile recommended --json"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli evidence-pack manifest --root . "
+        "python -I -m agent_guard.cli evidence-pack manifest --root . "
         "--report .agent-guard/evidence/agent-guard-report.json "
         "--artifact .agent-guard/evidence/agent-guard-report.json --json"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
+        "python -I -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format markdown --output .agent-guard/evidence/agent-guard-report.md"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json"
+        "python -I -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
+        "python -I -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format sarif --output .agent-guard/evidence/agent-guard-results.sarif"
         in normalized_self_dogfood
     )
     assert (
-        "python -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
+        "python -I -m agent_guard.cli render-report --root . --input .agent-guard/evidence/agent-guard-report.json "
         "--format github-annotations"
         in normalized_self_dogfood
     )
@@ -694,7 +694,7 @@ def test_ci_has_focused_windows_cli_contract() -> None:
     assert "test_public_scanners_support_unguarded_consumer_with_guarded_parity" in commands
     assert "test_new_mode_applies_windows_git_filename_rejections" in commands
     assert "tests/test_windows_file_boundaries.py" in commands
-    assert "python -m agent_guard.cli report" in commands
+    assert "python -I -m agent_guard.cli report" in commands
     assert 'python -m agent_guard.consumer "$report"' in commands
     assert 'test "$report_status" -le 1' in commands
     assert 'test -f "$report"' in commands

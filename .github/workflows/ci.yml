@@ -126,7 +126,7 @@ jobs:
           set -euo pipefail
           report="${RUNNER_TEMP}\\agent-guard-windows-report.json"
           set +e
-          python -m agent_guard.cli report \
+          python -I -m agent_guard.cli report \
             --root . \
             --context-policy .agent-guard/context-policy.yaml \
             --evidence-preset recommended \
@@ -176,18 +176,18 @@ jobs:
         run: pre-commit validate-manifest
       - name: Run CLI smoke tests
         run: |
-          python -m agent_guard.cli content check \
+          python -I -m agent_guard.cli content check \
             --repo-root . \
             --policy examples/content_security_policy.yaml \
             --mode registered \
             --scan-dir . \
             --json
-          python -m agent_guard.cli context check --root . --policy examples/agent_context_policy.yaml --json
-          python -m agent_guard.cli context lock \
+          python -I -m agent_guard.cli context check --root . --policy examples/agent_context_policy.yaml --json
+          python -I -m agent_guard.cli context lock \
             --root . \
             --policy examples/agent_context_policy.yaml > /tmp/agent-guard-context-lock.yaml
-          python -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-context-lock.yaml --json
-          python -m agent_guard.cli path check --root . --policy examples/ai_resilience_path_policy.yaml --json
+          python -I -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-context-lock.yaml --json
+          python -I -m agent_guard.cli path check --root . --policy examples/ai_resilience_path_policy.yaml --json
           mkdir -p /tmp/agent-guard-digest-smoke
           printf 'pinned\n' > /tmp/agent-guard-digest-smoke/pinned.txt
           python - <<'PY'
@@ -204,59 +204,59 @@ jobs:
               encoding="utf-8",
           )
           PY
-          python -m agent_guard.cli digest check \
+          python -I -m agent_guard.cli digest check \
             --root /tmp/agent-guard-digest-smoke \
             --policy /tmp/agent-guard-digest-smoke/policy.yaml \
             --json
-          python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
-          python -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
+          python -I -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
+          python -I -m agent_guard.cli workflow check --root . --policy examples/workflow_policy.yaml --json
       - name: Run self-dogfood evidence gates
         run: mkdir -p .agent-guard/evidence
       - name: Run self-dogfood path guard
-        run: python -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml --json
+        run: python -I -m agent_guard.cli path check --root . --policy .agent-guard/path-policy.yaml --json
       - name: Run self-dogfood context guard
-        run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+        run: python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
       - name: Generate self-dogfood context lock
         run: |
-          python -m agent_guard.cli context lock \
+          python -I -m agent_guard.cli context lock \
             --root . \
             --policy .agent-guard/context-policy.yaml > /tmp/agent-guard-self-context-lock.yaml
       - name: Check self-dogfood context lock coverage
         run: |
-          python -m agent_guard.cli context lock \
+          python -I -m agent_guard.cli context lock \
             --root . \
             --policy .agent-guard/context-policy.yaml \
             --check \
             --digest-policy .agent-guard/context-digest-policy.yaml \
             --json
       - name: Check generated self-dogfood digest policy
-        run: python -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-self-context-lock.yaml --json
+        run: python -I -m agent_guard.cli digest check --root . --policy /tmp/agent-guard-self-context-lock.yaml --json
       - name: Run self-dogfood digest guard
-        run: python -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
+        run: python -I -m agent_guard.cli digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
       - name: Run self-dogfood content guard
         run: |
-          python -m agent_guard.cli content check \
+          python -I -m agent_guard.cli content check \
             --repo-root . \
             --policy .agent-guard/content-policy.yaml \
             --mode registered \
             --scan-dir . \
             --json
       - name: Run self-dogfood MCP guard
-        run: python -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
+        run: python -I -m agent_guard.cli mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
       - name: Run self-dogfood workflow guard
-        run: python -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
+        run: python -I -m agent_guard.cli workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
       - name: Generate self-dogfood surface inventory
         run: |
-          python -m agent_guard.cli surface inventory \
+          python -I -m agent_guard.cli surface inventory \
             --root . \
             --context-policy .agent-guard/context-policy.yaml \
             --schema-version v2 \
             --json > .agent-guard/evidence/agent-surface-inventory.json
       - name: Run self-dogfood drift guard
-        run: python -m agent_guard.cli drift check --root . --profile recommended --schema-version v2 --json
+        run: python -I -m agent_guard.cli drift check --root . --profile recommended --schema-version v2 --json
       - name: Generate self-dogfood report
         run: |
-          python -m agent_guard.cli report \
+          python -I -m agent_guard.cli report \
             --root . \
             --context-policy .agent-guard/context-policy.yaml \
             --evidence-preset recommended \
@@ -267,35 +267,35 @@ jobs:
             --output .agent-guard/evidence/agent-guard-report.json
       - name: Render self-dogfood Markdown report
         run: |
-          python -m agent_guard.cli render-report \
+          python -I -m agent_guard.cli render-report \
             --root . \
             --input .agent-guard/evidence/agent-guard-report.json \
             --format markdown \
             --output .agent-guard/evidence/agent-guard-report.md
       - name: Render self-dogfood SARIF report
         run: |
-          python -m agent_guard.cli render-report \
+          python -I -m agent_guard.cli render-report \
             --root . \
             --input .agent-guard/evidence/agent-guard-report.json \
             --format sarif \
             --output .agent-guard/evidence/agent-guard-results.sarif
       - name: Check self-dogfood conformance
         run: |
-          python -m agent_guard.cli conformance check \
+          python -I -m agent_guard.cli conformance check \
             --root . \
             --evidence .agent-guard/evidence/agent-guard-report.json \
             --profile recommended \
             --json
       - name: Generate self-dogfood evidence-pack manifest
         run: |
-          python -m agent_guard.cli evidence-pack manifest \
+          python -I -m agent_guard.cli evidence-pack manifest \
             --root . \
             --report .agent-guard/evidence/agent-guard-report.json \
             --artifact .agent-guard/evidence/agent-guard-report.json \
             --json
       - name: Render self-dogfood annotations
         run: |
-          python -m agent_guard.cli render-report \
+          python -I -m agent_guard.cli render-report \
             --root . \
             --input .agent-guard/evidence/agent-guard-report.json \
             --format github-annotations

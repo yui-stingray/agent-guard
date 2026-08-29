@@ -2005,9 +2005,8 @@ def _agent_guard_entrypoint_size(
         and isinstance(argv[0], str)
         and _AGENT_GUARD_PYTHON_EXECUTABLE_RE.fullmatch(argv[0])
     ):
-        module_index = 2 if argv[1:2] == ["-I"] else 1
-        if argv[module_index : module_index + 2] == ["-m", "agent_guard.cli"]:
-            return module_index + 2
+        if argv[1:4] == ["-I", "-m", "agent_guard.cli"]:
+            return 4
     return None
 
 

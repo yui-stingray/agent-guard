@@ -103,11 +103,22 @@ def test_surface_inventory_plain_text_write_error_returns_exit_two(
     assert captured.err == ""
 
 
-def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "raw_command",
+    [
+        "python -m agent_guard.cli report --root . "
+        "--context-policy context_policy.yaml --format json",
+        "python -I -m agent_guard.cli report --root . "
+        "--context-policy context_policy.yaml --format json",
+    ],
+)
+def test_surface_inventory_cli_json_omits_raw_context_and_workflow_commands(
+    tmp_path: Path,
+    raw_command: str,
+) -> None:
     policy = tmp_path / "context_policy.yaml"
     policy.write_text("{}\n", encoding="utf-8")
     raw_context = "Require approval before shell writes. fixture marker surface\n"
-    raw_command = "python -m agent_guard.cli report --root . --context-policy context_policy.yaml --format json"
     write(tmp_path / "AGENTS.md", raw_context)
     write(tmp_path / ".agent-guard" / "workflow-policy.yaml", "schema_version: agent-guard.workflow_policy.v1\n")
     write(

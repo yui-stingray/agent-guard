@@ -6,6 +6,8 @@ Why: keep workflow evidence deterministic without shell execution or raw log out
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -42,13 +44,107 @@ def scan_required_context_command(
                 "required_commands": [
                     {
                         "id": "context_guard",
-                        "command": "python -m agent_guard.cli context check",
+                        "command": "python -I -m agent_guard.cli context check",
                     },
                 ],
             }
         ],
     }
     return scan_workflow_policy(root=root, policy=policy)
+
+
+def test_python_module_evidence_requires_isolation_and_ignores_repo_shadow(
+    tmp_path: Path,
+) -> None:
+    shadow_package = tmp_path / "agent_guard"
+    shadow_package.mkdir()
+    write(shadow_package / "__init__.py", "")
+    write(
+        shadow_package / "cli.py",
+        "from pathlib import Path\n"
+        "import os\n"
+        "Path(os.environ['AGENT_GUARD_SHADOW_MARKER']).write_text(\n"
+        "    'called', encoding='utf-8'\n"
+        ")\n",
+    )
+    marker = tmp_path / "shadow-marker"
+    env = os.environ.copy()
+    env["AGENT_GUARD_SHADOW_MARKER"] = str(marker)
+
+    bare_runtime = subprocess.run(
+        [sys.executable, "-m", "agent_guard.cli"],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert bare_runtime.returncode == 0
+    assert marker.is_file()
+    marker.unlink()
+
+    isolated_runtime = subprocess.run(
+        [sys.executable, "-I", "-m", "agent_guard.cli", "--help"],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert isolated_runtime.returncode == 0
+    assert not marker.exists()
+
+    workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
+    policy = {
+        "schema_version": "agent-guard.workflow_policy.v1",
+        "workflow_checks": [
+            {
+                "id": "ci_smoke",
+                "path": ".github/workflows/ci.yml",
+                "required_commands": [
+                    {
+                        "id": "context_guard",
+                        "command": "python -I -m agent_guard.cli context check",
+                    }
+                ],
+            }
+        ],
+    }
+    write(
+        workflow_path,
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: python -m agent_guard.cli context check --root . --json\n",
+    )
+
+    bare_findings, bare_checked = scan_workflow_policy(root=tmp_path, policy=policy)
+
+    assert bare_checked == 1
+    assert [finding.reason for finding in bare_findings] == [
+        "missing_required_workflow_command"
+    ]
+
+    policy["workflow_checks"][0]["required_commands"][0]["command"] = (
+        "python -I -m agent_guard.cli context check"
+    )
+    write(
+        workflow_path,
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: python -I -m agent_guard.cli context check --root . --json\n",
+    )
+
+    isolated_findings, isolated_checked = scan_workflow_policy(
+        root=tmp_path,
+        policy=policy,
+    )
+
+    assert isolated_checked == 1
+    assert isolated_findings == []
 
 
 class SliceTrackingCommand(str):
@@ -67,20 +163,20 @@ class SliceTrackingCommand(str):
 
 def test_iter_active_shell_lines_joins_shell_continuations() -> None:
     run_text = (
-        "python -m agent_guard.cli report \\\n"
+        "python -I -m agent_guard.cli report \\\n"
         "  --root . \\\n"
         "  --context-policy .agent-guard/context-policy.yaml \\\n"
         "  --format json\n"
     )
 
     assert iter_active_shell_lines(run_text) == [
-        "python -m agent_guard.cli report --root . "
+        "python -I -m agent_guard.cli report --root . "
         "--context-policy .agent-guard/context-policy.yaml --format json"
     ]
 
 
 def test_iter_active_shell_lines_ignores_quoted_and_escaped_heredoc_lookalikes() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         'echo "<<WORKFLOW_END"\n'
         r"echo \<<WORKFLOW_END" "\n"
@@ -97,7 +193,7 @@ def test_iter_active_shell_lines_ignores_quoted_and_escaped_heredoc_lookalikes()
 
 
 def test_iter_active_shell_lines_uses_exact_quoted_hyphenated_heredoc_delimiter() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "python - <<'END-OF'\n"
         f"{required} --root . --json\n"
@@ -114,7 +210,7 @@ def test_iter_active_shell_lines_uses_exact_quoted_hyphenated_heredoc_delimiter(
 
 
 def test_iter_active_shell_lines_does_not_strip_spaces_from_heredoc_terminator() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "python - <<END\n"
         " END\n"
@@ -130,7 +226,7 @@ def test_iter_active_shell_lines_does_not_strip_spaces_from_heredoc_terminator()
 
 
 def test_iter_active_shell_lines_allows_tabs_only_for_dash_heredoc_terminator() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "python - <<-END\n"
         " END\n"
@@ -146,7 +242,7 @@ def test_iter_active_shell_lines_allows_tabs_only_for_dash_heredoc_terminator() 
 
 
 def test_iter_active_shell_lines_supports_multiple_heredocs_in_declaration_order() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "cat <<FIRST <<'SECOND-END'\n"
         f"{required} --first-body\n"
@@ -164,7 +260,7 @@ def test_iter_active_shell_lines_supports_multiple_heredocs_in_declaration_order
 
 @pytest.mark.parametrize("quote", ["'", '"'])
 def test_multiline_quoted_required_command_is_not_an_active_command(quote: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = f"message={quote}\n{required} --root . --json\n{quote}\n"
 
     active = iter_active_shell_lines(run_text)
@@ -182,7 +278,7 @@ def test_multiline_quoted_required_command_is_not_an_active_command(quote: str) 
     ],
 )
 def test_multiline_command_substitution_cannot_satisfy_required_command(run_text: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     active = iter_active_shell_lines(run_text.format(required=required))
 
     assert len(active) == 1
@@ -190,7 +286,7 @@ def test_multiline_command_substitution_cannot_satisfy_required_command(run_text
 
 
 def test_required_command_after_multiline_substitution_remains_active() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "result=$(\n"
         "setup || true\n"
@@ -206,7 +302,7 @@ def test_required_command_after_multiline_substitution_remains_active() -> None:
 
 
 def test_multiline_array_literal_cannot_satisfy_required_command() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     run_text = (
         "commands=(\n"
         f"{required} --literal-value\n"
@@ -345,29 +441,29 @@ def test_command_match_streams_bounded_segments_without_public_list(
 @pytest.mark.parametrize(
     "command_line",
     [
-        "python -m agent_guard.cli content check --targets 'literal; semicolon'",
-        'python -m agent_guard.cli content check --targets "literal; semicolon"',
-        r"python -m agent_guard.cli content check --targets \;",
-        r"python -m agent_guard.cli content check --targets \&\& \|\| \;",
-        "python -m agent_guard.cli content check --targets 'literal && and ||'",
-        'python -m agent_guard.cli content check --targets "literal && and ||"',
-        "python -m agent_guard.cli content check --targets 'literal | and &'",
-        r"python -m agent_guard.cli content check --targets \| \&",
+        "python -I -m agent_guard.cli content check --targets 'literal; semicolon'",
+        'python -I -m agent_guard.cli content check --targets "literal; semicolon"',
+        r"python -I -m agent_guard.cli content check --targets \;",
+        r"python -I -m agent_guard.cli content check --targets \&\& \|\| \;",
+        "python -I -m agent_guard.cli content check --targets 'literal && and ||'",
+        'python -I -m agent_guard.cli content check --targets "literal && and ||"',
+        "python -I -m agent_guard.cli content check --targets 'literal | and &'",
+        r"python -I -m agent_guard.cli content check --targets \| \&",
     ],
 )
 def test_command_match_accepts_quoted_and_escaped_operator_literals(command_line: str) -> None:
-    assert command_line_matches_required(command_line, "python -m agent_guard.cli content check")
+    assert command_line_matches_required(command_line, "python -I -m agent_guard.cli content check")
 
 
 @pytest.mark.parametrize("comment", ["# || true", "# | tee guard.log", "# &", "# ; exit 0"])
 def test_command_match_ignores_operators_in_inline_shell_comments(comment: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert command_line_matches_required(f"{required} --root . --json {comment}", required)
 
 
 def test_command_match_keeps_quoted_and_escaped_hashes_as_data() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert not command_line_matches_required(f"{required} --policy '# literal' || true", required)
     assert not command_line_matches_required(rf"{required} --policy \# || true", required)
@@ -376,7 +472,7 @@ def test_command_match_keeps_quoted_and_escaped_hashes_as_data() -> None:
 
 @pytest.mark.parametrize("redirection", ["2>&1", "<&0", "&>guard.log", "&>>guard.log"])
 def test_command_match_accepts_in_segment_redirections(redirection: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert command_line_matches_required(f"{required} --root . --json {redirection}", required)
 
@@ -396,16 +492,16 @@ jobs:
       - name: Keep documentation and heredoc text separate
         run: |
           # documented but ignored
-          echo "python -m agent_guard.cli digest check"
+          echo "python -I -m agent_guard.cli digest check"
           python - <<'PY'
-          print("python -m agent_guard.cli path check")
+          print("python -I -m agent_guard.cli path check")
           PY
       - name: Check context
         run: |
-          python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+          python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
       - name: Check paths
         run: |
-          python -m agent_guard.cli path check --root . --policy examples/path-policy.yaml --json
+          python -I -m agent_guard.cli path check --root . --policy examples/path-policy.yaml --json
 """,
     )
     policy = {
@@ -418,8 +514,8 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
-                    {"id": "path_guard", "command": "python -m agent_guard.cli path check"},
+                    {"id": "context_guard", "command": "python -I -m agent_guard.cli context check"},
+                    {"id": "path_guard", "command": "python -I -m agent_guard.cli path check"},
                 ],
             }
         ],
@@ -461,7 +557,7 @@ def test_required_command_rejects_nonexecuting_or_failure_masking_controls(
     value: object,
 ) -> None:
     step: dict[str, object] = {
-        "run": "python -m agent_guard.cli context check --root . --json",
+        "run": "python -I -m agent_guard.cli context check --root . --json",
     }
     job: dict[str, object] = {
         "runs-on": "ubuntu-latest",
@@ -498,7 +594,7 @@ def test_required_command_accepts_supported_shell_and_nonliteral_condition(
     step: dict[str, object] = {
         "if": "matrix.python-version == '3.12'",
         "continue-on-error": False,
-        "run": "python -m agent_guard.cli context check --root . --json",
+        "run": "python -I -m agent_guard.cli context check --root . --json",
     }
     if shell is not None:
         step["shell"] = shell
@@ -530,10 +626,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          # python -m agent_guard.cli digest check --root . --policy digest.yaml --json
-          echo "python -m agent_guard.cli digest check --root . --policy digest.yaml --json"
+          # python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json
+          echo "python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json"
           python - <<'PY'
-          print("python -m agent_guard.cli digest check --root . --policy digest.yaml --json")
+          print("python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json")
           PY
 """,
     )
@@ -544,7 +640,7 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "digest_guard", "command": "python -m agent_guard.cli digest check"},
+                    {"id": "digest_guard", "command": "python -I -m agent_guard.cli digest check"},
                 ],
             }
         ],
@@ -578,11 +674,11 @@ jobs:
       - name: Independent guard checks
         parallel:
           - name: Context guard
-            run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+            run: python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
           - name: Surface inventory
-            run: python -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
+            run: python -I -m agent_guard.cli surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json
       - name: Final report
-        run: python -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --format json
+        run: python -I -m agent_guard.cli report --root . --context-policy .agent-guard/context-policy.yaml --format json
 """,
     )
     policy = {
@@ -592,9 +688,9 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
-                    {"id": "surface_inventory", "command": "python -m agent_guard.cli surface inventory"},
-                    {"id": "report", "command": "python -m agent_guard.cli report"},
+                    {"id": "context_guard", "command": "python -I -m agent_guard.cli context check"},
+                    {"id": "surface_inventory", "command": "python -I -m agent_guard.cli surface inventory"},
+                    {"id": "report", "command": "python -I -m agent_guard.cli report"},
                 ],
             }
         ],
@@ -615,7 +711,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: python -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml --check --json
+      - run: python -I -m agent_guard.cli context lock --root . --policy .agent-guard/context-policy.yaml --check --json
 """,
     )
     policy = {
@@ -628,7 +724,7 @@ jobs:
                     {
                         "id": "context_lock_coverage",
                         "command": (
-                            "python -m agent_guard.cli context lock --root . "
+                            "python -I -m agent_guard.cli context lock --root . "
                             "--policy .agent-guard/context-policy.yaml --check "
                             "--digest-policy .agent-guard/context-digest-policy.yaml"
                         ),
@@ -655,64 +751,64 @@ jobs:
 
 def test_command_match_requires_command_segment_start() -> None:
     assert command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --json",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --json",
+        "python -I -m agent_guard.cli context check",
     )
     assert command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --json && echo guard-complete",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --json && echo guard-complete",
+        "python -I -m agent_guard.cli context check",
     )
     assert command_line_matches_required(
-        "echo setup; python -m agent_guard.cli context check --root . --json",
-        "python -m agent_guard.cli context check",
+        "echo setup; python -I -m agent_guard.cli context check --root . --json",
+        "python -I -m agent_guard.cli context check",
     )
     assert command_line_matches_required(
-        "python -m agent_guard.cli path check --json && python -m agent_guard.cli digest check --json",
-        "python -m agent_guard.cli digest check",
+        "python -I -m agent_guard.cli path check --json && python -I -m agent_guard.cli digest check --json",
+        "python -I -m agent_guard.cli digest check",
     )
     assert not command_line_matches_required(
-        "echo python -m agent_guard.cli context check",
-        "python -m agent_guard.cli context check",
+        "echo python -I -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --help",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --help",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --policy p.yaml --json || true",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --policy p.yaml --json || true",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --policy p.yaml --json; true",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --policy p.yaml --json; true",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --policy p.yaml --json; exit 0",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --policy p.yaml --json; exit 0",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --policy p.yaml --json; echo completed",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --policy p.yaml --json; echo completed",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context check --root . --policy p.yaml --json && echo ok || true",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context check --root . --policy p.yaml --json && echo ok || true",
+        "python -I -m agent_guard.cli context check",
     )
     assert not command_line_matches_required(
-        "python -m agent_guard.cli context checker",
-        "python -m agent_guard.cli context check",
+        "python -I -m agent_guard.cli context checker",
+        "python -I -m agent_guard.cli context check",
     )
 
 
 @pytest.mark.parametrize("prefix", ["true ||", ": ||", "true || setup &&"])
 def test_command_match_rejects_required_segment_reached_through_preceding_or(prefix: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert not command_line_matches_required(f"{prefix} {required} --root . --json", required)
 
 
 def test_command_match_preserves_safe_setup_and_tail_shapes() -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert command_line_matches_required(f"setup && {required} --root . --json", required)
     assert command_line_matches_required(f"setup; {required} --root . --json", required)
@@ -724,8 +820,8 @@ def test_command_match_preserves_safe_setup_and_tail_shapes() -> None:
     ("required", "candidate"),
     [
         (
-            "python -m agent_guard.cli context check --policy reviewed.yaml",
-            "python -m agent_guard.cli context check --policy reviewed.yaml "
+            "python -I -m agent_guard.cli context check --policy reviewed.yaml",
+            "python -I -m agent_guard.cli context check --policy reviewed.yaml "
             "--policy=attacker.yaml",
         ),
         (
@@ -912,7 +1008,7 @@ def test_command_match_rejects_dynamic_redirection_in_closed_subshell() -> None:
         "--profile recommended --schema-version v2 --base-ref HEAD",
         "env -uFOO agent-guard drift check --root . --profile recommended "
         "--schema-version v2 --base-ref HEAD",
-        "env python -m agent_guard.cli drift check --root . "
+        "env python -I -m agent_guard.cli drift check --root . "
         "--profile recommended --schema-version v2 --base-ref HEAD",
         "env -S 'agent-guard drift check --root . --profile recommended "
         "--schema-version v2 --base-ref HEAD'",
@@ -1138,7 +1234,7 @@ def test_scan_workflow_policy_rejects_environment_expansion_with_fixed_finding(
                     {
                         "env": {"EXTRA_ARGS": "--policy attacker.yaml"},
                         "run": (
-                            "python -m agent_guard.cli context check "
+                            "python -I -m agent_guard.cli context check "
                             "--policy reviewed.yaml $EXTRA_ARGS"
                         ),
                     }
@@ -1185,7 +1281,7 @@ def test_scan_workflow_policy_rejects_declared_shell_option_escapes(
                     {
                         "shell": shell,
                         "run": (
-                            "python -m agent_guard.cli context check "
+                            "python -I -m agent_guard.cli context check "
                             "--policy reviewed.yaml "
                             f"{escaped_option} attacker.yaml"
                         ),
@@ -1216,7 +1312,7 @@ def test_scan_workflow_policy_rejects_declared_shell_option_escapes(
     ],
 )
 def test_command_match_rejects_unquoted_pipeline_and_background_tails(tail: str) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
 
     assert not command_line_matches_required(f"{required} --root . --json {tail}", required)
 
@@ -1233,7 +1329,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: python -m agent_guard.cli context check --root . --policy context.yaml --json; {tail}
+      - run: python -I -m agent_guard.cli context check --root . --policy context.yaml --json; {tail}
 """,
     )
     policy = {
@@ -1243,7 +1339,7 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
+                    {"id": "context_guard", "command": "python -I -m agent_guard.cli context check"},
                 ],
             }
         ],
@@ -1269,9 +1365,9 @@ jobs:
             "agent-guard context check --root . --policy context.yaml",
         ),
         (
-            "python -m agent_guard.cli context check --root . --policy context.yaml",
+            "python -I -m agent_guard.cli context check --root . --policy context.yaml",
             "python() { return 0; }\n"
-            "python -m agent_guard.cli context check --root . --policy context.yaml",
+            "python -I -m agent_guard.cli context check --root . --policy context.yaml",
         ),
         (
             "agent-guard context check --root . --policy context.yaml",
@@ -1405,7 +1501,7 @@ def test_scan_workflow_policy_rejects_declared_resolution_changes(
     value: object,
 ) -> None:
     step: dict[str, object] = {
-        "run": "python -m agent_guard.cli context check --root . --json",
+        "run": "python -I -m agent_guard.cli context check --root . --json",
     }
     job: dict[str, object] = {
         "runs-on": "ubuntu-latest",
@@ -1443,7 +1539,7 @@ def test_scan_workflow_policy_rejects_python_import_resolution_environment(
     variable: str,
 ) -> None:
     step: dict[str, object] = {
-        "run": "python -m agent_guard.cli context check --root . --json",
+        "run": "python -I -m agent_guard.cli context check --root . --json",
     }
     job: dict[str, object] = {
         "runs-on": "ubuntu-latest",
@@ -1472,7 +1568,7 @@ def test_scan_workflow_policy_accepts_dedicated_command_with_static_redirection(
                     {
                         "env": {"REPORT_KIND": "context"},
                         "run": (
-                            "python -m agent_guard.cli context check --root . "
+                            "python -I -m agent_guard.cli context check --root . "
                             "--json 2>/dev/null > evidence/context.json"
                         ),
                     }
@@ -1502,7 +1598,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          python -m agent_guard.cli context check --root . --policy context.yaml --json {tail}
+          python -I -m agent_guard.cli context check --root . --policy context.yaml --json {tail}
 """,
     )
     policy = {
@@ -1512,7 +1608,7 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
+                    {"id": "context_guard", "command": "python -I -m agent_guard.cli context check"},
                 ],
             }
         ],
@@ -1527,10 +1623,10 @@ jobs:
 @pytest.mark.parametrize(
     "command",
     [
-        "python -m agent_guard.cli context check --policy 'literal | and &'",
-        r"python -m agent_guard.cli context check --root \| --policy \&",
-        "python -m agent_guard.cli context check --root . &>guard.log",
-        "python -m agent_guard.cli context check --root . &>>guard.log",
+        "python -I -m agent_guard.cli context check --policy 'literal | and &'",
+        r"python -I -m agent_guard.cli context check --root \| --policy \&",
+        "python -I -m agent_guard.cli context check --root . &>guard.log",
+        "python -I -m agent_guard.cli context check --root . &>>guard.log",
     ],
 )
 def test_scan_workflow_policy_accepts_safe_operator_literals_and_redirections(
@@ -1555,7 +1651,7 @@ jobs:
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
                 "required_commands": [
-                    {"id": "context_guard", "command": "python -m agent_guard.cli context check"},
+                    {"id": "context_guard", "command": "python -I -m agent_guard.cli context check"},
                 ],
             }
         ],
@@ -1616,7 +1712,7 @@ def test_scan_workflow_policy_rejects_external_workflow_symlink_without_leak(tmp
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -1642,7 +1738,7 @@ def test_scan_workflow_policy_reads_opened_workflow_descriptor_after_path_swap(
 jobs:
   test:
     steps:
-      - run: python -m agent_guard.cli context check --root . --json
+      - run: python -I -m agent_guard.cli context check --root . --json
 """,
     )
     write(external_file, "jobs: {}\n")
@@ -1652,7 +1748,7 @@ jobs:
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -1688,7 +1784,7 @@ def test_scan_workflow_policy_rejects_workflow_ancestor_swap_without_leak(
 jobs:
   test:
     steps:
-      - run: python -m agent_guard.cli context check --root . --json
+      - run: python -I -m agent_guard.cli context check --root . --json
 """,
     )
     write(external_dir / "ci.yml", f"marker: {external_marker}\n")
@@ -1698,7 +1794,7 @@ jobs:
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/nested/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -1769,7 +1865,7 @@ def test_scan_workflow_policy_missing_configured_workflow_is_error(tmp_path: Pat
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ]
     }
@@ -1820,7 +1916,7 @@ def test_scan_workflow_policy_rejects_oversized_workflow_before_parse(
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -1891,7 +1987,7 @@ def test_scan_workflow_policy_rejects_recursive_parallel_alias_without_recursion
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -1921,7 +2017,7 @@ def test_load_workflow_file_rejects_yaml_merge_before_mapping_expansion() -> Non
 
 
 def test_scan_workflow_policy_preserves_bounded_acyclic_step_aliases(tmp_path: Path) -> None:
-    required = "python -m agent_guard.cli context check"
+    required = "python -I -m agent_guard.cli context check"
     write(
         tmp_path / ".github" / "workflows" / "ci.yml",
         "jobs:\n"
@@ -2019,7 +2115,7 @@ def test_scan_workflow_policy_enforces_job_step_and_command_count_budgets(
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -2060,7 +2156,7 @@ def test_scan_workflow_policy_enforces_iterative_parallel_traversal_budgets(
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }
@@ -2093,7 +2189,7 @@ def test_scan_workflow_policy_checks_command_budget_before_run_line_materializat
             {
                 "id": "ci_smoke",
                 "path": ".github/workflows/ci.yml",
-                "required_commands": ["python -m agent_guard.cli context check"],
+                "required_commands": ["python -I -m agent_guard.cli context check"],
             }
         ],
     }

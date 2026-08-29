@@ -991,6 +991,12 @@ startup, warning, user-site, and import selectors such as `PYTHONSTARTUP`,
 `USERPROFILE`, and `APPDATA`. An effective `working-directory` declaration is
 also ineligible.
 
+The installed `agent-guard` console script remains a supported entrypoint.
+When a requirement uses the Python module entrypoint, both the policy and the
+workflow must use `python -I -m agent_guard.cli ...`; bare
+`python -m agent_guard.cli ...` does not count because a package in the
+reviewed checkout can shadow the installed module.
+
 This boundary proves only the checked repository text has that restricted
 static shape. It does not prove which host executable a runner resolves, runner
 integrity, shell startup behavior, mutations persisted by prior steps (including

@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Run CLI smoke tests
         run: |
-          python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+          python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
 """,
     )
     policy = tmp_path / "workflow-policy.yaml"
@@ -38,7 +38,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
         encoding="utf-8",
     )
 
@@ -72,7 +72,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: python -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
+      - run: python -I -m agent_guard.cli context check --root . --policy .agent-guard/context-policy.yaml --json
 """,
     )
     write(
@@ -86,7 +86,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: context_guard\n"
-        "        command: python -m agent_guard.cli context check\n",
+        "        command: python -I -m agent_guard.cli context check\n",
     )
     write(cwd / policy_arg, "not: [valid\n")
 
@@ -142,10 +142,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          # python -m agent_guard.cli digest check --root . --policy digest.yaml --json
-          echo "python -m agent_guard.cli digest check --root . --policy digest.yaml --json"
+          # python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json
+          echo "python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json"
           python - <<'PY'
-          print("python -m agent_guard.cli digest check --root . --policy digest.yaml --json")
+          print("python -I -m agent_guard.cli digest check --root . --policy digest.yaml --json")
           PY
 """,
     )
@@ -157,7 +157,7 @@ jobs:
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
         "      - id: digest_guard\n"
-        "        command: python -m agent_guard.cli digest check\n",
+        "        command: python -I -m agent_guard.cli digest check\n",
         encoding="utf-8",
     )
 
@@ -176,7 +176,7 @@ jobs:
     )
     finding_text = json.dumps(payload["findings"])
     assert payload["findings"][0]["reason"] == "missing_required_workflow_command"
-    assert "python -m agent_guard.cli digest check" not in finding_text
+    assert "python -I -m agent_guard.cli digest check" not in finding_text
 
 def test_workflow_cli_json_malformed_workflow_yaml(tmp_path: Path) -> None:
     write(tmp_path / ".github" / "workflows" / "ci.yml", "jobs: [\n")
@@ -187,7 +187,7 @@ def test_workflow_cli_json_malformed_workflow_yaml(tmp_path: Path) -> None:
         "  - id: ci_smoke\n"
         "    path: .github/workflows/ci.yml\n"
         "    required_commands:\n"
-        "      - python -m agent_guard.cli context check\n",
+        "      - python -I -m agent_guard.cli context check\n",
         encoding="utf-8",
     )
 
