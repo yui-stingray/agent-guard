@@ -6,8 +6,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
-- Started `0.3.9.dev0` development while generated install and Action examples
-  remain pinned to the published `0.3.8` release.
+## 0.3.9 - 2026-08-29
+
+- Kept development builds on PEP 440 `0.3.9.dev0` until this final `0.3.9`
+  release. Generated install examples now target `0.3.9`; copyable Action
+  examples remain pinned to the immutable `0.3.8` release under the
+  post-release refresh contract.
 - Restricted required workflow-command evidence to dedicated direct commands,
   rejecting same-step control flow, Python startup/import resolution changes,
   job-container declarations, and dynamic redirection; generated and
