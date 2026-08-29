@@ -6,9 +6,9 @@
 | --- | --- |
 | 文書種別 | システム設計、セキュリティ設計、連携設計、運用設計 |
 | 状態 | 現行設計ベースライン |
-| 基準日 | 2026-08-29 JST |
+| 基準日 | 2026-08-30 JST |
 | 文書ID | `AG-ECO-DESIGN-001` |
-| 規範版 | `1.1` |
+| 規範版 | `1.2` |
 | Canonical保管場所 | `agent-guard/docs/architecture/agent-guard-ecosystem-design.md` |
 | Document custodian | `agent-guard` repository maintainer。保管・同期責任であり、他repositoryの運用権限ではない |
 | Requirement owner / Approver | 各要件を実装するrepositoryのmaintainer。Cross-repository contract変更は全affected repositoryのreviewが必要 |
@@ -21,9 +21,9 @@
 
 | Repository | Protected default branch基準 | Review candidate実装基準 | 公開基準 | 役割 |
 | --- | --- | --- | --- | --- |
-| [`agent-guard`](https://github.com/yui-stingray/agent-guard) | `5960ba97032399f27cef1f49c96dbcd3477ad97d` | `0d55d8dd6bcfd0d0572aef6d8e28beaa1dddf162` | `v0.3.9`、release commit `9c4680f0a2da01505bb12782b8b720c29e3dee43` | 決定論的な静的evidence gate |
-| [`agent-policy`](https://github.com/yui-stingray/agent-policy) | `002570ea8c2a36189c56e186ec2e60e1e49cb85a` | `2b575ba4126cf9029052a3a2fe1fad09738e8bbc` | `v0.1.18` | 任意導入の実行時admission evaluator |
-| [`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example) | `15e44eef41e639190e340b4ffa67a278ba19874b` | `05578477a270c8848e758c80d0bce4ebbab740f9` | Package releaseなし | public-safeな参照統合 |
+| [`agent-guard`](https://github.com/yui-stingray/agent-guard) | `5960ba97032399f27cef1f49c96dbcd3477ad97d` | `9392efce0a5f0fa2133ace2100d6cf57308bdcdb` | `v0.3.9`、release commit `9c4680f0a2da01505bb12782b8b720c29e3dee43` | 決定論的な静的evidence gate |
+| [`agent-policy`](https://github.com/yui-stingray/agent-policy) | `002570ea8c2a36189c56e186ec2e60e1e49cb85a` | `080faca4343f3671c52c2b21d6090f5c1bd8a78c` | `v0.1.18` | 任意導入の実行時admission evaluator |
+| [`agent-safety-toolkit-example`](https://github.com/yui-stingray/agent-safety-toolkit-example) | `15e44eef41e639190e340b4ffa67a278ba19874b` | `8ea48dc9926c55ac70af7a623c3ebcd8b35178c9` | Package releaseなし | public-safeな参照統合 |
 
 この設計変更branchでは、公開版とsource artifactを区別するため`agent-guard`を
 `0.3.10.dev0`、`agent-policy`を`0.1.19.dev0`とする。公開install、provenance、Toolkit
@@ -49,6 +49,7 @@ implementation、ruleset、release、incident actionの唯一の運用ownerで�
 | --- | --- | --- | --- |
 | `1.0` | 2026-08-29 | 初版review copy | 作成task |
 | `1.1` | 2026-08-29 | 規範区分、要件ID、publication state machine、wrapper binding、freshness、compatibility gate、governanceを追加 | 本文書を変更するPR |
+| `1.2` | 2026-08-30 | Repository-local authority、review済みcandidate gate、traceabilityとlive ruleset確認を同期 | 3 repositoryのreview PR |
 
 ## 2. 目的
 
@@ -701,7 +702,7 @@ Callerはprocess statusとdecision JSON identityの両方を検証する。
 - Toolkit: active `protect-main`は`refs/heads/main`へ`Safety evidence demo`をstrict required
   checkとして要求する。
 
-2026-08-29のlive API確認では3 repositoryともbypass actorは空で、current maintainerにも
+2026-08-30のlive API確認では3 repositoryともbypass actorは空で、current maintainerにも
 direct bypassはない。これはimmutable repository artifactではないため、release/設計review時に
 `gh api repos/<owner>/<repo>/rulesets`でMUST再確認する。Ruleset IDを永続contractにせず、
 name、target ref、required check、bypass-empty、active enforcementを検証する。
@@ -752,7 +753,7 @@ PyPI upload前に、exact commitのToolkit contractへ投入してMUST検証す�
    jobは起動しない。これによりhelperの誤動作が検証済みpublish bytesを置換できない。
 
 現行candidate helper実装はToolkit commit
-`e78944091264fd927e7c0fe6fae7bc4eb3de2ec0`の
+`8ea48dc9926c55ac70af7a623c3ebcd8b35178c9`の
 `scripts/check_candidate_wheel_compatibility.py`である。Candidate modeのfreshness testは、
 まだ公開版で生成されたcommitted bytesとの一致を要求せず、candidate生成の収束後2 runが
 byte-stableであることを検証する。通常Toolkit CIはcommitted-evidence equalityを維持する。
@@ -1001,9 +1002,9 @@ informativeであり、symbol/schema/check nameをstable anchorとする。
 | `AG-GUARD-REQ-002` | Integrityとfreshnessを分離 | guard / `0d55d8d` | packaged consumer、`examples/evidence_contracts_ci.sh consume` | consumer contract examples | `agent-guard required CI` | Implemented; whole-tree identity out of scope | 2026-08-29 |
 | `AG-GUARD-REQ-003` | Resource ceilings | guard / `0d55d8d` | 11.3のconstant anchors | bounded/resource one-over tests | `agent-guard required CI` | Implemented | 2026-08-29 |
 | `AG-POLICY-REQ-001` | Decision/approvalをoperationへbind | policy / `2b575ba` | `docs/integration-contract.md`; current v1 event is evidence-only | wrapper/hook tests、future approval-envelope conformance | `agent-policy required CI` | Normative integration contract; persisted approval API not implemented | 2026-08-29 |
-| `AG-TOOLKIT-REQ-001` | Crash-consistent publication | toolkit / `0557847` | `scripts/evidence_publication.py` journal/state constants、`docs/evidence-publication-protocol.md` | fault-injection、concurrency、byte-stability/restore-mode tests | `Safety evidence demo` | Implemented/documented for local Linux FS | 2026-08-29 |
-| `AG-ECO-REQ-004` | Candidate wheelを公開前にToolkit検証 | guard `0d55d8d` / policy `2b575ba` / toolkit `0557847` | candidate compatibility helper + immutable validated artifact handoff + upstream release-contract/release-build steps | candidate wheel smoke、artifact-order contract、Toolkit full gate | 上流required aggregateとrelease build | Implemented in review branches; required CI pending | 2026-08-29 |
-| `AG-OPS-REQ-001` | Audited break-glass | each affected repo / live ruleset | 17.1、affected repositoryのlocal control、guard operations runbookはguardのみ | API before/after comparison | `gh api repos/{owner}/{repo}/rulesets` | Repository-local authority; no current bypass actors | 2026-08-29 |
+| `AG-TOOLKIT-REQ-001` | Crash-consistent publication | toolkit / `8ea48dc` | `scripts/evidence_publication.py` journal/state constants、`docs/evidence-publication-protocol.md` | fault-injection、concurrency、byte-stability/restore-mode tests | `Safety evidence demo` | Implemented/documented for local Linux FS | 2026-08-30 |
+| `AG-ECO-REQ-004` | Candidate wheelを公開前にToolkit検証 | guard `9392efc` / policy `080faca` / toolkit `8ea48dc` | candidate compatibility helper + immutable validated artifact handoff + upstream release-contract/release-build steps | candidate wheel smoke、artifact-order contract、Toolkit full gate | 上流required aggregateとrelease build | Implemented in review branches; required CI green at listed review heads | 2026-08-30 |
+| `AG-OPS-REQ-001` | Audited break-glass | each affected repo / live ruleset | 17.1、affected repositoryのlocal control、guard operations runbookはguardのみ | API before/after comparison | `gh api repos/{owner}/{repo}/rulesets` | Repository-local authority; no current bypass actors | 2026-08-30 |
 | `AG-OPS-REQ-002` | Yank/rollback/replacement | guard/policy release workflows | 17.2、release criteria、PyPI state checker | release recovery/package tests | PyPI JSON + GitHub release/workflow APIs | Documented; incident-triggered | 2026-08-29 |
 | `AG-OPS-REQ-003` | Demand GO/NO-GO | guard / `0d55d8d` | `docs/demand-validation.md` | reviewed signal record | GitHub/PyPI aggregate observations | Decision due 2026-09-21 | 2026-08-29 |
 
