@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 INIT_PLAN_SCHEMA_VERSION = "agent-guard.init_plan.v1"
-PUBLISHED_PACKAGE_VERSION = "0.3.8"
+PUBLISHED_PACKAGE_VERSION = "0.3.9"
 GITHUB_EVENT_BASE_SHA_EXPRESSION = (
     "${{ github.event_name == 'pull_request' && "
     "github.event.pull_request.base.sha || github.event.before }}"

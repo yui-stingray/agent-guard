@@ -42,8 +42,7 @@ SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.8"
 ACTION_RELEASE_COMMIT = "3d8c99ee502b914ccc3d605ad469d96b098d6212"
-PACKAGE_RELEASE_VERSION = "0.3.8"
-SOURCE_PACKAGE_VERSION = "0.3.9.dev0"
+PACKAGE_RELEASE_VERSION = "0.3.9"
 
 
 def pyproject_version() -> str:
@@ -51,24 +50,25 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_source_and_published_package_identity() -> None:
+def test_readme_matches_release_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == SOURCE_PACKAGE_VERSION
-    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
     assert "examples remain pinned to the immutable `0.3.8` release" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    release_notes = changelog.split("## 0.3.8 - 2026-08-27", maxsplit=1)[1].split(
-        "## 0.3.7 - 2026-08-24", maxsplit=1
+    release_notes = changelog.split("## 0.3.9 - 2026-08-29", maxsplit=1)[1].split(
+        "## 0.3.8 - 2026-08-27", maxsplit=1
     )[0]
+    normalized_release_notes = " ".join(release_notes.split())
 
-    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert pyproject_version() == PACKAGE_RELEASE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
-    assert "required workflow-command matching" in release_notes
-    assert "bounded JSON parsing" in release_notes
+    assert "dedicated direct commands" in normalized_release_notes
+    assert "duplicate constructed mapping keys" in normalized_release_notes
 
 
 def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:

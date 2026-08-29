@@ -6,12 +6,12 @@ conformance, and evidence-pack commands emit small, sanitized evidence payloads
 that maintainers can read in pull requests, store as CI artifacts, or validate
 in downstream wrappers without sending repository contents to a model.
 
-> **Version gate:** package `0.3.8` contains the v1 and v2 report/manifest
+> **Version gate:** package `0.3.9` contains the v1 and v2 report/manifest
 > contracts, including the guard-owned `agent-guard.public_agent_policy_audit_event.v1`
 > profile. Copyable Action examples use the immutable commit for the current
 > published `v0.3.8` release.
 > The Action does not expose audit-event inputs; its generated report and manifest remain v1.
-> Package `0.3.8` requires consumer `--repo-root` for bound v2 evidence.
+> Package `0.3.9` requires consumer `--repo-root` for bound v2 evidence.
 
 ## Contracts
 
@@ -191,7 +191,7 @@ public-artifact contract, not a generic secret scanner or a claim that the
 producer-owned `agent-policy` JSON Schema uses the same narrower grammar.
 Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
 including escaped lone surrogates, before computing a digest.
-The `0.3.8` consumer requires the event separately and an explicit
+The `0.3.9` consumer requires the event separately and an explicit
 repository root. Each positional event must be a canonical relative path or a
 canonical absolute in-root path, and its derived repository-relative path must
 exactly equal the same-position manifest artifact path before profile and

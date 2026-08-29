@@ -162,6 +162,9 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.9 - 2026-08-29", maxsplit=1
+    )[0]
+    current_release = changelog.split("## 0.3.9 - 2026-08-29", maxsplit=1)[1].split(
         "## 0.3.8 - 2026-08-27", maxsplit=1
     )[0]
     candidate_release = changelog.split("## 0.3.8 - 2026-08-27", maxsplit=1)[1].split(
@@ -195,21 +198,23 @@ def test_changelog_records_latest_release_entry() -> None:
     normalized_oldest = " ".join(oldest_release.split())
     normalized_legacy = " ".join(legacy_release.split())
     normalized_candidate = " ".join(candidate_release.split())
+    normalized_current = " ".join(current_release.split())
     normalized_newest = " ".join(newest_release.split())
     normalized_unreleased = " ".join(unreleased.split())
 
     assert headings[:7] == [
         "## Unreleased",
+        "## 0.3.9 - 2026-08-29",
         "## 0.3.8 - 2026-08-27",
         "## 0.3.7 - 2026-08-24",
         "## 0.3.6 - 2026-08-23",
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
-        "## 0.3.3 - 2026-07-27",
     ]
-    assert normalized_unreleased == " ".join(
+    assert normalized_unreleased == ""
+    assert normalized_current == " ".join(
         [
-            "- Started `0.3.9.dev0` development while generated install and Action examples remain pinned to the published `0.3.8` release.",
+            "- Kept development builds on PEP 440 `0.3.9.dev0` until this final `0.3.9` release. Generated install examples now target `0.3.9`; copyable Action examples remain pinned to the immutable `0.3.8` release under the post-release refresh contract.",
             "- Restricted required workflow-command evidence to dedicated direct commands, rejecting same-step control flow, Python startup/import resolution changes, job-container declarations, and dynamic redirection; generated and self-dogfood policy commands now use dedicated steps. Python module requirements now also require isolated mode (`python -I -m agent_guard.cli`) so repository-local packages cannot shadow the installed command.",
             "- Bound relative report outputs to the selected root and added traversal, linked-ancestor, exclusive regular-temp, and atomic no-follow replacement controls for report and render-report artifacts. Windows replacement remains bound to the open temporary-file and parent-directory handles.",
             "- Centralized security-sensitive YAML construction and rejected duplicate constructed mapping keys, including equivalent scalar spellings, at every nesting depth while retaining bounded aliases and rejecting merge expansion.",
