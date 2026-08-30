@@ -16,6 +16,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from agent_guard.evidence_pack import (
+    PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1,
     SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN,
     is_sanitized_repository_relative_path,
 )
@@ -44,6 +45,29 @@ def _v2_artifact_path_schema(schema_name: str) -> dict[str, object]:
             "artifacts"
         ]["items"]["properties"]["path"]
     return schema["properties"]["artifacts"]["items"]["properties"]["path"]
+
+
+def _v2_event_profile_schema(schema_name: str) -> dict[str, object]:
+    schema = load_schema(schema_name)
+    artifacts = (
+        schema["properties"]["evidence_pack_manifest"]["properties"]["artifacts"]
+        if schema_name == "agent-guard.report_evidence.v2.schema.json"
+        else schema["properties"]["artifacts"]
+    )
+    return artifacts["items"]["properties"]["content_binding"]["properties"][
+        "event_profile"
+    ]
+
+
+def test_v2_event_profile_schemas_pin_the_runtime_supported_profile() -> None:
+    for schema_name in (
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
+        "agent-guard.report_evidence.v2.schema.json",
+    ):
+        profile_schema = _v2_event_profile_schema(schema_name)
+        assert profile_schema == {
+            "const": PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1,
+        }
 
 
 @pytest.mark.parametrize(
@@ -308,6 +332,16 @@ def test_v2_evidence_schemas_require_exact_bound_audit_event_entries() -> None:
             }
         )
         assert validator.is_valid(value)
+
+        manifest["artifacts"][-1]["content_binding"] = binding | {
+            "digest": "b" + ("a" * 51) + "q"
+        }
+        assert validator.is_valid(value)
+        manifest["artifacts"][-1]["content_binding"] = binding | {
+            "digest": "b" + ("a" * 51) + "b"
+        }
+        assert not validator.is_valid(value)
+        manifest["artifacts"][-1]["content_binding"] = binding
 
         for unsafe_path in (
             "../claimed/event.json",

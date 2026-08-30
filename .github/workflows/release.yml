@@ -103,10 +103,22 @@ jobs:
         run: python -m twine check dist/*
       - name: Verify wheel public contract
         run: python scripts/check_wheel_contract.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Upload validated distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist
           path: dist/
+      - name: Checkout exact Toolkit compatibility contract
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: yui-stingray/agent-safety-toolkit-example
+          ref: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
+          path: .candidate-toolkit
+          persist-credentials: false
+      - name: Verify Toolkit candidate compatibility
+        run: >-
+          python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py
+          --wheel dist/yui_agent_guard-*.whl
 
   attest:
     name: attest release distributions

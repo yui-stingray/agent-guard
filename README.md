@@ -7,10 +7,10 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: `0.3.9` alpha. Package install examples use this release; copyable
-Action examples use the immutable commit for the current published `v0.3.9` release
-under the post-release refresh contract. Vendor-neutral, static-only,
-Python 3.11.4+, with one runtime dependency (`PyYAML`).
+**Status**: source `0.3.10.dev0` development build. Published install and
+copyable Action examples remain pinned to the immutable `0.3.9` release under
+the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
 durable repository surfaces that shape later agent runs: instruction files,
@@ -157,6 +157,10 @@ See [`docs/evidence-contracts.md`](docs/evidence-contracts.md) for the
 versioned evidence contract, public-safe sample report, CI artifact guidance,
 SARIF status, and non-goals. For the static evidence threat model and explicit
 runtime/security non-goals, see [`docs/threat-model.md`](docs/threat-model.md).
+The cross-repository normative baseline is
+[`docs/architecture/agent-guard-ecosystem-design.md`](docs/architecture/agent-guard-ecosystem-design.md),
+with audited break-glass and release-containment procedures in
+[`docs/operations-governance.md`](docs/operations-governance.md).
 Downstream CI consumers that need fail-closed missing/invalid/report-visible drift checks,
 public-artifact linting, or strict release gates can start from
 [`docs/evidence-consumer-contracts.md`](docs/evidence-consumer-contracts.md).

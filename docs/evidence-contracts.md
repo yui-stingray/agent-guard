@@ -191,6 +191,31 @@ public-artifact contract, not a generic secret scanner or a claim that the
 producer-owned `agent-policy` JSON Schema uses the same narrower grammar.
 Canonicalization also rejects strings that cannot be encoded as valid UTF-8,
 including escaped lone surrogates, before computing a digest.
+For binding schema
+`agent-guard.agent_policy_audit_event_binding.v1`, `canonical-json-v1` is the
+following fixed byte algorithm:
+
+1. Decode the bounded event as a UTF-8 JSON object. Reject duplicate object
+   member names and `NaN`, `Infinity`, or `-Infinity`.
+2. Retain each parser-validated JSON integer or floating-point lexeme exactly;
+   `1`, `1.0`, and `1e0` therefore produce different canonical bytes.
+3. Sort object keys by Unicode code point sequence, preserve array order, and
+   emit no whitespace between JSON members or elements.
+4. Serialize decoded string values and keys with JSON string escaping and
+   literal non-ASCII UTF-8 output (`ensure_ascii=False` behavior). No Unicode
+   normalization is applied.
+5. Construct the digest input as
+   `ASCII(binding schema) || 0x00 || ASCII(event profile) || 0x00 || canonical JSON`.
+6. SHA-256 that byte sequence, RFC 4648 base32 encode the 32 digest bytes,
+   remove `=` padding, lowercase the ASCII result, and prefix it with `b`.
+   The exact 53-character digest grammar is `b[a-z2-7]{51}[aq]`; the final
+   character has only one input bit and its unused bits must be zero.
+
+The current `event_profile` grammar is
+`^[a-z][a-z0-9._-]{0,127}$`, followed by membership in the recognized
+singleton `agent-guard.public_agent_policy_audit_event.v1`. Changing the
+canonicalization, the domain bytes, or this digest algorithm requires a new
+binding schema version.
 The `0.3.9` consumer requires the event separately and an explicit
 repository root. Each positional event must be a canonical relative path or a
 canonical absolute in-root path, and its derived repository-relative path must

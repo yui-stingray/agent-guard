@@ -6,6 +6,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Started `0.3.10.dev0` development while generated install and Action examples
+  remain pinned to the published `0.3.9` release.
+- Tightened the public v2 digest grammar to canonical unpadded base32 and kept
+  producer redaction aligned with the consumer's controlled private-key-header
+  rejection contract.
+
 ## 0.3.9 - 2026-08-29
 
 - Kept development builds on PEP 440 `0.3.9.dev0` until this final `0.3.9`

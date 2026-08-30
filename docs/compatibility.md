@@ -106,10 +106,19 @@ fail closed. This is the guard-owned public-artifact grammar, not generic
 secret scanning or the generic producer-owned `agent-policy` path grammar. The
 binding uses canonical JSON, an
 explicit expected event profile, and a domain-separated
-SHA-256 digest encoded as lowercase base32 with a controlled `b` prefix. This
-controlled digest is not a raw hexadecimal hash and is the only hash-like value
-admitted on this field. Current consumers fail closed when the separately
-supplied event or expected profile does not match. The only recognized profile,
+SHA-256 digest encoded as lowercase base32 with a controlled `b` prefix. The
+fixed v1 byte algorithm decodes UTF-8 JSON, retains valid numeric lexemes,
+sorts object keys by Unicode code point sequence, serializes strings and keys
+as UTF-8 JSON, then hashes
+`ASCII(binding schema) || 0x00 || ASCII(event profile) || 0x00 || canonical JSON`.
+It encodes the 32 digest bytes with RFC 4648 base32, removes padding, lowercases,
+and prefixes `b`; the exact digest grammar is `b[a-z2-7]{51}[aq]`. The profile
+must match `^[a-z][a-z0-9._-]{0,127}$` and then be a recognized profile.
+Changing the canonicalization, domain bytes, or digest algorithm requires a new
+binding schema version. This controlled digest is not a raw hexadecimal hash
+and is the only hash-like value admitted on this field. Current consumers fail
+closed when the separately supplied event or expected profile does not match.
+The only recognized profile,
 `agent-guard.public_agent_policy_audit_event.v1`, is a guard-owned contract that
 validates a bounded public-safe subset of the underlying `agent-policy` v1.1
 event shape. It does not claim validation against the generic producer-owned

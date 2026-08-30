@@ -33,6 +33,10 @@ EXISTING_REPO_QUICKSTART = REPO_ROOT / "docs" / "quickstart-existing-repo.md"
 GITHUB_ACTIONS_EVIDENCE_DOC = REPO_ROOT / "docs" / "github-actions-evidence.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
+ECOSYSTEM_DESIGN = (
+    REPO_ROOT / "docs" / "architecture" / "agent-guard-ecosystem-design.md"
+)
+OPERATIONS_GOVERNANCE_DOC = REPO_ROOT / "docs" / "operations-governance.md"
 POSITIONING_DOC = REPO_ROOT / "docs" / "positioning.md"
 DEMAND_VALIDATION_DOC = REPO_ROOT / "docs" / "demand-validation.md"
 THREAT_MODEL_DOC = REPO_ROOT / "docs" / "threat-model.md"
@@ -43,6 +47,7 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 ACTION_RELEASE_VERSION = "0.3.9"
 ACTION_RELEASE_COMMIT = "9c4680f0a2da01505bb12782b8b720c29e3dee43"
 PACKAGE_RELEASE_VERSION = "0.3.9"
+SOURCE_PACKAGE_VERSION = "0.3.10.dev0"
 
 
 def pyproject_version() -> str:
@@ -50,12 +55,12 @@ def pyproject_version() -> str:
         return tomllib.load(fh)["project"]["version"]
 
 
-def test_readme_matches_release_package_identity() -> None:
+def test_readme_matches_source_and_published_package_identity() -> None:
     readme = README.read_text(encoding="utf-8")
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
-    assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
-    assert "current published `v0.3.9` release" in readme
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
+    assert f"**Status**: source `{SOURCE_PACKAGE_VERSION}` development build." in readme
+    assert "examples remain pinned to the immutable `0.3.9` release" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
@@ -65,7 +70,7 @@ def test_release_identity_contains_the_executable_change_notes() -> None:
     )[0]
     normalized_release_notes = " ".join(release_notes.split())
 
-    assert pyproject_version() == PACKAGE_RELEASE_VERSION
+    assert pyproject_version() == SOURCE_PACKAGE_VERSION
     assert PUBLISHED_PACKAGE_VERSION == PACKAGE_RELEASE_VERSION
     assert "dedicated direct commands" in normalized_release_notes
     assert "duplicate constructed mapping keys" in normalized_release_notes
@@ -593,6 +598,8 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "docs/quickstart-existing-repo.md" in readme
     assert "docs/github-actions-evidence.md" in readme
     assert "docs/release-criteria.md" in readme
+    assert "docs/architecture/agent-guard-ecosystem-design.md" in readme
+    assert "docs/operations-governance.md" in readme
     assert "docs/positioning.md" in readme
     assert "agent-guard.report_evidence.v1" in readme
     assert "agent-guard.result.v1" in readme
@@ -642,10 +649,120 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "they do not prove" in readme
     assert "live OAuth flow is correctly implemented" in readme
     assert "2026-07-28 protocol/runtime/OAuth changes do not justify" in readme
-    assert "No changelog item directly invalidates the current static committed-config labels" in readme_single_line
+    assert (
+        "No changelog item directly invalidates the current static committed-config labels"
+        in readme_single_line
+    )
     assert "Read `recommended` as the reviewed static evidence baseline" in readme
     assert "recommended conformance does not require those gates" in readme_single_line
     assert "Use `strict` when context-lock coverage, digest drift" in readme_single_line
+
+
+def test_ecosystem_design_is_a_traceable_normative_baseline() -> None:
+    design = ECOSYSTEM_DESIGN.read_text(encoding="utf-8")
+    normalized = " ".join(design.split())
+
+    for phrase in (
+        "AG-ECO-DESIGN-001",
+        "Canonical保管場所",
+        "Owner",
+        "Approver",
+        "Supersedes",
+        "規範性",
+        "AG-ECO-REQ-001",
+        "AG-GUARD-REQ-001",
+        "AG-POLICY-REQ-001",
+        "AG-TOOLKIT-REQ-001",
+        "AG-ECO-REQ-004",
+        "AG-OPS-REQ-001",
+        "AG-OPS-REQ-002",
+        "AG-OPS-REQ-003",
+        "Traceability",
+    ):
+        assert phrase in design
+
+    for binding_field in (
+        "repository_identity",
+        "payload_digest",
+        "policy_revision",
+        "context_revision",
+        "request_id",
+    ):
+        assert binding_field in design
+    assert "replayをMUST拒否" in normalized
+    assert "新しいversioned envelope/API/schema" in normalized
+
+    assert "Integrity、freshness、subject identity" in design
+    assert "location-independent" in normalized
+    assert "v3等の新schema" in normalized
+    assert "whole-tree identity out of scope" in design
+
+    assert "canonical-json-v1" in design
+    assert "ASCII(binding schema) || 0x00" in design
+    assert "末尾は`a`または`q`だけ" in design
+    for grammar_anchor in (
+        "evidence_pack._AUDIT_EVENT_PROFILE_RE",
+        "evidence_pack._AUDIT_EVENT_DIGEST_RE",
+        "evidence_pack.SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN",
+        "public_redaction.SECRET_SHAPED_PUBLIC_TEXT_RE",
+        "agent-guard.report_evidence.v2.schema.json",
+        "agent-guard.evidence_pack_manifest.v2.schema.json",
+    ):
+        assert grammar_anchor in design
+    assert "PUBLISHED_UNCOMMITTED" in design
+    assert "commit linearization" in normalized
+    assert "SIGKILL相当" in design
+    assert "recovery用の positive identity" in normalized
+    assert "Protected default branch基準" in design
+    assert "Review candidate実装基準" in design
+    assert "immutable workflow artifact" in normalized
+    assert "helperの誤動作" in normalized
+
+    for stable_check in (
+        "agent-guard required CI",
+        "agent-policy required CI",
+        "Safety evidence demo",
+    ):
+        assert stable_check in design
+    assert "bypass actorは空" in normalized
+    assert "bounded_scan.ISOLATED_SCAN_START_TIMEOUT_SECONDS" in design
+    assert "ISOLATED_SCAN_TIMEOUT_SECONDS" in design
+    assert "consumer._schema.MAX_REPORT_JSON_BYTES" in design
+    assert "Requirement | Normative statement | Repo / baseline commit" in design
+
+
+def test_operations_governance_covers_break_glass_and_replacement() -> None:
+    operations = OPERATIONS_GOVERNANCE_DOC.read_text(encoding="utf-8")
+    release = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
+    demand = DEMAND_VALIDATION_DOC.read_text(encoding="utf-8")
+    normalized = " ".join(operations.split())
+
+    assert "architecture/agent-guard-ecosystem-design.md" in operations
+    assert "candidate distribution once" in normalized
+    assert "independent read-only diff review" in normalized
+    assert "Do not direct-push, force-push, or move a tag" in normalized
+    assert "yank the whole release" in normalized
+    assert "new patch version" in normalized
+    assert "exact `==` installs" in operations
+    assert "operations-governance.md" in release
+    assert "owns only `agent-guard` operational controls" in operations
+    assert "does not transfer operational authority" in operations
+    assert "owns the operational controls shared" not in operations
+    design = ECOSYSTEM_DESIGN.read_text(encoding="utf-8")
+    assert (
+        "| Document custodian | `agent-guard` repository maintainer。保管・同期責任であり、"
+        "他repositoryの運用権限ではない |"
+    ) in design
+    assert (
+        "| Requirement owner / Approver | 各要件を実装するrepositoryのmaintainer。"
+        "Cross-repository contract変更は全affected repositoryのreviewが必要 |"
+    ) in design
+    assert "Repository-local authority" in design
+    assert "Decision owner" in demand
+    assert "Measurement owner" in demand
+    assert "2026-09-21" in demand
+    assert "activations are at least 3" in demand
+    assert "retained activations are at least 2" in demand
 
 
 def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:

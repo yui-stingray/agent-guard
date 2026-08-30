@@ -12,7 +12,7 @@ SECRET_SHAPED_PUBLIC_TEXT_RE = re.compile(
     r"AKIA[0-9A-Z]{16}|"
     r"ASIA[0-9A-Z]{16}|"
     r"xox[baprs]-[A-Za-z0-9-]{10,}|"
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )
 SHA256_PUBLIC_TEXT_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
 LOCAL_PATH_PUBLIC_TEXT_RE = re.compile(

@@ -41,6 +41,7 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-guard-evidence-pack.json",
     "agent-surface-inventory.json",
 )
+TOOLKIT_COMPATIBILITY_COMMIT = "8ea48dc9926c55ac70af7a623c3ebcd8b35178c9"
 APPROVED_ACTION_PIP_COMMANDS = (
     'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"',
     'python -I -m pip install "$GITHUB_ACTION_PATH"',
@@ -802,6 +803,77 @@ def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
     assert "pytest" not in ci_commands
 
 
+def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> None:
+    release_workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    ci_workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+
+    for job, wheel_pattern in (
+        (ci_workflow["jobs"]["release-contract"], "dist/yui_agent_guard-*.whl"),
+        (release_workflow["jobs"]["build"], "dist/yui_agent_guard-*.whl"),
+    ):
+        steps = job["steps"]
+        toolkit_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Checkout exact Toolkit compatibility contract"
+        )
+        gate_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Verify Toolkit candidate compatibility"
+        )
+        contract_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Verify wheel public contract"
+        )
+        checkout = steps[toolkit_index]
+        gate = steps[gate_index]
+
+        assert checkout["uses"] == (
+            "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+        )
+        assert checkout["with"] == {
+            "repository": "yui-stingray/agent-safety-toolkit-example",
+            "ref": TOOLKIT_COMPATIBILITY_COMMIT,
+            "path": ".candidate-toolkit",
+            "persist-credentials": False,
+        }
+        assert gate["run"] == (
+            "python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py "
+            f"--wheel {wheel_pattern}"
+        )
+        assert contract_index < toolkit_index < gate_index
+
+    release_steps = release_workflow["jobs"]["build"]["steps"]
+    gate_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if step.get("name") == "Verify Toolkit candidate compatibility"
+    )
+    upload_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    )
+    contract_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if step.get("name") == "Verify wheel public contract"
+    )
+    toolkit_index = next(
+        index
+        for index, step in enumerate(release_steps)
+        if step.get("name") == "Checkout exact Toolkit compatibility contract"
+    )
+    assert contract_index < upload_index < toolkit_index < gate_index
+    assert release_steps[upload_index].get("name") == "Upload validated distributions"
+    assert sum(
+        str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        for step in release_steps
+    ) == 1
+
+
 def test_release_workflow_attests_built_distributions() -> None:
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     build_job = workflow["jobs"]["build"]
@@ -837,10 +909,9 @@ def test_release_workflow_attests_built_distributions() -> None:
         str(step.get("uses", "")).startswith("actions/attest@")
         for step in build_steps
     )
-    upload_step = next(
-        name for name in build_named_steps if name.startswith("actions/upload-artifact@")
-    )
-    assert build_named_steps["Verify wheel public contract"] < build_named_steps[upload_step]
+    assert build_named_steps["Verify wheel public contract"] < build_named_steps[
+        "Upload validated distributions"
+    ]
 
     assert attest_job["needs"] == "build"
     assert "github.event_name == 'push'" in attest_job["if"]

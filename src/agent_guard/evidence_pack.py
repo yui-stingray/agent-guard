@@ -44,7 +44,7 @@ SUPPORTED_AGENT_POLICY_AUDIT_EVENT_PROFILES = frozenset(
     {PUBLIC_AGENT_POLICY_AUDIT_EVENT_PROFILE_V1}
 )
 _AUDIT_EVENT_PROFILE_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
-_AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{52}$")
+_AUDIT_EVENT_DIGEST_RE = re.compile(r"^b[a-z2-7]{51}[aq]$")
 _AUDIT_EVENT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:@/+~-]+$")
 SANITIZED_REPOSITORY_RELATIVE_PATH_PATTERN = (
     r"^(?!.*(?:sk-[A-Za-z0-9_-]{16,}|"

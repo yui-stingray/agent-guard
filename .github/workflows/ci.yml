@@ -47,6 +47,17 @@ jobs:
         run: python -m twine check dist/*
       - name: Verify wheel public contract
         run: python scripts/check_wheel_contract.py
+      - name: Checkout exact Toolkit compatibility contract
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          repository: yui-stingray/agent-safety-toolkit-example
+          ref: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
+          path: .candidate-toolkit
+          persist-credentials: false
+      - name: Verify Toolkit candidate compatibility
+        run: >-
+          python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py
+          --wheel dist/yui_agent_guard-*.whl
 
   action-smoke:
     name: packaged action smoke (py${{ matrix.python-version }})

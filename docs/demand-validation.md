@@ -1,5 +1,18 @@
 # Demand Validation
 
+**Decision owner:** `agent-guard` repository maintainer.
+
+**Measurement owner:** the same maintainer, with an independent review of the
+aggregate decision record.
+
+**Evidence location:** private maintainer records keyed by observation date.
+Do not commit raw clone/traffic details, outreach identities, or private replies.
+The public repository records only aggregate signal values, source types, the
+go/no-go result, the review date, and maintainer sign-off.
+
+**Decision record:** add the aggregate result to this document, or link a
+reviewed public issue/PR, on the decision date. Until then, status is `pending`.
+
 `agent-guard` is in **VALIDATE-NARROW**. Public feature expansion is frozen
 while the project tests whether its current static evidence package and GitHub
 Action solve a repeatable external need.

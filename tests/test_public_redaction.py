@@ -75,12 +75,14 @@ def test_url_redaction_and_consumer_validation_are_case_insensitive(value: str) 
         "xoxb-" + ("a" * 10),
         "AKIA" + ("A" * 16),
         "ASIA" + ("B" * 16),
+        "-----BEGIN DSA PRIVATE KEY-----",
     ),
 )
 def test_consumer_rejects_controlled_secret_shapes_redacted_by_producer(value: str) -> None:
     redacted = redact_public_text(f"before {value} after")
 
     assert value not in redacted
+    validate_public_text_shape(redacted, path="$.redacted")
     with pytest.raises(ValueError, match="secret-shaped value") as exc_info:
         validate_public_text_shape(value, path="$.value")
     assert value not in str(exc_info.value)
