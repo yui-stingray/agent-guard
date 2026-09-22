@@ -131,6 +131,8 @@ jobs:
           tests/test_content_guard.py::test_new_mode_applies_windows_git_filename_rejections
           tests/cli/test_evidence_pack.py::test_audit_event_artifacts_preserve_nested_paths_for_duplicate_basenames
           tests/test_windows_file_boundaries.py
+          tests/cli/test_dispatch_contract.py
+          tests/cli/test_entrypoint_contract.py
       - name: Verify Windows CLI report consumer contract
         shell: bash
         run: |

@@ -1,0 +1,1607 @@
+{
+  "baseline_commit": "91ef96a9e069222f3b1cfd56fee5a20ddd09334d",
+  "conditions": {
+    "COLUMNS": "4096",
+    "LANGUAGE": "C",
+    "LC_ALL": "C",
+    "NO_COLOR": "1",
+    "TERM": "dumb"
+  },
+  "cases": [
+    {
+      "argv": [
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "init",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "api",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "api",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "content",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "content",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "context",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "context",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "context",
+        "inventory",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "context",
+        "lock",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "path",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "path",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "digest",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "digest",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "workflow",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "workflow",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "surface",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "surface",
+        "inventory",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "surface",
+        "delta",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "mcp",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "mcp",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "drift",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "drift",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "conformance",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "conformance",
+        "check",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "evidence-pack",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "evidence-pack",
+        "manifest",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "report",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "render-report",
+        "--help"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "--version"
+      ],
+      "returncode": 0
+    },
+    {
+      "argv": [],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "api"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "api",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "content"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "content",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "context"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "context",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "path"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "path",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "digest"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "digest",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "workflow"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "workflow",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "surface"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "surface",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "mcp"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "mcp",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "drift"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "drift",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "conformance"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "conformance",
+        "not-a-command"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "evidence-pack"
+      ],
+      "returncode": 2
+    },
+    {
+      "argv": [
+        "evidence-pack",
+        "not-a-command"
+      ],
+      "returncode": 2
+    }
+  ],
+  "runtimes": {
+    "3.11": {
+      "console": {
+        "program": "agent-guard",
+        "outputs": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53
+        ]
+      },
+      "module": {
+        "program": "__main__.py",
+        "outputs": [
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          29,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106
+        ]
+      }
+    },
+    "3.12": {
+      "console": {
+        "program": "agent-guard",
+        "outputs": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          107,
+          32,
+          108,
+          34,
+          109,
+          36,
+          110,
+          38,
+          111,
+          40,
+          112,
+          42,
+          113,
+          44,
+          114,
+          46,
+          115,
+          48,
+          116,
+          50,
+          117,
+          52,
+          118
+        ]
+      },
+      "module": {
+        "program": "__main__.py",
+        "outputs": [
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          29,
+          83,
+          119,
+          85,
+          120,
+          87,
+          121,
+          89,
+          122,
+          91,
+          123,
+          93,
+          124,
+          95,
+          125,
+          97,
+          126,
+          99,
+          127,
+          101,
+          128,
+          103,
+          129,
+          105,
+          130
+        ]
+      }
+    },
+    "3.13": {
+      "console": {
+        "program": "agent-guard",
+        "outputs": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53
+        ]
+      },
+      "module": {
+        "program": "__main__.py",
+        "outputs": [
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          29,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106
+        ]
+      }
+    },
+    "3.14": {
+      "console": {
+        "program": "agent-guard",
+        "outputs": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53
+        ]
+      },
+      "module": {
+        "program": "python -m agent_guard.cli",
+        "outputs": [
+          131,
+          132,
+          133,
+          134,
+          135,
+          136,
+          137,
+          138,
+          139,
+          140,
+          141,
+          142,
+          143,
+          144,
+          145,
+          146,
+          147,
+          148,
+          149,
+          150,
+          151,
+          152,
+          153,
+          154,
+          155,
+          156,
+          157,
+          158,
+          159,
+          29,
+          160,
+          161,
+          162,
+          163,
+          164,
+          165,
+          166,
+          167,
+          168,
+          169,
+          170,
+          171,
+          172,
+          173,
+          174,
+          175,
+          176,
+          177,
+          178,
+          179,
+          180,
+          181,
+          182,
+          183
+        ]
+      }
+    }
+  },
+  "outputs": [
+    {
+      "stdout": "usage: agent-guard [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n\nstatic repository guardrails for agent-touched repos\n\npositional arguments:\n  {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report}\n    init                print or write review-first starter guard files\n    api                 URL-based API surface guard\n    content             pattern-based content security guard\n    context             agent context file guard\n    path                path-name guard for private artifacts and env-file leaks\n    digest              SHA-256 pin guard for safety-critical files\n    workflow            workflow drift guard for declared repository gates\n    surface             agent-facing repository surface inventory\n    mcp                 static MCP configuration evidence\n    drift               small policy/spec drift guard\n    conformance         profile conformance over sanitized evidence\n    evidence-pack       review evidence pack manifest\n    report              emit sanitized evidence for reviews\n    render-report       render an existing sanitized report JSON without rescanning\n\noptions:\n  -h, --help            show this help message and exit\n  --version             show program's version number and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard init [-h] [--root ROOT] [--print] [--write] [--skip-existing] [--force] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --print          print the planned starter files without writing\n  --write          write starter files; refuses existing files unless --force\n  --skip-existing  with --write, preserve existing starter files and write only missing files\n  --force          overwrite existing starter files when used with --write\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard api [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan a repository and fail on forbidden API usage\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard api check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard content [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan text content and fail on forbidden patterns\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard content check [-h] [--repo-root REPO_ROOT] --policy POLICY [--mode {registered,preregister,new}] [--scan-dir SCAN_DIR] [--targets [TARGETS ...]] [--since-ref SINCE_REF] [--no-untracked] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n                        repository root path\n  --policy POLICY       YAML policy path\n  --mode {registered,preregister,new}\n  --scan-dir SCAN_DIR   target directory for registered/new modes; must resolve under --repo-root\n  --targets [TARGETS ...]\n                        target files/dirs for preregister mode\n  --since-ref SINCE_REF\n                        base ref for new mode diff (e.g. origin/main)\n  --no-untracked        exclude untracked files in new mode\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard context [-h] {check,inventory,lock} ...\n\npositional arguments:\n  {check,inventory,lock}\n    check               scan agent instruction files for unsafe directives\n    inventory           emit redacted agent context inventory evidence\n    lock                emit digest policy checks for agent context files\n\noptions:\n  -h, --help            show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard context check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard context inventory [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard context lock [-h] [--root ROOT] --policy POLICY [--check] [--digest-policy DIGEST_POLICY] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --policy POLICY       agent context YAML policy path\n  --check               verify discovered context files are covered by --digest-policy instead of emitting YAML\n  --digest-policy DIGEST_POLICY\n                        digest YAML policy path for coverage checks\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard path [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan repository path names and fail on forbidden paths\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard path check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard digest [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify pinned SHA-256 digests\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard digest check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard workflow [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify required files and workflow commands\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard workflow check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard surface [-h] {inventory,delta} ...\n\npositional arguments:\n  {inventory,delta}\n    inventory        emit repo-local agent surface metadata\n    delta            sanitized PR base/head agent surface delta evidence\n\noptions:\n  -h, --help         show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard surface inventory [-h] [--root ROOT] --context-policy CONTEXT_POLICY [--schema-version {v1,v2}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --schema-version {v1,v2}\n                        inventory schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard surface delta [-h] [--root ROOT] --context-policy CONTEXT_POLICY --base-ref BASE_REF [--schema-version {v1}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --base-ref BASE_REF   git ref to diff against the current working tree; fetch it explicitly in CI\n  --schema-version {v1}\n                        surface delta schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard mcp [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan committed MCP configuration metadata\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard mcp check [-h] [--root ROOT] [--policy POLICY] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  optional MCP YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard drift [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify README, workflow, and .agent-guard policy alignment\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard drift check [-h] [--root ROOT] [--profile {minimal,recommended,strict}] [--schema-version {v1,v2}] [--base-ref BASE_REF] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --schema-version {v1,v2}\n                        drift schema version\n  --base-ref BASE_REF   optional git base ref used to flag baseline-sensitive guard changes\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard conformance [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     evaluate an agent-guard report against a profile\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard conformance check [-h] [--root ROOT] --evidence EVIDENCE [--profile {minimal,recommended,strict}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --evidence EVIDENCE   agent-guard report JSON path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard evidence-pack [-h] {manifest} ...\n\npositional arguments:\n  {manifest}\n    manifest  emit a sanitized evidence pack manifest\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard evidence-pack manifest [-h] [--root ROOT] --report REPORT [--artifact ARTIFACT] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --report REPORT       agent-guard report JSON path\n  --artifact ARTIFACT   optional repo-relative artifact path\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard report [-h] [--root ROOT] [--context-policy CONTEXT_POLICY] [--evidence-preset {recommended}] [--path-policy PATH_POLICY] [--content-policy CONTENT_POLICY] [--content-scan-dir CONTENT_SCAN_DIR] [--api-policy API_POLICY] [--digest-policy DIGEST_POLICY] [--workflow-policy WORKFLOW_POLICY] [--drift-check] [--drift-profile {minimal,recommended,strict}] [--drift-schema-version {v1,v2}] [--drift-base-ref DRIFT_BASE_REF] [--surface-delta-base-ref SURFACE_DELTA_BASE_REF] [--surface-inventory-version {v1,v2}] [--mcp-config-check] [--mcp-policy MCP_POLICY] [--conformance-profile {minimal,recommended,strict}] [--evidence-pack-manifest] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT] [--stderr-summary]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path (default: .agent-guard/context-policy.yaml)\n  --evidence-preset {recommended}\n                        expand unset report options for a named adoption preset\n  --path-policy PATH_POLICY\n                        optional path YAML policy path for path-name evidence\n  --content-policy CONTENT_POLICY\n                        optional content YAML policy path for content evidence\n  --content-scan-dir CONTENT_SCAN_DIR\n                        repository-relative directory for content report evidence (registered mode only)\n  --api-policy API_POLICY\n                        optional API YAML policy path for API surface evidence\n  --digest-policy DIGEST_POLICY\n                        optional digest YAML policy path for drift evidence\n  --workflow-policy WORKFLOW_POLICY\n                        optional workflow YAML policy path for drift evidence\n  --drift-check         include policy/spec drift evidence for README, workflow, and guard policy alignment\n  --drift-profile {minimal,recommended,strict}\n                        profile for --drift-check\n  --drift-schema-version {v1,v2}\n                        drift evidence schema version\n  --drift-base-ref DRIFT_BASE_REF\n                        optional git base ref passed to policy/spec drift evidence\n  --surface-delta-base-ref SURFACE_DELTA_BASE_REF\n                        optional git base ref used to embed sanitized PR surface delta evidence\n  --surface-inventory-version {v1,v2}\n                        surface inventory schema version embedded in the report\n  --mcp-config-check    include static MCP configuration evidence derived from committed config metadata\n  --mcp-policy MCP_POLICY\n                        optional MCP YAML policy path; implies --mcp-config-check\n  --conformance-profile {minimal,recommended,strict}\n                        embed conformance evidence\n  --evidence-pack-manifest\n                        embed a sanitized evidence pack manifest for PR review\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path for the embedded evidence-pack manifest\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --format {markdown,json,github-annotations,sarif}\n                        report output format\n  --output OUTPUT       optional output path; stdout when omitted\n  --stderr-summary      emit one sanitized stderr summary after writing --output\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: agent-guard render-report [-h] [--root ROOT] --input INPUT [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --input INPUT         sanitized agent-guard report JSON path\n  --format {markdown,json,github-annotations,sarif}\n                        rendered output format\n  --output OUTPUT       optional output path; stdout when omitted\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "agent-guard 0.3.10.dev0\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\nagent-guard: error: the following arguments are required: scanner\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\nagent-guard: error: argument scanner: invalid choice: 'not-a-command' (choose from 'init', 'api', 'content', 'context', 'path', 'digest', 'workflow', 'surface', 'mcp', 'drift', 'conformance', 'evidence-pack', 'report', 'render-report')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard api [-h] {check} ...\nagent-guard api: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard api [-h] {check} ...\nagent-guard api: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard content [-h] {check} ...\nagent-guard content: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard content [-h] {check} ...\nagent-guard content: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard context [-h] {check,inventory,lock} ...\nagent-guard context: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard context [-h] {check,inventory,lock} ...\nagent-guard context: error: argument command: invalid choice: 'not-a-command' (choose from 'check', 'inventory', 'lock')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard path [-h] {check} ...\nagent-guard path: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard path [-h] {check} ...\nagent-guard path: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard digest [-h] {check} ...\nagent-guard digest: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard digest [-h] {check} ...\nagent-guard digest: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard workflow [-h] {check} ...\nagent-guard workflow: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard workflow [-h] {check} ...\nagent-guard workflow: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard surface [-h] {inventory,delta} ...\nagent-guard surface: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard surface [-h] {inventory,delta} ...\nagent-guard surface: error: argument command: invalid choice: 'not-a-command' (choose from 'inventory', 'delta')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard mcp [-h] {check} ...\nagent-guard mcp: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard mcp [-h] {check} ...\nagent-guard mcp: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard drift [-h] {check} ...\nagent-guard drift: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard drift [-h] {check} ...\nagent-guard drift: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard conformance [-h] {check} ...\nagent-guard conformance: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard conformance [-h] {check} ...\nagent-guard conformance: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard evidence-pack [-h] {manifest} ...\nagent-guard evidence-pack: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard evidence-pack [-h] {manifest} ...\nagent-guard evidence-pack: error: argument command: invalid choice: 'not-a-command' (choose from 'manifest')\n"
+    },
+    {
+      "stdout": "usage: __main__.py [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n\nstatic repository guardrails for agent-touched repos\n\npositional arguments:\n  {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report}\n    init                print or write review-first starter guard files\n    api                 URL-based API surface guard\n    content             pattern-based content security guard\n    context             agent context file guard\n    path                path-name guard for private artifacts and env-file leaks\n    digest              SHA-256 pin guard for safety-critical files\n    workflow            workflow drift guard for declared repository gates\n    surface             agent-facing repository surface inventory\n    mcp                 static MCP configuration evidence\n    drift               small policy/spec drift guard\n    conformance         profile conformance over sanitized evidence\n    evidence-pack       review evidence pack manifest\n    report              emit sanitized evidence for reviews\n    render-report       render an existing sanitized report JSON without rescanning\n\noptions:\n  -h, --help            show this help message and exit\n  --version             show program's version number and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py init [-h] [--root ROOT] [--print] [--write] [--skip-existing] [--force] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --print          print the planned starter files without writing\n  --write          write starter files; refuses existing files unless --force\n  --skip-existing  with --write, preserve existing starter files and write only missing files\n  --force          overwrite existing starter files when used with --write\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py api [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan a repository and fail on forbidden API usage\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py api check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py content [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan text content and fail on forbidden patterns\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py content check [-h] [--repo-root REPO_ROOT] --policy POLICY [--mode {registered,preregister,new}] [--scan-dir SCAN_DIR] [--targets [TARGETS ...]] [--since-ref SINCE_REF] [--no-untracked] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n                        repository root path\n  --policy POLICY       YAML policy path\n  --mode {registered,preregister,new}\n  --scan-dir SCAN_DIR   target directory for registered/new modes; must resolve under --repo-root\n  --targets [TARGETS ...]\n                        target files/dirs for preregister mode\n  --since-ref SINCE_REF\n                        base ref for new mode diff (e.g. origin/main)\n  --no-untracked        exclude untracked files in new mode\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py context [-h] {check,inventory,lock} ...\n\npositional arguments:\n  {check,inventory,lock}\n    check               scan agent instruction files for unsafe directives\n    inventory           emit redacted agent context inventory evidence\n    lock                emit digest policy checks for agent context files\n\noptions:\n  -h, --help            show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py context check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py context inventory [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py context lock [-h] [--root ROOT] --policy POLICY [--check] [--digest-policy DIGEST_POLICY] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --policy POLICY       agent context YAML policy path\n  --check               verify discovered context files are covered by --digest-policy instead of emitting YAML\n  --digest-policy DIGEST_POLICY\n                        digest YAML policy path for coverage checks\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py path [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan repository path names and fail on forbidden paths\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py path check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py digest [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify pinned SHA-256 digests\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py digest check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py workflow [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify required files and workflow commands\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py workflow check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py surface [-h] {inventory,delta} ...\n\npositional arguments:\n  {inventory,delta}\n    inventory        emit repo-local agent surface metadata\n    delta            sanitized PR base/head agent surface delta evidence\n\noptions:\n  -h, --help         show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py surface inventory [-h] [--root ROOT] --context-policy CONTEXT_POLICY [--schema-version {v1,v2}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --schema-version {v1,v2}\n                        inventory schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py surface delta [-h] [--root ROOT] --context-policy CONTEXT_POLICY --base-ref BASE_REF [--schema-version {v1}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --base-ref BASE_REF   git ref to diff against the current working tree; fetch it explicitly in CI\n  --schema-version {v1}\n                        surface delta schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py mcp [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan committed MCP configuration metadata\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py mcp check [-h] [--root ROOT] [--policy POLICY] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  optional MCP YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py drift [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify README, workflow, and .agent-guard policy alignment\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py drift check [-h] [--root ROOT] [--profile {minimal,recommended,strict}] [--schema-version {v1,v2}] [--base-ref BASE_REF] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --schema-version {v1,v2}\n                        drift schema version\n  --base-ref BASE_REF   optional git base ref used to flag baseline-sensitive guard changes\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py conformance [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     evaluate an agent-guard report against a profile\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py conformance check [-h] [--root ROOT] --evidence EVIDENCE [--profile {minimal,recommended,strict}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --evidence EVIDENCE   agent-guard report JSON path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py evidence-pack [-h] {manifest} ...\n\npositional arguments:\n  {manifest}\n    manifest  emit a sanitized evidence pack manifest\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py evidence-pack manifest [-h] [--root ROOT] --report REPORT [--artifact ARTIFACT] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --report REPORT       agent-guard report JSON path\n  --artifact ARTIFACT   optional repo-relative artifact path\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py report [-h] [--root ROOT] [--context-policy CONTEXT_POLICY] [--evidence-preset {recommended}] [--path-policy PATH_POLICY] [--content-policy CONTENT_POLICY] [--content-scan-dir CONTENT_SCAN_DIR] [--api-policy API_POLICY] [--digest-policy DIGEST_POLICY] [--workflow-policy WORKFLOW_POLICY] [--drift-check] [--drift-profile {minimal,recommended,strict}] [--drift-schema-version {v1,v2}] [--drift-base-ref DRIFT_BASE_REF] [--surface-delta-base-ref SURFACE_DELTA_BASE_REF] [--surface-inventory-version {v1,v2}] [--mcp-config-check] [--mcp-policy MCP_POLICY] [--conformance-profile {minimal,recommended,strict}] [--evidence-pack-manifest] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT] [--stderr-summary]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path (default: .agent-guard/context-policy.yaml)\n  --evidence-preset {recommended}\n                        expand unset report options for a named adoption preset\n  --path-policy PATH_POLICY\n                        optional path YAML policy path for path-name evidence\n  --content-policy CONTENT_POLICY\n                        optional content YAML policy path for content evidence\n  --content-scan-dir CONTENT_SCAN_DIR\n                        repository-relative directory for content report evidence (registered mode only)\n  --api-policy API_POLICY\n                        optional API YAML policy path for API surface evidence\n  --digest-policy DIGEST_POLICY\n                        optional digest YAML policy path for drift evidence\n  --workflow-policy WORKFLOW_POLICY\n                        optional workflow YAML policy path for drift evidence\n  --drift-check         include policy/spec drift evidence for README, workflow, and guard policy alignment\n  --drift-profile {minimal,recommended,strict}\n                        profile for --drift-check\n  --drift-schema-version {v1,v2}\n                        drift evidence schema version\n  --drift-base-ref DRIFT_BASE_REF\n                        optional git base ref passed to policy/spec drift evidence\n  --surface-delta-base-ref SURFACE_DELTA_BASE_REF\n                        optional git base ref used to embed sanitized PR surface delta evidence\n  --surface-inventory-version {v1,v2}\n                        surface inventory schema version embedded in the report\n  --mcp-config-check    include static MCP configuration evidence derived from committed config metadata\n  --mcp-policy MCP_POLICY\n                        optional MCP YAML policy path; implies --mcp-config-check\n  --conformance-profile {minimal,recommended,strict}\n                        embed conformance evidence\n  --evidence-pack-manifest\n                        embed a sanitized evidence pack manifest for PR review\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path for the embedded evidence-pack manifest\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --format {markdown,json,github-annotations,sarif}\n                        report output format\n  --output OUTPUT       optional output path; stdout when omitted\n  --stderr-summary      emit one sanitized stderr summary after writing --output\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: __main__.py render-report [-h] [--root ROOT] --input INPUT [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --input INPUT         sanitized agent-guard report JSON path\n  --format {markdown,json,github-annotations,sarif}\n                        rendered output format\n  --output OUTPUT       optional output path; stdout when omitted\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n__main__.py: error: the following arguments are required: scanner\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n__main__.py: error: argument scanner: invalid choice: 'not-a-command' (choose from 'init', 'api', 'content', 'context', 'path', 'digest', 'workflow', 'surface', 'mcp', 'drift', 'conformance', 'evidence-pack', 'report', 'render-report')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py api [-h] {check} ...\n__main__.py api: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py api [-h] {check} ...\n__main__.py api: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py content [-h] {check} ...\n__main__.py content: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py content [-h] {check} ...\n__main__.py content: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py context [-h] {check,inventory,lock} ...\n__main__.py context: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py context [-h] {check,inventory,lock} ...\n__main__.py context: error: argument command: invalid choice: 'not-a-command' (choose from 'check', 'inventory', 'lock')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py path [-h] {check} ...\n__main__.py path: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py path [-h] {check} ...\n__main__.py path: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py digest [-h] {check} ...\n__main__.py digest: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py digest [-h] {check} ...\n__main__.py digest: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py workflow [-h] {check} ...\n__main__.py workflow: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py workflow [-h] {check} ...\n__main__.py workflow: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py surface [-h] {inventory,delta} ...\n__main__.py surface: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py surface [-h] {inventory,delta} ...\n__main__.py surface: error: argument command: invalid choice: 'not-a-command' (choose from 'inventory', 'delta')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py mcp [-h] {check} ...\n__main__.py mcp: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py mcp [-h] {check} ...\n__main__.py mcp: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py drift [-h] {check} ...\n__main__.py drift: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py drift [-h] {check} ...\n__main__.py drift: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py conformance [-h] {check} ...\n__main__.py conformance: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py conformance [-h] {check} ...\n__main__.py conformance: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py evidence-pack [-h] {manifest} ...\n__main__.py evidence-pack: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py evidence-pack [-h] {manifest} ...\n__main__.py evidence-pack: error: argument command: invalid choice: 'not-a-command' (choose from 'manifest')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\nagent-guard: error: argument scanner: invalid choice: 'not-a-command' (choose from init, api, content, context, path, digest, workflow, surface, mcp, drift, conformance, evidence-pack, report, render-report)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard api [-h] {check} ...\nagent-guard api: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard content [-h] {check} ...\nagent-guard content: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard context [-h] {check,inventory,lock} ...\nagent-guard context: error: argument command: invalid choice: 'not-a-command' (choose from check, inventory, lock)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard path [-h] {check} ...\nagent-guard path: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard digest [-h] {check} ...\nagent-guard digest: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard workflow [-h] {check} ...\nagent-guard workflow: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard surface [-h] {inventory,delta} ...\nagent-guard surface: error: argument command: invalid choice: 'not-a-command' (choose from inventory, delta)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard mcp [-h] {check} ...\nagent-guard mcp: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard drift [-h] {check} ...\nagent-guard drift: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard conformance [-h] {check} ...\nagent-guard conformance: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: agent-guard evidence-pack [-h] {manifest} ...\nagent-guard evidence-pack: error: argument command: invalid choice: 'not-a-command' (choose from manifest)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n__main__.py: error: argument scanner: invalid choice: 'not-a-command' (choose from init, api, content, context, path, digest, workflow, surface, mcp, drift, conformance, evidence-pack, report, render-report)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py api [-h] {check} ...\n__main__.py api: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py content [-h] {check} ...\n__main__.py content: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py context [-h] {check,inventory,lock} ...\n__main__.py context: error: argument command: invalid choice: 'not-a-command' (choose from check, inventory, lock)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py path [-h] {check} ...\n__main__.py path: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py digest [-h] {check} ...\n__main__.py digest: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py workflow [-h] {check} ...\n__main__.py workflow: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py surface [-h] {inventory,delta} ...\n__main__.py surface: error: argument command: invalid choice: 'not-a-command' (choose from inventory, delta)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py mcp [-h] {check} ...\n__main__.py mcp: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py drift [-h] {check} ...\n__main__.py drift: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py conformance [-h] {check} ...\n__main__.py conformance: error: argument command: invalid choice: 'not-a-command' (choose from check)\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: __main__.py evidence-pack [-h] {manifest} ...\n__main__.py evidence-pack: error: argument command: invalid choice: 'not-a-command' (choose from manifest)\n"
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\n\nstatic repository guardrails for agent-touched repos\n\npositional arguments:\n  {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report}\n    init                print or write review-first starter guard files\n    api                 URL-based API surface guard\n    content             pattern-based content security guard\n    context             agent context file guard\n    path                path-name guard for private artifacts and env-file leaks\n    digest              SHA-256 pin guard for safety-critical files\n    workflow            workflow drift guard for declared repository gates\n    surface             agent-facing repository surface inventory\n    mcp                 static MCP configuration evidence\n    drift               small policy/spec drift guard\n    conformance         profile conformance over sanitized evidence\n    evidence-pack       review evidence pack manifest\n    report              emit sanitized evidence for reviews\n    render-report       render an existing sanitized report JSON without rescanning\n\noptions:\n  -h, --help            show this help message and exit\n  --version             show program's version number and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli init [-h] [--root ROOT] [--print] [--write] [--skip-existing] [--force] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --print          print the planned starter files without writing\n  --write          write starter files; refuses existing files unless --force\n  --skip-existing  with --write, preserve existing starter files and write only missing files\n  --force          overwrite existing starter files when used with --write\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli api [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan a repository and fail on forbidden API usage\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli api check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli content [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan text content and fail on forbidden patterns\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli content check [-h] [--repo-root REPO_ROOT] --policy POLICY [--mode {registered,preregister,new}] [--scan-dir SCAN_DIR] [--targets [TARGETS ...]] [--since-ref SINCE_REF] [--no-untracked] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n                        repository root path\n  --policy POLICY       YAML policy path\n  --mode {registered,preregister,new}\n  --scan-dir SCAN_DIR   target directory for registered/new modes; must resolve under --repo-root\n  --targets [TARGETS ...]\n                        target files/dirs for preregister mode\n  --since-ref SINCE_REF\n                        base ref for new mode diff (e.g. origin/main)\n  --no-untracked        exclude untracked files in new mode\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli context [-h] {check,inventory,lock} ...\n\npositional arguments:\n  {check,inventory,lock}\n    check               scan agent instruction files for unsafe directives\n    inventory           emit redacted agent context inventory evidence\n    lock                emit digest policy checks for agent context files\n\noptions:\n  -h, --help            show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli context check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli context inventory [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli context lock [-h] [--root ROOT] --policy POLICY [--check] [--digest-policy DIGEST_POLICY] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --policy POLICY       agent context YAML policy path\n  --check               verify discovered context files are covered by --digest-policy instead of emitting YAML\n  --digest-policy DIGEST_POLICY\n                        digest YAML policy path for coverage checks\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli path [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan repository path names and fail on forbidden paths\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli path check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli digest [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify pinned SHA-256 digests\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli digest check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli workflow [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify required files and workflow commands\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli workflow check [-h] [--root ROOT] --policy POLICY [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli surface [-h] {inventory,delta} ...\n\npositional arguments:\n  {inventory,delta}\n    inventory        emit repo-local agent surface metadata\n    delta            sanitized PR base/head agent surface delta evidence\n\noptions:\n  -h, --help         show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli surface inventory [-h] [--root ROOT] --context-policy CONTEXT_POLICY [--schema-version {v1,v2}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --schema-version {v1,v2}\n                        inventory schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli surface delta [-h] [--root ROOT] --context-policy CONTEXT_POLICY --base-ref BASE_REF [--schema-version {v1}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path\n  --base-ref BASE_REF   git ref to diff against the current working tree; fetch it explicitly in CI\n  --schema-version {v1}\n                        surface delta schema version\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli mcp [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     scan committed MCP configuration metadata\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli mcp check [-h] [--root ROOT] [--policy POLICY] [--json]\n\noptions:\n  -h, --help       show this help message and exit\n  --root ROOT      repository root path\n  --policy POLICY  optional MCP YAML policy path\n  --json           emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli drift [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     verify README, workflow, and .agent-guard policy alignment\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli drift check [-h] [--root ROOT] [--profile {minimal,recommended,strict}] [--schema-version {v1,v2}] [--base-ref BASE_REF] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --schema-version {v1,v2}\n                        drift schema version\n  --base-ref BASE_REF   optional git base ref used to flag baseline-sensitive guard changes\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli conformance [-h] {check} ...\n\npositional arguments:\n  {check}\n    check     evaluate an agent-guard report against a profile\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli conformance check [-h] [--root ROOT] --evidence EVIDENCE [--profile {minimal,recommended,strict}] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --evidence EVIDENCE   agent-guard report JSON path\n  --profile {minimal,recommended,strict}\n                        conformance profile\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli evidence-pack [-h] {manifest} ...\n\npositional arguments:\n  {manifest}\n    manifest  emit a sanitized evidence pack manifest\n\noptions:\n  -h, --help  show this help message and exit\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli evidence-pack manifest [-h] [--root ROOT] --report REPORT [--artifact ARTIFACT] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--json]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --report REPORT       agent-guard report JSON path\n  --artifact ARTIFACT   optional repo-relative artifact path\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --json                emit JSON\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli report [-h] [--root ROOT] [--context-policy CONTEXT_POLICY] [--evidence-preset {recommended}] [--path-policy PATH_POLICY] [--content-policy CONTENT_POLICY] [--content-scan-dir CONTENT_SCAN_DIR] [--api-policy API_POLICY] [--digest-policy DIGEST_POLICY] [--workflow-policy WORKFLOW_POLICY] [--drift-check] [--drift-profile {minimal,recommended,strict}] [--drift-schema-version {v1,v2}] [--drift-base-ref DRIFT_BASE_REF] [--surface-delta-base-ref SURFACE_DELTA_BASE_REF] [--surface-inventory-version {v1,v2}] [--mcp-config-check] [--mcp-policy MCP_POLICY] [--conformance-profile {minimal,recommended,strict}] [--evidence-pack-manifest] [--agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT] [--agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE] [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT] [--stderr-summary]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root path\n  --context-policy CONTEXT_POLICY\n                        agent context YAML policy path (default: .agent-guard/context-policy.yaml)\n  --evidence-preset {recommended}\n                        expand unset report options for a named adoption preset\n  --path-policy PATH_POLICY\n                        optional path YAML policy path for path-name evidence\n  --content-policy CONTENT_POLICY\n                        optional content YAML policy path for content evidence\n  --content-scan-dir CONTENT_SCAN_DIR\n                        repository-relative directory for content report evidence (registered mode only)\n  --api-policy API_POLICY\n                        optional API YAML policy path for API surface evidence\n  --digest-policy DIGEST_POLICY\n                        optional digest YAML policy path for drift evidence\n  --workflow-policy WORKFLOW_POLICY\n                        optional workflow YAML policy path for drift evidence\n  --drift-check         include policy/spec drift evidence for README, workflow, and guard policy alignment\n  --drift-profile {minimal,recommended,strict}\n                        profile for --drift-check\n  --drift-schema-version {v1,v2}\n                        drift evidence schema version\n  --drift-base-ref DRIFT_BASE_REF\n                        optional git base ref passed to policy/spec drift evidence\n  --surface-delta-base-ref SURFACE_DELTA_BASE_REF\n                        optional git base ref used to embed sanitized PR surface delta evidence\n  --surface-inventory-version {v1,v2}\n                        surface inventory schema version embedded in the report\n  --mcp-config-check    include static MCP configuration evidence derived from committed config metadata\n  --mcp-policy MCP_POLICY\n                        optional MCP YAML policy path; implies --mcp-config-check\n  --conformance-profile {minimal,recommended,strict}\n                        embed conformance evidence\n  --evidence-pack-manifest\n                        embed a sanitized evidence pack manifest for PR review\n  --agent-policy-audit-event AGENT_POLICY_AUDIT_EVENT\n                        optional repo-relative agent-policy audit event artifact path for the embedded evidence-pack manifest\n  --agent-policy-audit-event-profile AGENT_POLICY_AUDIT_EVENT_PROFILE\n                        recognized profile agent-guard.public_agent_policy_audit_event.v1 for every attached audit event\n  --format {markdown,json,github-annotations,sarif}\n                        report output format\n  --output OUTPUT       optional output path; stdout when omitted\n  --stderr-summary      emit one sanitized stderr summary after writing --output\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "usage: python -m agent_guard.cli render-report [-h] [--root ROOT] --input INPUT [--format {markdown,json,github-annotations,sarif}] [--output OUTPUT]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           repository root used for display-path scrubbing\n  --input INPUT         sanitized agent-guard report JSON path\n  --format {markdown,json,github-annotations,sarif}\n                        rendered output format\n  --output OUTPUT       optional output path; stdout when omitted\n",
+      "stderr": ""
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\npython -m agent_guard.cli: error: the following arguments are required: scanner\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli [-h] [--version] {init,api,content,context,path,digest,workflow,surface,mcp,drift,conformance,evidence-pack,report,render-report} ...\npython -m agent_guard.cli: error: argument scanner: invalid choice: 'not-a-command' (choose from 'init', 'api', 'content', 'context', 'path', 'digest', 'workflow', 'surface', 'mcp', 'drift', 'conformance', 'evidence-pack', 'report', 'render-report')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli api [-h] {check} ...\npython -m agent_guard.cli api: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli api [-h] {check} ...\npython -m agent_guard.cli api: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli content [-h] {check} ...\npython -m agent_guard.cli content: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli content [-h] {check} ...\npython -m agent_guard.cli content: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli context [-h] {check,inventory,lock} ...\npython -m agent_guard.cli context: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli context [-h] {check,inventory,lock} ...\npython -m agent_guard.cli context: error: argument command: invalid choice: 'not-a-command' (choose from 'check', 'inventory', 'lock')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli path [-h] {check} ...\npython -m agent_guard.cli path: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli path [-h] {check} ...\npython -m agent_guard.cli path: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli digest [-h] {check} ...\npython -m agent_guard.cli digest: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli digest [-h] {check} ...\npython -m agent_guard.cli digest: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli workflow [-h] {check} ...\npython -m agent_guard.cli workflow: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli workflow [-h] {check} ...\npython -m agent_guard.cli workflow: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli surface [-h] {inventory,delta} ...\npython -m agent_guard.cli surface: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli surface [-h] {inventory,delta} ...\npython -m agent_guard.cli surface: error: argument command: invalid choice: 'not-a-command' (choose from 'inventory', 'delta')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli mcp [-h] {check} ...\npython -m agent_guard.cli mcp: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli mcp [-h] {check} ...\npython -m agent_guard.cli mcp: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli drift [-h] {check} ...\npython -m agent_guard.cli drift: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli drift [-h] {check} ...\npython -m agent_guard.cli drift: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli conformance [-h] {check} ...\npython -m agent_guard.cli conformance: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli conformance [-h] {check} ...\npython -m agent_guard.cli conformance: error: argument command: invalid choice: 'not-a-command' (choose from 'check')\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli evidence-pack [-h] {manifest} ...\npython -m agent_guard.cli evidence-pack: error: the following arguments are required: command\n"
+    },
+    {
+      "stdout": "",
+      "stderr": "usage: python -m agent_guard.cli evidence-pack [-h] {manifest} ...\npython -m agent_guard.cli evidence-pack: error: argument command: invalid choice: 'not-a-command' (choose from 'manifest')\n"
+    }
+  ]
+}
