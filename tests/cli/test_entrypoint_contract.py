@@ -125,7 +125,7 @@ def test_cli_workflow_import_orders_in_fresh_processes(first: str, tmp_path: Pat
 @pytest.mark.parametrize("entrypoint", ("console", "module"))
 @pytest.mark.parametrize(
     "case_index,case",
-    enumerate(BASELINE["cases"]),
+    list(enumerate(BASELINE["cases"])),
     ids=[" ".join(case["argv"]) or "missing-scanner" for case in BASELINE["cases"]],
 )
 def test_installed_cli_entrypoint_streams(
