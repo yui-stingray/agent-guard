@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Fixed TTFE replay false successes: fail on setup/install errors, verify the
+  current checkout wheel in a fresh environment, and validate newly generated
+  diagnostic evidence. TTFE v2 results retain the verification evidence;
+  legacy v1 results require a new run.
 - Started `0.3.10.dev0` development while generated install and Action examples
   remain pinned to the published `0.3.9` release.
 - Tightened the public v2 digest grammar to canonical unpadded base32 and kept

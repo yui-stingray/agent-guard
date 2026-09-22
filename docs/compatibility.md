@@ -238,7 +238,8 @@ are reported in [Benchmark Results](benchmark-results.md).
 | Agent-Guard Bench result | `agent-guard.agb_results.v1` | `bench/agb/run.py` | `generated_at` | Case count, overall metrics, per-guard metrics, per-case false positive/negative details, and optional sanitized diagnostics in top-level `benchmark_error` or per-case `errors`. |
 | Evidence integrity result | `agent-guard.evidence_results.v1` | `bench/evidence/run.py` | `generated_at` | Overall status, passed/failed counts, and named integrity checks. |
 | Taxonomy alignment result | `agent-guard.alignment.v1` | `bench/alignment/run.py` | `generated_at` | Alignment status, emitted/missing counts, and named taxonomy checks. |
-| TTFE replay result | `agent-guard.ttfe_results.v1` | `bench/ttfe/run.sh` and `bench/ttfe/run.py` | `generated_at`, `elapsed_ms`, per-command timing fields | Quickstart command count, first nonzero command, failure point, setup metadata, and command records. |
+| TTFE replay result | `agent-guard.ttfe_results.v2` | `bench/ttfe/run.sh` and `bench/ttfe/run.py` | `generated_at`, local environment paths, build and replay timing fields | Complete ordered command/stage records, current-wheel installation identity, and retained validated diagnostic report. See [TTFE replay](../bench/ttfe/README.md). |
+| Legacy TTFE result | `agent-guard.ttfe_results.v1` | Historical result files only | `generated_at`, `elapsed_ms`, per-command timing fields | Insufficient proof of installation or evidence generation; the current checker requires a new run and does not upgrade old success records. |
 
 An AGB payload containing top-level `benchmark_error`, or a case with non-empty
 or malformed `errors`, is a diagnostic result rather than a measurement result.

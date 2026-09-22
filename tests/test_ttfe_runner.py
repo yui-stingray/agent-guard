@@ -53,10 +53,10 @@ def test_build_result_payload_records_failure_and_pack_reach() -> None:
     )
 
     assert payload["schema_version"] == "agent-guard.ttfe_results.v1"
-    assert payload["status"] == "ok"
+    assert payload["status"] == "failed"
     assert payload["command_count"] == 2
     assert payload["first_nonzero"]["index"] == 1
-    assert payload["failure_point"] is None
+    assert "rerun required" in payload["failure_point"]["reason"]
     assert payload["reached_recommended_evidence_pack"] is True
     assert payload["elapsed_ms"] == 1234
 
@@ -100,15 +100,10 @@ def test_validate_result_payload_enforces_time_and_completion() -> None:
         setup={"status": "local_wheelhouse"},
     )
 
-    assert ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000) == []
-
+    errors = ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000)
+    assert errors == ["TTFE result v1 lacks candidate-wheel proof; rerun the TTFE replay"]
+    # Marker and wheelhouse-only historical results never acquire v2 guarantees.
     payload["elapsed_ms"] = 900_001
     payload["failure_point"] = {"index": 1, "exit_code": 2}
-    errors = ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000)
-
-    assert "TTFE replay exceeded the configured time limit" in errors
-    assert "TTFE replay encountered a configuration or runtime error" in errors
-
     payload["setup"] = {"status": "wheelhouse_failed"}
-    errors = ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000)
-    assert "TTFE replay did not install the current checkout wheel" in errors
+    assert ttfe_run.validate_result_payload(payload, max_elapsed_ms=900_000) == errors
