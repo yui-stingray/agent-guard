@@ -6,6 +6,8 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Fixed a reaping race in the POSIX process-test liveness helper without
+  changing process containment or test timeout limits.
 - Fixed TTFE replay false successes: fail on setup/install errors, verify the
   current checkout wheel in a fresh environment, and validate newly generated
   diagnostic evidence. TTFE v2 results retain the verification evidence;

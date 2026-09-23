@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 
 import pytest
 
@@ -67,7 +68,49 @@ def _process_is_running(process_id: int) -> bool:
             return status.read_text(encoding="ascii").split()[2] != "Z"
         except (OSError, IndexError, UnicodeError):
             pass
+    # A stopped child may be reaped between the first probe and the proc read.
+    # Confirm disappearance through the OS; unreadable status alone is unknown.
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
     return True
+
+
+@pytest.mark.parametrize("status_exists", [False, True])
+@pytest.mark.parametrize("probe_error", [None, ProcessLookupError, PermissionError])
+def test_process_probe_preserves_liveness_when_proc_status_disappears(
+    status_exists: bool,
+    probe_error: type[OSError] | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def probe(process_id: int, sig: int) -> None:
+        nonlocal calls
+        assert (process_id, sig) == (12345, 0)
+        calls += 1
+        if calls > 1 and probe_error is not None:
+            raise probe_error
+
+    class ProcStatus:
+        def is_file(self) -> bool:
+            return status_exists
+
+        def read_text(self, *, encoding: str) -> str:
+            assert encoding == "ascii"
+            raise FileNotFoundError
+
+    # A zombie can be reaped after kill(pid, 0), including between stat and read.
+    # Model that OS ordering without changing the host's os module or filesystem.
+    with monkeypatch.context() as patch:
+        patch.setitem(globals(), "os", SimpleNamespace(name="posix", kill=probe))
+        patch.setitem(globals(), "Path", lambda _path: ProcStatus())
+        running = _process_is_running(12345)
+
+    assert running is (probe_error is not ProcessLookupError)
 
 
 def test_sanitized_git_environment_removes_config_injection_case_insensitively() -> None:
