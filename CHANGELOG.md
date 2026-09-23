@@ -6,6 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Fixed bounded-process pipe ownership so delayed cleanup cannot close a reused
+  descriptor, while preserving bounded shutdown and complete input writes.
+
 - Retired the historical product-baseline freeze from CI while retaining fixed
   Toolkit verification, current source/wheel checks, failure propagation, and
   bounded diagnostic artifacts.
