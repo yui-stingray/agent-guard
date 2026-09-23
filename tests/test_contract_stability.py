@@ -213,6 +213,7 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Retired the historical product-baseline freeze from CI while retaining fixed Toolkit verification, current source/wheel checks, failure propagation, and bounded diagnostic artifacts.",
             "- Moved CLI parser and dispatch ownership to a regular internal module while keeping the public entry points, observed exports, and legacy import alias. Private callable module metadata now reflects the new owner.",
             "- Fixed a reaping race in the POSIX process-test liveness helper without changing process containment or test timeout limits.",
             "- Fixed TTFE replay false successes: fail on setup/install errors, verify the current checkout wheel in a fresh environment, and validate newly generated diagnostic evidence. TTFE v2 results retain the verification evidence; legacy v1 results require a new run.",

@@ -9,6 +9,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+import zipfile
 from unittest.mock import patch
 
 import export_toolkit_diagnostic as exporter
@@ -40,6 +41,21 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(Path(row['stdout']).read_bytes(), b'out\n')
         self.assertEqual(Path(row['stderr']).read_bytes(), b'err\n')
         self.assertEqual(Path(row['stdout']).stat().st_mode & 0o777, 0o600)
+
+    def test_source_wheel_mismatch_stops_before_loading_harness(self):
+        source = self.root / 'src/agent_guard/__init__.py'
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b'# current source\n')
+        wheel = self.root / 'candidate.whl'
+        with zipfile.ZipFile(wheel, 'w') as archive:
+            archive.writestr('agent_guard/__init__.py', b'# different wheel\n')
+        argv = ['observe_toolkit.py', '--harness', str(self.root / 'unused.py'),
+                '--wheel', str(wheel), '--out', str(self.root / 'mismatch')]
+        with patch.object(sys, 'argv', argv), patch.object(capture.Path, 'cwd', return_value=self.root), \
+             patch.object(capture, 'load_harness') as load:
+            with self.assertRaisesRegex(RuntimeError, 'release wheel package does not match'):
+                capture.main()
+        load.assert_not_called()
 
     def test_nonzero_propagates_original_stage_failure(self):
         with self.assertRaises(CompatibilityError):
