@@ -202,6 +202,34 @@ def test_ci_covers_supported_current_python_versions_and_ttfe() -> None:
     assert "--max-elapsed-ms 900000" in workflow
 
 
+def test_ci_retains_only_executed_ttfe_result_without_hiding_failures() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["test"]["steps"]
+    replay = next(step for step in steps if step.get("name") == "Replay 15-minute onboarding path")
+    assert replay["id"] == "ttfe"
+    upload = steps[steps.index(replay) + 1]
+    assert upload["name"] == "Upload TTFE replay result"
+    assert upload["if"] == (
+        "${{ always() && matrix.python-version == '3.14' && "
+        "(steps.ttfe.outcome == 'success' || steps.ttfe.outcome == 'failure') }}"
+    )
+    evidence_upload = next(
+        step for step in steps if step.get("name") == "Upload self-dogfood evidence report"
+    )
+    assert upload["uses"] == evidence_upload["uses"]
+    assert upload["with"] == {
+        "name": "agent-guard-ttfe-py314-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": replay["env"]["AGENT_GUARD_TTFE_OUT"],
+        "if-no-files-found": "error",
+        "retention-days": 14,
+    }
+    assert upload["with"]["path"] == "/tmp/agent-guard-ttfe.json"
+    assert not replay.get("continue-on-error", False)
+    assert not upload.get("continue-on-error", False)
+
+
 def test_ci_runs_packaged_action_consumer_smoke() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "ci.yml"
     workflow = workflow_path.read_text(encoding="utf-8")
