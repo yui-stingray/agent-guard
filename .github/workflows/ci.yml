@@ -54,10 +54,51 @@ jobs:
           ref: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
           path: .candidate-toolkit
           persist-credentials: false
-      - name: Verify Toolkit candidate compatibility
-        run: >-
-          python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py
-          --wheel dist/yui_agent_guard-*.whl
+      - name: Verify observation helper contracts
+        run: python -B -m unittest discover -s scripts/diagnostics -p test_observation.py -v
+      - name: Verify Toolkit candidate compatibility with bounded diagnostic capture
+        id: toolkit_diagnostic
+        env:
+          R1_C0: 81eb0d0630671eab2e163de50cc0a27de840e46a
+          TOOLKIT_REF: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
+          TOOLKIT_HARNESS_BLOB: 6d860bc554fe6a0fe95076425d6153a783da8d05
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$R1_C0"
+          git diff --quiet "$R1_C0" HEAD -- src/agent_guard tests pyproject.toml requirements .agent-guard
+          toolkit=.candidate-toolkit
+          test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
+          blob="$(git -C "$toolkit" rev-parse HEAD:scripts/check_candidate_wheel_compatibility.py)"
+          test "$blob" = "$TOOLKIT_HARNESS_BLOB"
+          diagnostic_root="$RUNNER_TEMP/r1-toolkit-diagnostic"
+          mkdir -m 700 "$diagnostic_root"
+          set -- dist/yui_agent_guard-*.whl
+          test "$#" -eq 1
+          /usr/bin/python3 -B scripts/diagnostics/supervise_toolkit.py \
+            --root "$diagnostic_root" --seconds 1200 -- \
+            "$(command -v python)" -B scripts/diagnostics/observe_toolkit.py \
+            --harness "$PWD/.candidate-toolkit/scripts/check_candidate_wheel_compatibility.py" \
+            --wheel "$PWD/$1" --out "$diagnostic_root/stages"
+      - name: Export allowlisted Toolkit observation
+        if: ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || steps.toolkit_diagnostic.outcome == 'failure') }}
+        shell: bash
+        run: |
+          python -B scripts/diagnostics/export_toolkit_diagnostic.py \
+            --root "$RUNNER_TEMP/r1-toolkit-diagnostic" \
+            --toolkit .candidate-toolkit --candidate "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/r1-toolkit-public/summary.json"
+      - name: Upload allowlisted Toolkit observation
+        if: ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || steps.toolkit_diagnostic.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: r1-toolkit-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/r1-toolkit-public/summary.json
+            ${{ runner.temp }}/r1-toolkit-public/pytest.stdout.txt
+            ${{ runner.temp }}/r1-toolkit-public/pytest.stderr.txt
+          if-no-files-found: error
+          retention-days: 14
 
   action-smoke:
     name: packaged action smoke (py${{ matrix.python-version }})
