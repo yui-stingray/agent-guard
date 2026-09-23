@@ -6,6 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Retired the historical product-baseline freeze from CI while retaining fixed
+  Toolkit verification, current source/wheel checks, failure propagation, and
+  bounded diagnostic artifacts.
 - Moved CLI parser and dispatch ownership to a regular internal module while
   keeping the public entry points, observed exports, and legacy import alias.
   Private callable module metadata now reflects the new owner.

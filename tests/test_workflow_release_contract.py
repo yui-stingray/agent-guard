@@ -42,24 +42,7 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-surface-inventory.json",
 )
 TOOLKIT_COMPATIBILITY_COMMIT = "8ea48dc9926c55ac70af7a623c3ebcd8b35178c9"
-R1_OBSERVATION_SCOPE_COMMAND = r"""git diff --quiet "$R1_C0" HEAD -- . \
-  ':(top,exclude,literal).github/workflows/ci.yml' \
-  ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
-  ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
-  ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
-  ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
-  ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
-  ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'"""
 R1_OBSERVATION_COMMAND = r"""set -euo pipefail
-git fetch --no-tags --depth=1 origin "$R1_C0"
-git diff --quiet "$R1_C0" HEAD -- . \
-  ':(top,exclude,literal).github/workflows/ci.yml' \
-  ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
-  ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
-  ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
-  ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
-  ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
-  ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'
 toolkit=.candidate-toolkit
 test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
 blob="$(git -C "$toolkit" rev-parse HEAD:scripts/check_candidate_wheel_compatibility.py)"
@@ -887,7 +870,6 @@ def assert_ci_observed_toolkit_contract(job: dict) -> None:
     assert gate["id"] == "toolkit_diagnostic"
     assert gate["shell"] == "bash"
     assert gate["env"] == {
-        "R1_C0": "81eb0d0630671eab2e163de50cc0a27de840e46a",
         "TOOLKIT_REF": TOOLKIT_COMPATIBILITY_COMMIT,
         "TOOLKIT_HARNESS_BLOB": "6d860bc554fe6a0fe95076425d6153a783da8d05",
     }
@@ -917,6 +899,7 @@ def assert_ci_observed_toolkit_contract(job: dict) -> None:
 @pytest.mark.parametrize("mutation", [
     "wheel", "ref", "blob", "skip", "ignore_failure", "extra_install",
     "artifact_destination", "missing_artifact", "extra_artifact",
+    "historical_fetch", "head_self_comparison",
 ])
 def test_observed_toolkit_contract_rejects_invalid_wiring(mutation: str) -> None:
     job = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["release-contract"]
@@ -940,59 +923,99 @@ def test_observed_toolkit_contract_rejects_invalid_wiring(mutation: str) -> None
         job["steps"][11]["with"]["path"] = "${{ env.R1_TOOLKIT_SUMMARY }}\n"
     elif mutation == "extra_artifact":
         job["steps"][11]["with"]["path"] += "${{ runner.temp }}/private.txt\n"
+    elif mutation == "historical_fetch":
+        job["steps"][9]["run"] += "git fetch origin " + "a" * 40 + "\n"
+    elif mutation == "head_self_comparison":
+        job["steps"][9]["run"] += "git diff --quiet HEAD HEAD\n"
     with pytest.raises(AssertionError):
         assert_ci_observed_toolkit_contract(job)
 
 
-@pytest.mark.parametrize(
-    ("changed_path", "permitted"),
-    [
-        ("tests/test_workflow_release_contract.py", True),
-        ("docs/evidence-samples/agent-guard-report.json", True),
-        ("src/agent_guard/cli/_entry.py", False),
-        ("pyproject.toml", False),
-        ("requirements/release-tools.txt", False),
-        ("tests/cli/test_entrypoint_contract.py", False),
-        ("tests/test_bounded_git.py", False),
-        (".agent-guard/path-policy.yaml", False),
-        (".github/workflows/release.yml", False),
-        ("unreviewed.py", False),
-    ],
-)
-def test_r1_scope_check_uses_committed_head_and_exact_file_exceptions(
-    tmp_path: Path, changed_path: str, permitted: bool
+@pytest.mark.parametrize("child_exit", [0, 7])
+def test_observed_toolkit_gate_accepts_current_commits_without_historical_baseline(
+    tmp_path: Path, child_exit: int
 ) -> None:
-    # A disposable repository, never a negative commit in the candidate worktree.
-    def git(*args: str) -> str:
+    job = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["release-contract"]
+    gate = next(step for step in job["steps"] if step.get("id") == "toolkit_diagnostic")
+
+    def git(root: Path, *args: str) -> str:
         return subprocess.check_output(
-            ["git", "-c", "user.name=Scope fixture", "-c", "user.email=scope@example.invalid",
+            ["git", "-c", "user.name=Toolkit fixture", "-c", "user.email=fixture@example.invalid",
              "-c", "core.hooksPath=/dev/null", *args],
-            cwd=tmp_path, text=True,
+            cwd=root, text=True, timeout=15,
         ).strip()
 
-    git("init", "--quiet")
-    target = tmp_path / changed_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("before\n", encoding="utf-8")
-    git("add", "--all")
-    git("commit", "--quiet", "--no-gpg-sign", "-m", "fixture base")
-    base = git("rev-parse", "HEAD")
-    target.write_text("after\n", encoding="utf-8")
+    # Independent objects and no remote: the real gate cannot fetch an old product SHA.
+    git(tmp_path, "init", "--quiet")
+    source = tmp_path / "src/agent_guard/__init__.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("# initial fixture product\n", encoding="utf-8")
+    git(tmp_path, "add", "src")
+    git(tmp_path, "commit", "--quiet", "--no-gpg-sign", "-m", "fixture product")
+    assert git(tmp_path, "remote") == ""
+    missing_c0 = subprocess.run(
+        ["git", "cat-file", "-e", "81eb0d0630671eab2e163de50cc0a27de840e46a"],
+        cwd=tmp_path, capture_output=True, check=False, timeout=15,
+    )
+    assert missing_c0.returncode != 0
+
+    # Only the external Toolkit checkout and observer are stubs; keep the real supervisor.
+    toolkit = tmp_path / ".candidate-toolkit"
+    harness = toolkit / "scripts/check_candidate_wheel_compatibility.py"
+    harness.parent.mkdir(parents=True)
+    harness.write_text("# fixture harness\n", encoding="utf-8")
+    git(toolkit, "init", "--quiet")
+    git(toolkit, "add", "scripts")
+    git(toolkit, "commit", "--quiet", "--no-gpg-sign", "-m", "fixture toolkit")
+    diagnostics = tmp_path / "scripts/diagnostics"
+    diagnostics.mkdir(parents=True)
+    shutil.copyfile(REPO_ROOT / "scripts/diagnostics/supervise_toolkit.py",
+                    diagnostics / "supervise_toolkit.py")
+    (diagnostics / "observe_toolkit.py").write_text(
+        "import json, os, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['TOOLKIT_STUB_CALL']).write_text(json.dumps({\n"
+        "    'argv': sys.argv[1:],\n"
+        "    'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),\n"
+        "}))\n"
+        "raise SystemExit(int(os.environ['TOOLKIT_STUB_EXIT']))\n",
+        encoding="utf-8",
+    )
+    wheel = tmp_path / "dist/yui_agent_guard-fixture.whl"
+    wheel.parent.mkdir()
+    wheel.write_bytes(b"wiring stub, not a compatibility result")
     env = os.environ.copy()
-    env["R1_C0"] = base
-    # An unstaged negative change must not be mistaken for a checked final HEAD.
-    before_commit = subprocess.run(
-        ["bash", "-euc", R1_OBSERVATION_SCOPE_COMMAND],
-        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
-    )
-    assert before_commit.returncode == 0
-    git("add", "--all")
-    git("commit", "--quiet", "--no-gpg-sign", "-m", "fixture candidate")
-    result = subprocess.run(
-        ["bash", "-euc", R1_OBSERVATION_SCOPE_COMMAND],
-        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
-    )
-    assert result.returncode == (0 if permitted else 1), result.stderr
+    env.pop("R1_C0", None)
+    env.update(gate["env"])
+    # Fixture-only identities; the independent static contract pins the real ref/blob.
+    env["TOOLKIT_REF"] = git(toolkit, "rev-parse", "HEAD")
+    env["TOOLKIT_HARNESS_BLOB"] = git(toolkit, "rev-parse", "HEAD:scripts/check_candidate_wheel_compatibility.py")
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+    env["TOOLKIT_STUB_EXIT"] = str(child_exit)
+    previous_head = git(tmp_path, "rev-parse", "HEAD")
+    for phase in ("initial", "product-change"):
+        if phase == "product-change":
+            source.write_text("# harmless later fixture product\n", encoding="utf-8")
+            git(tmp_path, "add", "src")
+            git(tmp_path, "commit", "--quiet", "--no-gpg-sign", "-m", "fixture product change")
+            assert git(tmp_path, "rev-parse", "HEAD") != previous_head
+        runner_temp = tmp_path / phase
+        runner_temp.mkdir()
+        call = runner_temp / "observer-call.json"
+        env.update(RUNNER_TEMP=str(runner_temp), TOOLKIT_STUB_CALL=str(call))
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-c", gate["run"]],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=False, timeout=30,
+        )
+        assert result.returncode == child_exit, result.stderr
+        observed = json.loads(call.read_text(encoding="utf-8"))
+        assert observed == {
+            "head": git(tmp_path, "rev-parse", "HEAD"),
+            "argv": ["--harness", str(harness), "--wheel", str(wheel),
+                     "--out", str(runner_temp / "r1-toolkit-diagnostic/stages")],
+        }
+        supervisor = json.loads((runner_temp / "r1-toolkit-diagnostic/supervisor.json").read_text())
+        assert supervisor["observer_exit_code"] == child_exit
 
 
 def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> None:

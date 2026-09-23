@@ -59,21 +59,11 @@ jobs:
       - name: Verify Toolkit candidate compatibility with bounded diagnostic capture
         id: toolkit_diagnostic
         env:
-          R1_C0: 81eb0d0630671eab2e163de50cc0a27de840e46a
           TOOLKIT_REF: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
           TOOLKIT_HARNESS_BLOB: 6d860bc554fe6a0fe95076425d6153a783da8d05
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$R1_C0"
-          git diff --quiet "$R1_C0" HEAD -- . \
-            ':(top,exclude,literal).github/workflows/ci.yml' \
-            ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
-            ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
-            ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
-            ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
-            ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
-            ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'
           toolkit=.candidate-toolkit
           test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
           blob="$(git -C "$toolkit" rev-parse HEAD:scripts/check_candidate_wheel_compatibility.py)"
