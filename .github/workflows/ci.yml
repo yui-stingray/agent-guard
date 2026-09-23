@@ -66,7 +66,14 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$R1_C0"
-          git diff --quiet "$R1_C0" HEAD -- src/agent_guard tests pyproject.toml requirements .agent-guard
+          git diff --quiet "$R1_C0" HEAD -- . \
+            ':(top,exclude,literal).github/workflows/ci.yml' \
+            ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
+            ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
+            ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
+            ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
+            ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
+            ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'
           toolkit=.candidate-toolkit
           test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
           blob="$(git -C "$toolkit" rev-parse HEAD:scripts/check_candidate_wheel_compatibility.py)"
@@ -91,12 +98,16 @@ jobs:
       - name: Upload allowlisted Toolkit observation
         if: ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || steps.toolkit_diagnostic.outcome == 'failure') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        env:
+          R1_TOOLKIT_SUMMARY: ${{ runner.temp }}/r1-toolkit-public/summary.json
+          R1_TOOLKIT_STDOUT: ${{ runner.temp }}/r1-toolkit-public/pytest.stdout.txt
+          R1_TOOLKIT_STDERR: ${{ runner.temp }}/r1-toolkit-public/pytest.stderr.txt
         with:
           name: r1-toolkit-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/r1-toolkit-public/summary.json
-            ${{ runner.temp }}/r1-toolkit-public/pytest.stdout.txt
-            ${{ runner.temp }}/r1-toolkit-public/pytest.stderr.txt
+            ${{ env.R1_TOOLKIT_SUMMARY }}
+            ${{ env.R1_TOOLKIT_STDOUT }}
+            ${{ env.R1_TOOLKIT_STDERR }}
           if-no-files-found: error
           retention-days: 14
 
