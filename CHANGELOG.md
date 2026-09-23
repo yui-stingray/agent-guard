@@ -6,6 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Moved CLI parser and dispatch ownership to a regular internal module while
+  keeping the public entry points, observed exports, and legacy import alias.
+  Private callable module metadata now reflects the new owner.
 - Fixed a reaping race in the POSIX process-test liveness helper without
   changing process containment or test timeout limits.
 - Fixed TTFE replay false successes: fail on setup/install errors, verify the
