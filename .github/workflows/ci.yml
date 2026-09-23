@@ -176,6 +176,7 @@ jobs:
       - name: Run tests
         run: pytest
       - name: Replay 15-minute onboarding path
+        id: ttfe
         if: matrix.python-version == '3.14'
         env:
           AGENT_GUARD_TTFE_OUT: /tmp/agent-guard-ttfe.json
@@ -184,6 +185,14 @@ jobs:
           python -m bench.ttfe.run check \
             --input /tmp/agent-guard-ttfe.json \
             --max-elapsed-ms 900000
+      - name: Upload TTFE replay result
+        if: ${{ always() && matrix.python-version == '3.14' && (steps.ttfe.outcome == 'success' || steps.ttfe.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: agent-guard-ttfe-py314-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/agent-guard-ttfe.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Validate pre-commit hook manifest
         if: matrix.python-version == '3.12'
         run: pre-commit validate-manifest

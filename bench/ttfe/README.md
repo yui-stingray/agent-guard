@@ -44,6 +44,13 @@ attestation against a compromised host. Benchmark results contain local
 installation metadata and must be reviewed before sharing. Their metadata is
 separate from the sanitized product report; no product report schema changes.
 
+After Python 3.14 replay succeeds or fails, CI retains any generated v2 result
+as `agent-guard-ttfe-py314-<run_id>-<run_attempt>` for 14 days. It contains
+the extracted install metadata and validated report, not the raw pip receipt,
+wheel archive, venv or environment dump. Download it for independent checking;
+the self-dogfood evidence bundle is a separate artifact. An upload or missing
+result failure fails CI, and uploading a failed replay does not make it pass.
+
 Historical `agent-guard.ttfe_results.v1` files remain historical measurements.
 A wheelhouse flag and report command marker did not prove installation or
 evidence generation. The current checker rejects them with a rerun requirement;
