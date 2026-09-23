@@ -1,27 +1,95 @@
 """Where: src/agent_guard/cli/__init__.py
-What: package shim for the legacy CLI implementation during extraction.
-Why: allow incremental subcommand modules while preserving the public CLI import path.
+What: keep the public CLI imports and observed exports explicit.
+Why: expose one normal entry module without splitting function identity.
 """
 
 from __future__ import annotations
 
+# Preserve the already observable facade names during this migration.
 import importlib.util
 import sys
 from pathlib import Path
 
-_LEGACY_MODULE_NAME = "agent_guard._legacy_cli"
-_LEGACY_PATH = Path(__file__).resolve().parents[1] / "cli.py"
-_SPEC = importlib.util.spec_from_file_location(_LEGACY_MODULE_NAME, _LEGACY_PATH)
-if _SPEC is None or _SPEC.loader is None:
-    raise ImportError(f"cannot load legacy CLI implementation from {_LEGACY_PATH}")
+from . import _entry as _legacy
+from ._entry import (
+    PACKAGE_VERSION,
+    add_api_parser,
+    add_conformance_parser,
+    add_content_parser,
+    add_context_parser,
+    add_digest_parser,
+    add_drift_parser,
+    add_evidence_pack_parser,
+    add_mcp_parser,
+    add_path_parser,
+    add_render_report_parser,
+    add_report_parser,
+    add_surface_parser,
+    add_workflow_parser,
+    annotations,
+    argparse,
+    build_parser,
+    main,
+    run_api_check,
+    run_conformance_check,
+    run_content_check,
+    run_context_check,
+    run_context_inventory,
+    run_context_lock,
+    run_digest_check,
+    run_drift_check,
+    run_evidence_pack_manifest,
+    run_init,
+    run_mcp_check,
+    run_path_check,
+    run_report,
+    run_report_render,
+    run_surface_delta,
+    run_surface_inventory,
+    run_workflow_check,
+    safe_policy_path,
+    scrub_report_error_message,
+)
 
-_legacy = importlib.util.module_from_spec(_SPEC)
-sys.modules[_LEGACY_MODULE_NAME] = _legacy
-_SPEC.loader.exec_module(_legacy)
+# Preserve old function pickle references after importing this public facade.
+sys.modules["agent_guard._legacy_cli"] = _legacy
 
-for _name, _value in vars(_legacy).items():
-    if not _name.startswith("_"):
-        globals()[_name] = _value
-
-__all__ = sorted(_name for _name in vars(_legacy) if not _name.startswith("_"))
-
+__all__ = [
+    "PACKAGE_VERSION",
+    "add_api_parser",
+    "add_conformance_parser",
+    "add_content_parser",
+    "add_context_parser",
+    "add_digest_parser",
+    "add_drift_parser",
+    "add_evidence_pack_parser",
+    "add_mcp_parser",
+    "add_path_parser",
+    "add_render_report_parser",
+    "add_report_parser",
+    "add_surface_parser",
+    "add_workflow_parser",
+    "annotations",
+    "argparse",
+    "build_parser",
+    "main",
+    "run_api_check",
+    "run_conformance_check",
+    "run_content_check",
+    "run_context_check",
+    "run_context_inventory",
+    "run_context_lock",
+    "run_digest_check",
+    "run_drift_check",
+    "run_evidence_pack_manifest",
+    "run_init",
+    "run_mcp_check",
+    "run_path_check",
+    "run_report",
+    "run_report_render",
+    "run_surface_delta",
+    "run_surface_inventory",
+    "run_workflow_check",
+    "safe_policy_path",
+    "scrub_report_error_message",
+]

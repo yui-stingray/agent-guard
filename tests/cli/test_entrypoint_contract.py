@@ -10,6 +10,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import pickle
 import subprocess
 import sys
 import sysconfig
@@ -90,13 +91,56 @@ def test_cli_reexports_original_command_functions(module: str, names: tuple[str,
         assert getattr(cli, name) is getattr(origin, name)
 
 
-def test_cli_entry_functions_keep_the_observed_shim_identity() -> None:
+def test_cli_entry_functions_keep_alias_and_static_owner() -> None:
     legacy = sys.modules["agent_guard._legacy_cli"]
+    entry = importlib.import_module("agent_guard.cli._entry")
+    assert legacy is entry
     assert cli.main is legacy.main
     assert cli.build_parser is legacy.build_parser
-    assert cli.main.__module__ == "agent_guard._legacy_cli"
-    assert cli.build_parser.__module__ == "agent_guard._legacy_cli"
+    assert cli.main.__module__ == "agent_guard.cli._entry"
+    assert cli.build_parser.__module__ == "agent_guard.cli._entry"
     assert cli.main.__globals__["build_parser"] is cli.build_parser
+    assert cli.main.__globals__ is vars(entry)
+
+
+@pytest.mark.parametrize(
+    "name,payload",
+    (
+        ("main", b"cagent_guard._legacy_cli\nmain\np0\n."),
+        ("build_parser", b"cagent_guard._legacy_cli\nbuild_parser\np0\n."),
+    ),
+)
+def test_baseline_cli_pickle_reference_restores_after_cli_import(
+    name: str, payload: bytes
+) -> None:
+    # Generated from baseline functions with protocol 0, then restored on the
+    # baseline before recording these trusted, fixed references.
+    assert pickle.loads(payload) is getattr(cli, name)
+
+
+@pytest.mark.parametrize("module", ("agent_guard.cli.api", "agent_guard.cli._entry"))
+def test_cli_submodule_imports_before_facade_in_fresh_process(
+    module: str, tmp_path: Path
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable, "-I", "-c",
+            "import importlib, sys\n"
+            f"module = importlib.import_module({module!r})\n"
+            "import agent_guard.cli as cli\n"
+            "assert callable(cli.main) and callable(cli.build_parser)\n"
+            "if module.__name__ == 'agent_guard.cli.api':\n"
+            "    assert module.run_api_check is cli.run_api_check\n"
+            "else:\n"
+            "    assert module.main is cli.main\n"
+            "assert cli.main is sys.modules['agent_guard._legacy_cli'].main\n",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert (result.returncode, result.stdout, result.stderr) == (0, b"", b"")
 
 
 @pytest.mark.parametrize("first", ("cli", "workflow"))

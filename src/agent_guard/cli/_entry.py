@@ -1,28 +1,28 @@
-"""Where: src/agent_guard/cli.py
-What: command-line interface for the agent-guard MVP.
-Why: make the extracted scanners consumable from CI, hooks, and local debugging.
+"""Where: src/agent_guard/cli/_entry.py
+What: own the CLI parser and dispatch functions.
+Why: keep CLI routing in a normal importable module while preserving the public facade.
 """
 
 from __future__ import annotations
 
 import argparse
 
-from . import __version__ as PACKAGE_VERSION
-from .cli.api import add_api_parser, run_api_check
-from .cli.content import add_content_parser, run_content_check
-from .cli.context import add_context_parser, run_context_check, run_context_inventory, run_context_lock
-from .cli.common import safe_policy_path, scrub_report_error_message
-from .cli.conformance import add_conformance_parser, run_conformance_check
-from .cli.digest import add_digest_parser, run_digest_check
-from .cli.drift import add_drift_parser, run_drift_check
-from .cli.evidence_pack import add_evidence_pack_parser, run_evidence_pack_manifest
-from .cli.init import run_init
-from .cli.mcp import add_mcp_parser, run_mcp_check
-from .cli.path import add_path_parser, run_path_check
-from .cli.report import add_report_parser, run_report
-from .cli.render_report import add_render_report_parser, run_report_render
-from .cli.surface import add_surface_parser, run_surface_delta, run_surface_inventory
-from .cli.workflow import add_workflow_parser, run_workflow_check
+from .. import __version__ as PACKAGE_VERSION
+from .api import add_api_parser, run_api_check
+from .content import add_content_parser, run_content_check
+from .context import add_context_parser, run_context_check, run_context_inventory, run_context_lock
+from .common import safe_policy_path, scrub_report_error_message
+from .conformance import add_conformance_parser, run_conformance_check
+from .digest import add_digest_parser, run_digest_check
+from .drift import add_drift_parser, run_drift_check
+from .evidence_pack import add_evidence_pack_parser, run_evidence_pack_manifest
+from .init import run_init
+from .mcp import add_mcp_parser, run_mcp_check
+from .path import add_path_parser, run_path_check
+from .report import add_report_parser, run_report
+from .render_report import add_render_report_parser, run_report_render
+from .surface import add_surface_parser, run_surface_delta, run_surface_inventory
+from .workflow import add_workflow_parser, run_workflow_check
 
 
 def build_parser() -> argparse.ArgumentParser:

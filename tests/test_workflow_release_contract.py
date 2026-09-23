@@ -42,6 +42,44 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-surface-inventory.json",
 )
 TOOLKIT_COMPATIBILITY_COMMIT = "8ea48dc9926c55ac70af7a623c3ebcd8b35178c9"
+R1_OBSERVATION_SCOPE_COMMAND = r"""git diff --quiet "$R1_C0" HEAD -- . \
+  ':(top,exclude,literal).github/workflows/ci.yml' \
+  ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
+  ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
+  ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
+  ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
+  ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
+  ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'"""
+R1_OBSERVATION_COMMAND = r"""set -euo pipefail
+git fetch --no-tags --depth=1 origin "$R1_C0"
+git diff --quiet "$R1_C0" HEAD -- . \
+  ':(top,exclude,literal).github/workflows/ci.yml' \
+  ':(top,exclude,literal)scripts/diagnostics/observe_toolkit.py' \
+  ':(top,exclude,literal)scripts/diagnostics/supervise_toolkit.py' \
+  ':(top,exclude,literal)scripts/diagnostics/export_toolkit_diagnostic.py' \
+  ':(top,exclude,literal)scripts/diagnostics/test_observation.py' \
+  ':(top,exclude,literal)tests/test_workflow_release_contract.py' \
+  ':(top,exclude,literal)docs/evidence-samples/agent-guard-report.json'
+toolkit=.candidate-toolkit
+test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
+blob="$(git -C "$toolkit" rev-parse HEAD:scripts/check_candidate_wheel_compatibility.py)"
+test "$blob" = "$TOOLKIT_HARNESS_BLOB"
+diagnostic_root="$RUNNER_TEMP/r1-toolkit-diagnostic"
+mkdir -m 700 "$diagnostic_root"
+set -- dist/yui_agent_guard-*.whl
+test "$#" -eq 1
+/usr/bin/python3 -B scripts/diagnostics/supervise_toolkit.py \
+  --root "$diagnostic_root" --seconds 1200 -- \
+  "$(command -v python)" -B scripts/diagnostics/observe_toolkit.py \
+  --harness "$PWD/.candidate-toolkit/scripts/check_candidate_wheel_compatibility.py" \
+  --wheel "$PWD/$1" --out "$diagnostic_root/stages"
+"""
+R1_OBSERVATION_EXPORT_COMMAND = r"""python -B scripts/diagnostics/export_toolkit_diagnostic.py \
+  --root "$RUNNER_TEMP/r1-toolkit-diagnostic" \
+  --toolkit .candidate-toolkit --candidate "$GITHUB_SHA" \
+  --output "$RUNNER_TEMP/r1-toolkit-public/summary.json"
+"""
+
 APPROVED_ACTION_PIP_COMMANDS = (
     'python -I -m pip install "$AGENT_GUARD_PACKAGE_SPEC"',
     'python -I -m pip install "$GITHUB_ACTION_PATH"',
@@ -803,13 +841,167 @@ def test_release_build_workflows_use_the_hashed_nonisolated_tool_lock() -> None:
     assert "pytest" not in ci_commands
 
 
+
+def assert_ci_observed_toolkit_contract(job: dict) -> None:
+    """The observed CI route must use the already validated wheel exactly once."""
+    assert "if" not in job and not job.get("continue-on-error", False)
+    steps = job["steps"]
+    expected_order = [
+        "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+        "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+        "Install locked release build tools",
+        "Verify release tool dependency consistency",
+        "Build sdist + wheel",
+        "Verify metadata (twine check)",
+        "Verify wheel public contract",
+        "Checkout exact Toolkit compatibility contract",
+        "Verify observation helper contracts",
+        "Verify Toolkit candidate compatibility with bounded diagnostic capture",
+        "Export allowlisted Toolkit observation",
+        "Upload allowlisted Toolkit observation",
+    ]
+    assert [step.get("name", step.get("uses")) for step in steps] == expected_order
+    for step in steps:
+        assert not step.get("continue-on-error", False)
+    for step in steps[:10]:
+        assert "if" not in step
+    assert [step["run"] for step in steps if "run" in step] == [
+        "python -m pip install --require-hashes --only-binary=:all: -r requirements/release-tools.txt",
+        "python -m pip check",
+        "python -m build --no-isolation",
+        "python -m twine check dist/*",
+        "python scripts/check_wheel_contract.py",
+        "python -B -m unittest discover -s scripts/diagnostics -p test_observation.py -v",
+        R1_OBSERVATION_COMMAND,
+        R1_OBSERVATION_EXPORT_COMMAND,
+    ]
+    checkout = steps[7]
+    assert checkout["uses"] == "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+    assert checkout["with"] == {
+        "repository": "yui-stingray/agent-safety-toolkit-example",
+        "ref": TOOLKIT_COMPATIBILITY_COMMIT,
+        "path": ".candidate-toolkit",
+        "persist-credentials": False,
+    }
+    gate = steps[9]
+    assert gate["id"] == "toolkit_diagnostic"
+    assert gate["shell"] == "bash"
+    assert gate["env"] == {
+        "R1_C0": "81eb0d0630671eab2e163de50cc0a27de840e46a",
+        "TOOLKIT_REF": TOOLKIT_COMPATIBILITY_COMMIT,
+        "TOOLKIT_HARNESS_BLOB": "6d860bc554fe6a0fe95076425d6153a783da8d05",
+    }
+    for step in steps[10:]:
+        assert step["if"] == (
+            "${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || "
+            "steps.toolkit_diagnostic.outcome == 'failure') }}"
+        )
+    assert steps[10]["shell"] == "bash"
+    upload = steps[11]
+    assert upload["uses"] == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    assert upload["env"] == {
+        "R1_TOOLKIT_SUMMARY": "${{ runner.temp }}/r1-toolkit-public/summary.json",
+        "R1_TOOLKIT_STDOUT": "${{ runner.temp }}/r1-toolkit-public/pytest.stdout.txt",
+        "R1_TOOLKIT_STDERR": "${{ runner.temp }}/r1-toolkit-public/pytest.stderr.txt",
+    }
+    assert upload["with"] == {
+        "name": "r1-toolkit-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "${{ env.R1_TOOLKIT_SUMMARY }}\n"
+                "${{ env.R1_TOOLKIT_STDOUT }}\n"
+                "${{ env.R1_TOOLKIT_STDERR }}\n",
+        "if-no-files-found": "error",
+        "retention-days": 14,
+    }
+
+
+@pytest.mark.parametrize("mutation", [
+    "wheel", "ref", "blob", "skip", "ignore_failure", "extra_install",
+    "artifact_destination", "missing_artifact", "extra_artifact",
+])
+def test_observed_toolkit_contract_rejects_invalid_wiring(mutation: str) -> None:
+    job = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["release-contract"]
+    if mutation == "wheel":
+        job["steps"][9]["run"] = job["steps"][9]["run"].replace(
+            "dist/yui_agent_guard-*.whl", "other/candidate.whl"
+        )
+    elif mutation == "ref":
+        job["steps"][7]["with"]["ref"] = "master"
+    elif mutation == "blob":
+        job["steps"][9]["env"]["TOOLKIT_HARNESS_BLOB"] = "0" * 40
+    elif mutation == "skip":
+        job["steps"][9]["if"] = "false"
+    elif mutation == "ignore_failure":
+        job["steps"][9]["continue-on-error"] = True
+    elif mutation == "extra_install":
+        job["steps"].insert(9, {"name": "Replace wheel", "run": "python -m pip install other.whl"})
+    elif mutation == "artifact_destination":
+        job["steps"][11]["env"]["R1_TOOLKIT_STDOUT"] = "${{ runner.temp }}/other.txt"
+    elif mutation == "missing_artifact":
+        job["steps"][11]["with"]["path"] = "${{ env.R1_TOOLKIT_SUMMARY }}\n"
+    elif mutation == "extra_artifact":
+        job["steps"][11]["with"]["path"] += "${{ runner.temp }}/private.txt\n"
+    with pytest.raises(AssertionError):
+        assert_ci_observed_toolkit_contract(job)
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "permitted"),
+    [
+        ("tests/test_workflow_release_contract.py", True),
+        ("docs/evidence-samples/agent-guard-report.json", True),
+        ("src/agent_guard/cli/_entry.py", False),
+        ("pyproject.toml", False),
+        ("requirements/release-tools.txt", False),
+        ("tests/cli/test_entrypoint_contract.py", False),
+        ("tests/test_bounded_git.py", False),
+        (".agent-guard/path-policy.yaml", False),
+        (".github/workflows/release.yml", False),
+        ("unreviewed.py", False),
+    ],
+)
+def test_r1_scope_check_uses_committed_head_and_exact_file_exceptions(
+    tmp_path: Path, changed_path: str, permitted: bool
+) -> None:
+    # A disposable repository, never a negative commit in the candidate worktree.
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "user.name=Scope fixture", "-c", "user.email=scope@example.invalid",
+             "-c", "core.hooksPath=/dev/null", *args],
+            cwd=tmp_path, text=True,
+        ).strip()
+
+    git("init", "--quiet")
+    target = tmp_path / changed_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("before\n", encoding="utf-8")
+    git("add", "--all")
+    git("commit", "--quiet", "--no-gpg-sign", "-m", "fixture base")
+    base = git("rev-parse", "HEAD")
+    target.write_text("after\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["R1_C0"] = base
+    # An unstaged negative change must not be mistaken for a checked final HEAD.
+    before_commit = subprocess.run(
+        ["bash", "-euc", R1_OBSERVATION_SCOPE_COMMAND],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert before_commit.returncode == 0
+    git("add", "--all")
+    git("commit", "--quiet", "--no-gpg-sign", "-m", "fixture candidate")
+    result = subprocess.run(
+        ["bash", "-euc", R1_OBSERVATION_SCOPE_COMMAND],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == (0 if permitted else 1), result.stderr
+
+
 def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> None:
     release_workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     ci_workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
-    for job, wheel_pattern in (
-        (ci_workflow["jobs"]["release-contract"], "dist/yui_agent_guard-*.whl"),
-        (release_workflow["jobs"]["build"], "dist/yui_agent_guard-*.whl"),
+    for job, wheel_pattern, observed in (
+        (ci_workflow["jobs"]["release-contract"], "dist/yui_agent_guard-*.whl", True),
+        (release_workflow["jobs"]["build"], "dist/yui_agent_guard-*.whl", False),
     ):
         steps = job["steps"]
         toolkit_index = next(
@@ -820,7 +1012,10 @@ def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> Non
         gate_index = next(
             index
             for index, step in enumerate(steps)
-            if step.get("name") == "Verify Toolkit candidate compatibility"
+            if (
+                step.get("id") == "toolkit_diagnostic"
+                if observed else step.get("name") == "Verify Toolkit candidate compatibility"
+            )
         )
         contract_index = next(
             index
@@ -839,10 +1034,13 @@ def test_candidate_wheel_gate_cannot_replace_validated_release_artifact() -> Non
             "path": ".candidate-toolkit",
             "persist-credentials": False,
         }
-        assert gate["run"] == (
-            "python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py "
-            f"--wheel {wheel_pattern}"
-        )
+        if observed:
+            assert_ci_observed_toolkit_contract(job)
+        else:
+            assert gate["run"] == (
+                "python .candidate-toolkit/scripts/check_candidate_wheel_compatibility.py "
+                f"--wheel {wheel_pattern}"
+            )
         assert contract_index < toolkit_index < gate_index
 
     release_steps = release_workflow["jobs"]["build"]["steps"]

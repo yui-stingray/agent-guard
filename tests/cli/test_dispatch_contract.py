@@ -122,7 +122,7 @@ def test_cli_dispatches_each_leaf_and_propagates_runner_exit_code(
         name: Mock(name=name, return_value=runner_exit_code)
         for name, _, _ in DISPATCH_CASES.values()
     }
-    # The shim copies exports; patching cli.run_* would miss main's globals.
+    # The facade re-exports runners; main resolves them in _entry's globals.
     for name, runner in runners.items():
         monkeypatch.setitem(cli.main.__globals__, name, runner)
     monkeypatch.setattr(sys, "argv", ["agent-guard", *route.split(), *options])
