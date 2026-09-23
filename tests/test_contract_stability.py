@@ -213,6 +213,7 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Moved CLI parser and dispatch ownership to a regular internal module while keeping the public entry points, observed exports, and legacy import alias. Private callable module metadata now reflects the new owner.",
             "- Fixed a reaping race in the POSIX process-test liveness helper without changing process containment or test timeout limits.",
             "- Fixed TTFE replay false successes: fail on setup/install errors, verify the current checkout wheel in a fresh environment, and validate newly generated diagnostic evidence. TTFE v2 results retain the verification evidence; legacy v1 results require a new run.",
             "- Started `0.3.10.dev0` development while generated install and Action examples remain pinned to the published `0.3.9` release.",
