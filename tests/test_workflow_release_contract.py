@@ -710,7 +710,27 @@ def test_ci_has_focused_windows_cli_contract() -> None:
     assert job["runs-on"] == "windows-latest"
     assert job["timeout-minutes"] == 10
     commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
-    assert "test_bounded_process_kills_descendant_holding_stdout_and_joins_reader" in commands
+    boundary_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Verify Windows process and path boundaries"
+    )
+    # Keep a single pytest command: failures must remain the step's exit status.
+    # Verbose output makes each selected node's hosted result observable.
+    assert boundary_step["run"].split() == [
+        "python", "-m", "pytest", "-vv",
+        "tests/test_bounded_git.py",
+        "tests/test_bounded_scan.py::test_isolated_scan_supports_spawn_context",
+        "tests/test_bounded_scan.py::test_default_isolated_scan_supports_standalone_programmatic_call",
+        "tests/test_public_api.py::test_public_scanners_support_unguarded_consumer_with_guarded_parity",
+        "tests/test_content_guard.py::test_new_mode_applies_windows_git_filename_rejections",
+        "tests/cli/test_evidence_pack.py::test_audit_event_artifacts_preserve_nested_paths_for_duplicate_basenames",
+        "tests/test_windows_file_boundaries.py",
+        "tests/cli/test_dispatch_contract.py",
+        "tests/cli/test_entrypoint_contract.py",
+    ]
+    assert "if" not in boundary_step
+    assert not boundary_step.get("continue-on-error", False)
+    assert not job.get("continue-on-error", False)
     assert "test_isolated_scan_supports_spawn_context" in commands
     assert "test_default_isolated_scan_supports_standalone_programmatic_call" in commands
     assert "test_public_scanners_support_unguarded_consumer_with_guarded_parity" in commands

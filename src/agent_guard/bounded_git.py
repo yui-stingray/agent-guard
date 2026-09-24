@@ -22,6 +22,7 @@ GIT_IO_CHUNK_BYTES = 64 * 1024
 GIT_WAIT_POLL_SECONDS = 0.05
 GIT_TERMINATION_GRACE_SECONDS = 0.25
 GIT_IO_JOIN_GRACE_SECONDS = 0.5
+GIT_IO_POLL_SECONDS = 0.001
 
 # A bare ``git`` command may resolve through a repository-controlled current
 # directory or caller-controlled PATH. These are the supported host install
@@ -376,6 +377,7 @@ def _run_bounded_process(
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                bufsize=0,
                 env=dict(environment),
             )
             if not _assign_windows_process_to_job(windows_job, process):
@@ -389,6 +391,7 @@ def _run_bounded_process(
                 stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                bufsize=0,
                 env=dict(environment),
                 start_new_session=True,
             )
@@ -409,6 +412,18 @@ def _run_bounded_process(
         _close_stream(stdout)
         raise BoundedGitProcessError
 
+    # Workers exclusively own I/O and close. Nonblocking pipes let them stop
+    # without another thread closing a live descriptor or waiting on an I/O lock.
+    try:
+        stdout = _nonblocking_pipe(stdout)
+        if stdin is not None:
+            stdin = _nonblocking_pipe(stdin)
+    except Exception:
+        _terminate_process_tree(process, windows_job)
+        _close_stream(stdin)
+        _close_stream(stdout)
+        raise BoundedGitProcessError from None
+
     stopping = threading.Event()
     io_failed = threading.Event()
     output_limit_exceeded = threading.Event()
@@ -419,7 +434,15 @@ def _run_bounded_process(
             read = getattr(stdout, "read1", stdout.read)
             while True:
                 remaining = max_output_bytes - len(output)
+                stopped_before_read = stopping.is_set()
                 chunk = read(min(GIT_IO_CHUNK_BYTES, remaining + 1))
+                if chunk is None:
+                    if stopped_before_read:
+                        return
+                    # A child can write its final output between an empty read
+                    # and the stop signal. Read once more after observing stop.
+                    stopping.wait(GIT_IO_POLL_SECONDS)
+                    continue
                 if not chunk:
                     return
                 if len(chunk) > remaining:
@@ -429,21 +452,17 @@ def _run_bounded_process(
         except Exception:
             if not stopping.is_set():
                 io_failed.set()
+        finally:
+            _close_stream(stdout)
 
     def write_stdin() -> None:
         if stdin is None:
             return
         try:
             if windows_handshake:
-                stdin.write(b"\0")
-                stdin.flush()
+                _write_pipe_input(stdin, b"\0", stopping)
             if input_data is not None:
-                data = memoryview(input_data)
-                for offset in range(0, len(data), GIT_IO_CHUNK_BYTES):
-                    if stopping.is_set():
-                        return
-                    stdin.write(data[offset : offset + GIT_IO_CHUNK_BYTES])
-                    stdin.flush()
+                _write_pipe_input(stdin, input_data, stopping)
         except Exception:
             if not stopping.is_set():
                 io_failed.set()
@@ -718,27 +737,89 @@ def _join_io_workers(
     *,
     streams: Sequence[object | None],
 ) -> bool:
+    del streams
     deadline = time.monotonic() + GIT_IO_JOIN_GRACE_SECONDS
     for worker in workers:
         worker.join(timeout=max(deadline - time.monotonic(), 0.0))
 
-    if any(worker.is_alive() for worker in workers):
-        # Closing the descriptor directly avoids waiting on a buffered stream's
-        # lock while another thread is blocked in read() or write().
-        # The caller intentionally leaves the wrapper object alone unless all
-        # workers have stopped; its underlying descriptor is already closed.
-        for stream in streams:
-            if stream is not None:
-                _force_close_stream_descriptor(stream)
-        deadline = time.monotonic() + GIT_IO_JOIN_GRACE_SECONDS
-        for worker in workers:
-            worker.join(timeout=max(deadline - time.monotonic(), 0.0))
+    # Never close a stream concurrently with its worker. The nonblocking
+    # worker observes stopping and closes its own stream in finally.
     return not any(worker.is_alive() for worker in workers)
 
 
-def _force_close_stream_descriptor(stream: object) -> None:
-    try:
-        descriptor = stream.fileno()  # type: ignore[attr-defined]
-        os.close(descriptor)
-    except (OSError, TypeError, ValueError):
-        pass
+def _write_pipe_input(stream: object, data: bytes, stopping: threading.Event) -> None:
+    view = memoryview(data)
+    offset = 0
+    while offset < len(view) and not stopping.is_set():
+        chunk = view[offset : offset + GIT_IO_CHUNK_BYTES]
+        written = stream.write(chunk)  # type: ignore[attr-defined]
+        if written is None:
+            stopping.wait(GIT_IO_POLL_SECONDS)
+        elif written <= 0 or written > len(chunk):
+            raise OSError("pipe write made invalid progress")
+        else:
+            offset += written
+
+
+def _nonblocking_pipe(stream: object) -> object:
+    if os.name == "nt":
+        return _WindowsNonblockingPipe(stream)
+    os.set_blocking(stream.fileno(), False)  # type: ignore[attr-defined]
+    return stream
+
+
+class _WindowsNonblockingPipe:
+    """Synchronous NOWAIT pipe I/O, including supported Python 3.11 hosts.
+
+    Use Win32 directly: Python 3.11's CRT path does not translate nonblocking
+    pipe conditions consistently. The FileIO object remains the sole owner;
+    only its worker performs I/O/close, so the handle cannot be recycled mid-call.
+    """
+
+    def __init__(self, stream: object) -> None:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        self._stream = stream
+        self._ctypes = ctypes
+        self._count = wintypes.DWORD
+        self._handle = msvcrt.get_osfhandle(stream.fileno())  # type: ignore[attr-defined]
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        set_state = kernel32.SetNamedPipeHandleState
+        set_state.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+                              ctypes.c_void_p, ctypes.c_void_p]
+        set_state.restype = wintypes.BOOL
+        mode = wintypes.DWORD(1)  # PIPE_READMODE_BYTE | PIPE_NOWAIT
+        if not set_state(self._handle, ctypes.byref(mode), None, None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        self._read = kernel32.ReadFile
+        self._write = kernel32.WriteFile
+        for operation in (self._read, self._write):
+            operation.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                                  ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+            operation.restype = wintypes.BOOL
+
+    def read(self, size: int) -> bytes | None:
+        buffer = self._ctypes.create_string_buffer(size)
+        count = self._count()
+        if not self._read(self._handle, buffer, size, self._ctypes.byref(count), None):
+            error = self._ctypes.get_last_error()
+            if error == 232:  # ERROR_NO_DATA: empty, still-connected NOWAIT pipe
+                return None
+            if error == 109:  # ERROR_BROKEN_PIPE: EOF
+                return b""
+            raise self._ctypes.WinError(error)
+        return buffer.raw[:count.value]
+
+    def write(self, data: memoryview) -> int | None:
+        buffer = bytes(data)
+        count = self._count()
+        if not self._write(self._handle, buffer, len(buffer),
+                           self._ctypes.byref(count), None):
+            raise self._ctypes.WinError(self._ctypes.get_last_error())
+        # A full NOWAIT byte pipe can successfully write zero bytes.
+        return count.value or None
+
+    def close(self) -> None:
+        self._stream.close()  # type: ignore[attr-defined]

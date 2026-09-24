@@ -662,3 +662,183 @@ def test_bounded_process_does_not_wait_forever_when_containment_fails(
             break
         time.sleep(0.01)
     assert current_threads == baseline_threads
+
+
+@pytest.mark.parametrize("mode", ["read", "write"])
+def test_bounded_process_releases_pipe_ownership_without_closing_reused_fd(
+    tmp_path: Path, mode: str,
+) -> None:
+    import json
+
+    probe = Path(__file__).parent / "fixtures" / "bounded_git" / "io_ownership_probe.py"
+    result = subprocess.run(
+        [sys.executable, "-I", str(probe), mode, str(tmp_path)],
+        capture_output=True, check=False, timeout=8,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    observed = json.loads(result.stdout)
+    (tmp_path / "io_ownership.json").write_text(
+        json.dumps(observed, sort_keys=True), encoding="utf-8",
+    )
+    assert observed["expected_error"]
+    assert observed["elapsed"] < 2.0
+    assert observed["same_number_reused"]
+    assert observed["sentinel_alive"], observed
+    assert observed["sentinel_contents"] == "beforeafter", observed
+    assert observed["wrapper_closed_on_return"], observed
+    assert observed["fd_released_on_return"]
+    assert observed["workers_stopped"]
+    assert observed["wrapper_finalized"]
+    assert observed["events"] == []
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_bounded_process_preserves_large_input_and_output(exit_code: int) -> None:
+    data = bytes(range(256)) * 4096
+    result = bounded_git._run_bounded_process(
+        [sys.executable, "-c", "import sys; data=sys.stdin.buffer.read(); "
+         f"sys.stdout.buffer.write(data); raise SystemExit({exit_code})"],
+        environment=os.environ, timeout_seconds=2.0,
+        max_output_bytes=len(data), input_data=data,
+    )
+    assert result.returncode == exit_code
+    assert result.stdout == data
+
+
+@pytest.mark.parametrize("failure", [None, "zero", "write", "read"])
+def test_bounded_process_handles_partial_and_failed_pipe_io(
+    monkeypatch: pytest.MonkeyPatch, failure: str | None,
+) -> None:
+    prepare = bounded_git._nonblocking_pipe
+    written = []
+
+    class Pipe:
+        def __init__(self, stream):
+            self.stream = stream
+            self.read_calls = self.write_calls = 0
+
+        def read(self, size):
+            self.read_calls += 1
+            if failure == "read":
+                raise OSError("injected read failure")
+            if self.read_calls == 1:
+                return None
+            return self.stream.read(min(size, 3))
+
+        def write(self, data):
+            self.write_calls += 1
+            if failure == "write":
+                raise OSError("injected write failure")
+            if failure == "zero":
+                return 0
+            if self.write_calls == 1:
+                return None
+            n = self.stream.write(data[:3])
+            if n:
+                written.append(bytes(data[:n]))
+            return n
+
+        def close(self):
+            self.stream.close()
+
+    monkeypatch.setattr(bounded_git, "_nonblocking_pipe", lambda s: Pipe(prepare(s)))
+    data = b"partial pipe input\0\xff" * 20
+    command = [sys.executable, "-c",
+               "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"]
+    if failure:
+        with pytest.raises(bounded_git.BoundedGitProcessError):
+            bounded_git._run_bounded_process(command, environment=os.environ,
+                timeout_seconds=1, max_output_bytes=1024, input_data=data)
+    else:
+        result = bounded_git._run_bounded_process(command, environment=os.environ,
+            timeout_seconds=1, max_output_bytes=1024, input_data=data)
+        assert result.returncode == 0
+        assert result.stdout == data
+        assert b"".join(written) == (b"\0" if os.name == "nt" else b"") + data
+
+
+@pytest.mark.parametrize("fail_worker", [1, 2])
+def test_bounded_process_cleans_up_after_worker_start_failure(
+    monkeypatch: pytest.MonkeyPatch, fail_worker: int,
+) -> None:
+    real_start = threading.Thread.start
+    real_popen = subprocess.Popen
+    started = 0
+    created = []
+
+    def start(thread):
+        nonlocal started
+        if thread.name.startswith("agent-guard-git-"):
+            started += 1
+            if started == fail_worker:
+                raise RuntimeError("injected worker start failure")
+        real_start(thread)
+
+    def create(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        created.append(process)
+        return process
+
+    monkeypatch.setattr(threading.Thread, "start", start)
+    monkeypatch.setattr(bounded_git.subprocess, "Popen", create)
+    before = set(threading.enumerate())
+    begin = time.monotonic()
+    with pytest.raises(bounded_git.BoundedGitProcessError):
+        bounded_git._run_bounded_process(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            environment=os.environ, timeout_seconds=1,
+            max_output_bytes=1024, input_data=b"input",
+        )
+    assert time.monotonic() - begin < 2
+    assert all(p.poll() is not None and p.stdin.closed and p.stdout.closed for p in created)
+    assert not [t for t in threading.enumerate() if t not in before
+                and t.name.startswith("agent-guard-git-")]
+
+
+def test_bounded_process_drains_output_arriving_after_empty_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready = tmp_path / "reader-ready"
+    returned = threading.Event()
+    prepare = bounded_git._nonblocking_pipe
+    terminate = bounded_git._terminate_process_tree
+
+    class DelayedEmptyRead:
+        first = True
+
+        def __init__(self, stream):
+            self.stream = stream
+
+        def read(self, size):
+            if self.first:
+                self.first = False
+                empty = self.stream.read(size)
+                assert empty is None
+                ready.write_text("ready", encoding="ascii")
+                assert returned.wait(3)
+                return empty
+            return self.stream.read(size)
+
+        def close(self):
+            self.stream.close()
+
+    def release_after_child_exit(process, job):
+        returned.set()
+        return terminate(process, job)
+
+    monkeypatch.setattr(bounded_git, "_nonblocking_pipe",
+                        lambda stream: prepare(stream) if stream.writable()
+                        else DelayedEmptyRead(prepare(stream)))
+    monkeypatch.setattr(bounded_git, "_terminate_process_tree", release_after_child_exit)
+    command = [sys.executable, "-c",
+               "from pathlib import Path; import sys,time; "
+               "ready=Path(sys.argv[1]); deadline=time.monotonic()+2\n"
+               "while not ready.exists():\n"
+               " if time.monotonic()>deadline: raise SystemExit(124)\n"
+               " time.sleep(.001)\n"
+               "sys.stdout.buffer.write(b'last output'); sys.stdout.buffer.flush()",
+               str(ready)]
+    result = bounded_git._run_bounded_process(command, environment=os.environ,
+        timeout_seconds=3, max_output_bytes=100)
+    assert result.returncode == 0
+    assert result.stdout == b"last output"
