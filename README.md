@@ -816,6 +816,20 @@ through an exclusive regular temporary file in the validated destination
 directory and atomically replace the final entry without following a final
 symlink.
 
+Native Windows rejects report file destinations on WSL shares (`\\\\wsl$`
+and `\\\\wsl.localhost`, including their extended UNC forms). The opened
+directory is checked before temporary-file creation; an unidentified or
+inconsistent temporary-file destination is rejected before payload writing or
+publication. Rejection preserves an existing final report and uses the
+existing fatal output-error status (exit 2), without falling back to stdout.
+If temporary-file identity cannot be verified, handles are closed but an empty
+temporary file may remain: deleting an unverified name could delete another
+file. Parent directories may already have been created.
+Windows local output and ordinary UNC destinations retain the existing boundary
+checks. A WSL-hosted input repository does not itself prevent output to a
+supported destination or explicit stdout output. The Linux writer is unchanged;
+shell redirection is outside these file-output guarantees.
+
 Use `--format github-annotations` in GitHub Actions to emit `::error` or
 `::warning` lines for findings and drift from the same sanitized payload. Clean
 reports are quiet in this format. Annotation titles and messages contain only

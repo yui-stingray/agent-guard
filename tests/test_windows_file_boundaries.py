@@ -298,6 +298,123 @@ def test_windows_report_output_renames_the_open_temp_identity(
     assert next(repo.glob(".agent-guard-*.tmp")).read_text(encoding="utf-8") == "attacker\n"
 
 
+@pytest.mark.parametrize("path", [
+    r"\\wsl$\Ubuntu\output", r"\\WSL.LOCALHOST\Ubuntu\output",
+    r"\\?\UNC\wsl$\Ubuntu\output", r"\\?\unc\Wsl.LocalHost\Ubuntu\output",
+    "//wsl.localhost/Ubuntu/output", "relative", "C:relative", "",
+])
+def test_windows_output_destination_rejects_wsl_or_unidentified_path(path: str) -> None:
+    with pytest.raises(OSError):
+        report_render._require_supported_windows_output_path(path)
+
+
+@pytest.mark.parametrize("path", [
+    r"C:\output", r"\\?\C:\output", r"\\server\share\output",
+    r"\\?\UNC\server\share\output", r"\\wsl.localhost.example\share\output",
+    r"\\wsl$-backup\share\output", r"C:\wsl.localhost\output",
+])
+def test_windows_output_destination_preserves_other_path_names(path: str) -> None:
+    report_render._require_supported_windows_output_path(path)
+
+
+@WINDOWS_ONLY
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("failure", ["wsl", "unidentified"])
+def test_windows_output_rejects_parent_before_creating_temp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool, failure: str,
+) -> None:
+    final = tmp_path / "report.txt"
+    if existing:
+        final.write_text("previous\n", encoding="utf-8")
+    opened: list[int] = []
+    closed: list[int] = []
+    real_open = report_render._windows_open_directory_handle
+    real_close = report_render._windows_close_handle
+    real_path = report_render._windows_path_from_handle
+
+    def open_parent(parent: Path) -> int:
+        handle = real_open(parent)
+        opened.append(handle)
+        return handle
+
+    def resolved_path(handle: int) -> str:
+        if handle not in opened:
+            return real_path(handle)
+        if failure == "unidentified":
+            raise OSError("synthetic private query detail")
+        return r"\\wsl.localhost\Ubuntu\output"
+
+    def close_parent(handle: int) -> None:
+        closed.append(handle)
+        real_close(handle)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("rejected parent reached temporary creation, payload write, or rename")
+
+    monkeypatch.setattr(report_render, "_windows_open_directory_handle", open_parent)
+    monkeypatch.setattr(report_render, "_windows_path_from_handle", resolved_path)
+    monkeypatch.setattr(report_render, "_windows_close_handle", close_parent)
+    monkeypatch.setattr(report_render, "_open_windows_temp_file", forbidden)
+    monkeypatch.setattr(report_render, "_write_all", forbidden)
+    monkeypatch.setattr(report_render, "_windows_rename_open_file", forbidden)
+    with pytest.raises(ValueError, match="^report output path is unsafe$"):
+        report_render.emit_report_output("public\n", "report.txt", root=tmp_path)
+    assert len(opened) == 1 and closed == opened
+    assert sorted(p.name for p in tmp_path.iterdir()) == (["report.txt"] if existing else [])
+    if existing:
+        assert final.read_text(encoding="utf-8") == "previous\n"
+
+
+@WINDOWS_ONLY
+@pytest.mark.parametrize("failure", ["wsl", "different-parent", "unidentified"])
+def test_windows_output_rejects_changed_temp_before_payload_without_unlinking_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    final = tmp_path / "report.txt"
+    final.write_text("previous\n", encoding="utf-8")
+    real_temp = report_render._open_windows_temp_file
+    real_close = report_render._windows_close_handle
+    fds: list[int] = []
+    names: list[Path] = []
+    closed: list[int] = []
+
+    def replace_temp(parent: Path) -> tuple[int, Path]:
+        fd, path = real_temp(parent)
+        fds.append(fd)
+        names.append(path)
+        path.rename(parent / "displaced.tmp")
+        path.write_text("replacement\n", encoding="utf-8")
+        return fd, path
+
+    def temp_path(fd: int) -> str:
+        if failure == "unidentified":
+            raise OSError("synthetic private query detail")
+        if failure == "wsl":
+            return r"\\wsl$\Ubuntu\output\temp.tmp"
+        return str(tmp_path.parent / "outside" / "temp.tmp")
+
+    def close_parent(handle: int) -> None:
+        closed.append(handle)
+        real_close(handle)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("changed temporary identity reached payload write or rename")
+
+    monkeypatch.setattr(report_render, "_open_windows_temp_file", replace_temp)
+    monkeypatch.setattr(report_render, "_windows_final_handle_path", temp_path)
+    monkeypatch.setattr(report_render, "_windows_close_handle", close_parent)
+    monkeypatch.setattr(report_render, "_write_all", forbidden)
+    monkeypatch.setattr(report_render, "_windows_rename_open_file", forbidden)
+    with pytest.raises(ValueError, match="^report output path is unsafe$"):
+        report_render.emit_report_output("public\n", "report.txt", root=tmp_path)
+    assert len(fds) == 1 and len(closed) == 1
+    with pytest.raises(OSError):
+        os.fstat(fds[0])
+    assert final.read_text(encoding="utf-8") == "previous\n"
+    assert names[0].read_text(encoding="utf-8") == "replacement\n"
+    assert (tmp_path / "displaced.tmp").read_bytes() == b""
+
+
 @WINDOWS_ONLY
 def test_windows_repo_bound_readers_reject_outside_junction(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

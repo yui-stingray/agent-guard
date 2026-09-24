@@ -6,6 +6,9 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Reject native Windows report file output to WSL shares before publication,
+  preserving local output, final-file contents, and root/handle boundaries.
+
 - Fixed bounded-process pipe ownership so delayed cleanup cannot close a reused
   descriptor, while preserving bounded shutdown and complete input writes.
 
