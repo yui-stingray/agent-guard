@@ -44,7 +44,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-version = "0.3.9"
+version = "0.3.10"
 target = Path(sys.argv[1])
 request_timeout_seconds = 20
 metadata_url = f"https://pypi.org/pypi/yui-agent-guard/{version}/json"
@@ -97,13 +97,13 @@ for filename in sorted(expected):
         with (target / filename).open("xb") as destination:
             shutil.copyfileobj(response, destination)
 PY
-gh attestation verify "$verify_dir/yui_agent_guard-0.3.9-py3-none-any.whl" \
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.10-py3-none-any.whl" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.9
-gh attestation verify "$verify_dir/yui_agent_guard-0.3.9.tar.gz" \
+  --source-ref refs/tags/v0.3.10
+gh attestation verify "$verify_dir/yui_agent_guard-0.3.10.tar.gz" \
   --repo yui-stingray/agent-guard \
   --signer-workflow yui-stingray/agent-guard/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.3.9
+  --source-ref refs/tags/v0.3.10
 )
 ```

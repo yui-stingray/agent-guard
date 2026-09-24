@@ -7,9 +7,9 @@
 
 > Deterministic static evidence for repositories maintained with coding agents.
 
-**Status**: source `0.3.10.dev0` development build. Published install and
-copyable Action examples remain pinned to the immutable `0.3.9` release under
-the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+**Status**: `0.3.10` alpha. Package install examples use this release; copyable
+Action examples remain pinned to the immutable `0.3.9` release under the
+post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
 with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
@@ -64,7 +64,7 @@ If `uv` is available, preview the current alpha without a persistent install or
 target-repository writes:
 
 ```bash
-uvx --python 3.12 --from yui-agent-guard==0.3.9 agent-guard init --root . --print
+uvx --python 3.12 --from yui-agent-guard==0.3.10 agent-guard init --root . --print
 ```
 
 This pinned command may populate caches outside the repository, but it does not
@@ -78,7 +78,7 @@ starter files, and generate the recommended sanitized evidence. The scanned
 repository can use any runtime:
 
 ```bash
-python -m pip install yui-agent-guard==0.3.9
+python -m pip install yui-agent-guard==0.3.10
 agent-guard init --root . --print
 # Review the proposed policies and workflow before the write step.
 agent-guard init --root . --write

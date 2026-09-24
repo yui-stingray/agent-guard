@@ -202,7 +202,7 @@ JSON output uses a shared result envelope across scanners:
 ```json
 {
   "schema_version": "agent-guard.result.v1",
-  "tool": {"name": "agent-guard", "version": "0.3.9"},
+  "tool": {"name": "agent-guard", "version": "0.3.10"},
   "scanner": "context",
   "status": "ok",
   "exit_code": 0,
@@ -357,7 +357,7 @@ than a single scanner:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/yui-stingray/agent-guard
-    rev: v0.3.9
+    rev: v0.3.10
     hooks:
       - id: agent-guard-context
       - id: agent-guard-path

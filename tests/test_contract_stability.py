@@ -162,6 +162,9 @@ def test_changelog_records_latest_release_entry() -> None:
     changelog = CHANGELOG.read_text(encoding="utf-8")
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     unreleased = changelog.split("## Unreleased", maxsplit=1)[1].split(
+        "## 0.3.10 - 2026-09-24", maxsplit=1
+    )[0]
+    release_0_3_10 = changelog.split("## 0.3.10 - 2026-09-24", maxsplit=1)[1].split(
         "## 0.3.9 - 2026-08-29", maxsplit=1
     )[0]
     current_release = changelog.split("## 0.3.9 - 2026-08-29", maxsplit=1)[1].split(
@@ -201,9 +204,11 @@ def test_changelog_records_latest_release_entry() -> None:
     normalized_current = " ".join(current_release.split())
     normalized_newest = " ".join(newest_release.split())
     normalized_unreleased = " ".join(unreleased.split())
+    normalized_release_0_3_10 = " ".join(release_0_3_10.split())
 
-    assert headings[:7] == [
+    assert headings[:8] == [
         "## Unreleased",
+        "## 0.3.10 - 2026-09-24",
         "## 0.3.9 - 2026-08-29",
         "## 0.3.8 - 2026-08-27",
         "## 0.3.7 - 2026-08-24",
@@ -211,7 +216,8 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
     ]
-    assert normalized_unreleased == " ".join(
+    assert normalized_unreleased == ""
+    assert normalized_release_0_3_10 == " ".join(
         [
             "- Recorded the 2026-09-21 demand-validation NO-GO decision and a single stable-point release exception for `0.3.10` that publishes the current default branch, including its accepted bug fixes.",
             "- Restructured the README into a shorter entry page and moved the detailed CI, scanner, CLI, and release reference verbatim to `docs/ci-reference.md`, `docs/scanners.md`, `docs/cli-reference.md`, and `docs/releasing.md`.",
@@ -221,7 +227,7 @@ def test_changelog_records_latest_release_entry() -> None:
             "- Moved CLI parser and dispatch ownership to a regular internal module while keeping the public entry points, observed exports, and legacy import alias. Private callable module metadata now reflects the new owner.",
             "- Fixed a reaping race in the POSIX process-test liveness helper without changing process containment or test timeout limits.",
             "- Fixed TTFE replay false successes: fail on setup/install errors, verify the current checkout wheel in a fresh environment, and validate newly generated diagnostic evidence. TTFE v2 results retain the verification evidence; legacy v1 results require a new run.",
-            "- Started `0.3.10.dev0` development while generated install and Action examples remain pinned to the published `0.3.9` release.",
+            "- Kept development builds on PEP 440 `0.3.10.dev0` until this final `0.3.10` release. Generated install examples now target `0.3.10`; copyable Action examples remain pinned to the immutable `0.3.9` release under the post-release refresh contract.",
             "- Tightened the public v2 digest grammar to canonical unpadded base32 and kept producer redaction aligned with the consumer's controlled private-key-header rejection contract.",
         ]
     )
