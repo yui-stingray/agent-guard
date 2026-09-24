@@ -28,7 +28,7 @@ DEFAULT_STAGE_TIMEOUT_MS = 120_000
 REPORT_RELATIVE_PATH = Path(".agent-guard/evidence/agent-guard-report.json")
 
 EXPECTED_DOCUMENTED_COMMANDS = (
-    "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) else \"agent-guard requires Python 3.11.4+\")' && python3 -m venv .venv && . .venv/bin/activate && python -m pip install yui-agent-guard==0.3.9",
+    "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11, 4) else \"agent-guard requires Python 3.11.4+\")' && python3 -m venv .venv && . .venv/bin/activate && python -m pip install yui-agent-guard==0.3.10",
     "agent-guard init --root . --print",
     "agent-guard init --root . --write",
     "agent-guard report --root . --context-policy .agent-guard/context-policy.yaml --evidence-preset recommended --format json --output .agent-guard/evidence/agent-guard-report.json --stderr-summary",

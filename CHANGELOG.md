@@ -6,6 +6,8 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+## 0.3.10 - 2026-09-24
+
 - Recorded the 2026-09-21 demand-validation NO-GO decision and a single
   stable-point release exception for `0.3.10` that publishes the current
   default branch, including its accepted bug fixes.
@@ -32,8 +34,10 @@ Why: keep static guard releases auditable while the package is still alpha.
   current checkout wheel in a fresh environment, and validate newly generated
   diagnostic evidence. TTFE v2 results retain the verification evidence;
   legacy v1 results require a new run.
-- Started `0.3.10.dev0` development while generated install and Action examples
-  remain pinned to the published `0.3.9` release.
+- Kept development builds on PEP 440 `0.3.10.dev0` until this final `0.3.10`
+  release. Generated install examples now target `0.3.10`; copyable Action
+  examples remain pinned to the immutable `0.3.9` release under the
+  post-release refresh contract.
 - Tightened the public v2 digest grammar to canonical unpadded base32 and kept
   producer redaction aligned with the consumer's controlled private-key-header
   rejection contract.
