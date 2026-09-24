@@ -51,8 +51,8 @@ COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 COMPARISON_DOC = REPO_ROOT / "docs" / "comparison.md"
 SECURITY_POLICY = REPO_ROOT / "SECURITY.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
-ACTION_RELEASE_VERSION = "0.3.9"
-ACTION_RELEASE_COMMIT = "9c4680f0a2da01505bb12782b8b720c29e3dee43"
+ACTION_RELEASE_VERSION = "0.3.10"
+ACTION_RELEASE_COMMIT = "1b2bdec263f84b97313f45106405a38765d72019"
 PACKAGE_RELEASE_VERSION = "0.3.10"
 
 
@@ -70,7 +70,7 @@ def test_readme_matches_release_package_identity() -> None:
 
     assert pyproject_version() == PACKAGE_RELEASE_VERSION
     assert f"**Status**: `{PACKAGE_RELEASE_VERSION}` alpha." in readme
-    assert "examples remain pinned to the immutable `0.3.9` release" in readme
+    assert "current published `v0.3.10`" in readme
 
 
 def test_release_identity_contains_the_executable_change_notes() -> None:
@@ -516,7 +516,7 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "current published\n`v0.3.9` Action" in ci_reference
+    assert "current published\n`v0.3.10` Action" in ci_reference
     assert "unreviewed" in ci_reference
     assert "context" in ci_reference
     assert "defense in depth" in ci_reference

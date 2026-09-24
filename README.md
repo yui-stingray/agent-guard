@@ -8,8 +8,8 @@
 > Deterministic static evidence for repositories maintained with coding agents.
 
 **Status**: `0.3.10` alpha. Package install examples use this release; copyable
-Action examples remain pinned to the immutable `0.3.9` release under the
-post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
+Action examples use the immutable commit for the current published `v0.3.10`
+release under the post-release refresh contract. Vendor-neutral, static-only, Python 3.11.4+,
 with one runtime dependency (`PyYAML`).
 
 Coding agents can change more than application code. They can also change the
