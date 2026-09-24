@@ -17,7 +17,8 @@ from agent_guard.init_guard import (
     PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
     PUBLISHED_PACKAGE_VERSION,
 )
-from agent_guard.profiles import profile_requirements
+from agent_guard.drift_guard import README_COMMANDS
+from agent_guard.profiles import PROFILE_NAMES, profile_requirements
 from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
 from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
 
@@ -25,6 +26,12 @@ from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
+CI_REFERENCE_DOC = REPO_ROOT / "docs" / "ci-reference.md"
+SCANNERS_DOC = REPO_ROOT / "docs" / "scanners.md"
+CLI_REFERENCE_DOC = REPO_ROOT / "docs" / "cli-reference.md"
+RELEASING_DOC = REPO_ROOT / "docs" / "releasing.md"
+# The README stays an entry point; detailed reference sections live in these docs.
+README_REFERENCE_DOCS = (README, CI_REFERENCE_DOC, SCANNERS_DOC, CLI_REFERENCE_DOC, RELEASING_DOC)
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 EVIDENCE_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-contracts.md"
 EVIDENCE_CONSUMER_CONTRACTS_DOC = REPO_ROOT / "docs" / "evidence-consumer-contracts.md"
@@ -48,6 +55,10 @@ ACTION_RELEASE_VERSION = "0.3.9"
 ACTION_RELEASE_COMMIT = "9c4680f0a2da01505bb12782b8b720c29e3dee43"
 PACKAGE_RELEASE_VERSION = "0.3.9"
 SOURCE_PACKAGE_VERSION = "0.3.10.dev0"
+
+
+def readme_reference_text() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in README_REFERENCE_DOCS)
 
 
 def pyproject_version() -> str:
@@ -83,6 +94,7 @@ def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
         path.read_text(encoding="utf-8")
         for path in (
             README,
+            CI_REFERENCE_DOC,
             EXISTING_REPO_QUICKSTART,
             GITHUB_ACTIONS_EVIDENCE_DOC,
             EVIDENCE_CONSUMER_CONTRACTS_DOC,
@@ -158,7 +170,7 @@ def test_copyable_action_snippets_use_one_immutable_release_pin() -> None:
 
 
 def test_documented_workflow_steps_are_executable() -> None:
-    documents = (README, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
+    documents = (README, CI_REFERENCE_DOC, EXISTING_REPO_QUICKSTART, GITHUB_ACTIONS_EVIDENCE_DOC)
     step_lists: list[list[dict[str, object]]] = []
 
     for document in documents:
@@ -244,10 +256,38 @@ def test_copyable_workflows_pin_every_external_action_to_a_commit() -> None:
         ), reference
 
 
+def test_readme_keeps_every_profile_drift_guard_command() -> None:
+    # drift check reads only README.md, so moving a required command to docs/ breaks self-dogfood drift.
+    readme = README.read_text(encoding="utf-8")
+    required = {command for _, command in README_COMMANDS}
+    for profile in PROFILE_NAMES:
+        required |= {command for _, command in profile_requirements(profile)["readme_commands"]}
+
+    assert sorted(command for command in required if command not in readme) == []
+
+
+def test_readme_ci_list_runs_every_recommended_gate() -> None:
+    readme = README.read_text(encoding="utf-8")
+    ci_section = readme[readme.index("## Use in CI") : readme.index("## What it does not do")]
+    gate_commands = {
+        "context": "agent-guard context check --root .",
+        "surface_inventory": "agent-guard surface inventory --root .",
+        "path": "agent-guard path check --root .",
+        "content": "agent-guard content check --repo-root .",
+        "mcp_config": "agent-guard mcp check --root .",
+        "workflow": "agent-guard workflow check --root .",
+        "policy_spec_drift": "agent-guard drift check --root . --profile recommended",
+    }
+
+    gates = profile_requirements("recommended")["gates"]
+    assert set(gates) == set(gate_commands)
+    assert sorted(gate for gate in gates if gate_commands[gate] not in ci_section) == []
+
+
 def test_readme_yaml_examples_parse() -> None:
     blocks = re.findall(
         r"```yaml\n(.*?)\n```",
-        README.read_text(encoding="utf-8"),
+        readme_reference_text(),
         flags=re.DOTALL,
     )
 
@@ -267,7 +307,7 @@ def test_readme_documents_python_patch_floor() -> None:
 
 def test_unreleased_v2_path_contract_is_consistent_in_public_docs() -> None:
     documents = (
-        README.read_text(encoding="utf-8"),
+        CI_REFERENCE_DOC.read_text(encoding="utf-8"),
         EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8"),
         COMPATIBILITY_DOC.read_text(encoding="utf-8"),
     )
@@ -375,7 +415,7 @@ def test_onboarding_commands_pin_the_published_package_version() -> None:
     assert f"published `{version}`" not in consumer_contracts
     assert re.search(r"pip install yui-agent-guard(?:\s|$)", consumer_contracts) is None
 
-    bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Why")]
+    bootstrap = readme[readme.index("## Start with a reviewed bootstrap") : readme.index("## Scanners")]
     trial = bootstrap[
         bootstrap.index("### Preview without target-repository writes") : bootstrap.index(
             "### Adopt after review"
@@ -419,12 +459,13 @@ def test_onboarding_commands_pin_the_published_package_version() -> None:
         line.strip() == "agent-guard init --root . --print" for line in readme.splitlines()
     ) == 1
     assert sum(line.strip() == preview_command for line in readme.splitlines()) == 1
-    assert "## Adoption and CI reference" in readme
+    assert "## Adoption and CI reference" in CI_REFERENCE_DOC.read_text(encoding="utf-8")
+    assert "docs/ci-reference.md" in readme
 
 
 def test_readme_opening_states_the_bounded_value_contract() -> None:
     readme = README.read_text(encoding="utf-8")
-    opening = readme[: readme.index("## Why")]
+    opening = readme[: readme.index("## Scanners")]
 
     assert "Deterministic static evidence for repositories maintained with coding agents." in opening
     assert "Which agent-facing surfaces are present" in opening
@@ -470,16 +511,17 @@ def test_security_policy_tracks_the_current_alpha_series() -> None:
 
 def test_public_docs_align_release_package_features_and_action_pin() -> None:
     readme = README.read_text(encoding="utf-8")
+    ci_reference = CI_REFERENCE_DOC.read_text(encoding="utf-8")
     security = SECURITY_POLICY.read_text(encoding="utf-8")
     evidence_contracts = EVIDENCE_CONTRACTS_DOC.read_text(encoding="utf-8")
     compatibility = COMPATIBILITY_DOC.read_text(encoding="utf-8")
     quickstart = EXISTING_REPO_QUICKSTART.read_text(encoding="utf-8")
 
-    assert "current published\n`v0.3.9` Action" in readme
-    assert "unreviewed" in readme
-    assert "context" in readme
-    assert "defense in depth" in readme
-    assert ACTION_RELEASE_VERSION in readme
+    assert "current published\n`v0.3.9` Action" in ci_reference
+    assert "unreviewed" in ci_reference
+    assert "context" in ci_reference
+    assert "defense in depth" in ci_reference
+    assert ACTION_RELEASE_VERSION in ci_reference
     assert "Published `0.3.4`" in security
     assert "unreviewed" in security
     assert "context" in security
@@ -518,7 +560,8 @@ def test_public_docs_align_release_package_features_and_action_pin() -> None:
 
 
 def test_readme_documents_ci_gate_recipe() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = readme_reference_text()
+    assert "docs/ci-reference.md" in README.read_text(encoding="utf-8")
 
     assert "## CI gate recipe" in readme
     assert "agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json" in readme
@@ -580,7 +623,7 @@ def test_readme_documents_agent_policy_companion_boundary() -> None:
 
 
 def test_readme_uses_audience_facing_ci_and_example_language() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = readme_reference_text()
 
     assert "ai-resilience-style repositories" not in readme
     assert "ready-to-run ai-resilience-style copy" not in readme
@@ -590,7 +633,7 @@ def test_readme_uses_audience_facing_ci_and_example_language() -> None:
 
 
 def test_readme_documents_report_evidence_contract() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = readme_reference_text()
     readme_single_line = " ".join(readme.split())
 
     assert "docs/evidence-contracts.md" in readme
@@ -630,7 +673,7 @@ def test_readme_documents_report_evidence_contract() -> None:
     assert "MCP configuration metadata" in readme
     assert "--mcp-config-check" in readme
     assert "--mcp-policy" in readme
-    cli_reference = readme[readme.index("## CLI") : readme.index("## Releases")]
+    cli_reference = CLI_REFERENCE_DOC.read_text(encoding="utf-8")
     assert (
         "agent-guard surface delta --root <repo> --context-policy <yaml> --base-ref <ref> "
         "[--schema-version <v1>] [--json]"
@@ -833,7 +876,7 @@ def test_evidence_contract_docs_cover_adoption_and_non_goals() -> None:
 def test_optional_agent_policy_event_stays_outside_public_bundle() -> None:
     documents = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (README, EXISTING_REPO_QUICKSTART, EVIDENCE_CONTRACTS_DOC)
+        for path in (*README_REFERENCE_DOCS, EXISTING_REPO_QUICKSTART, EVIDENCE_CONTRACTS_DOC)
     )
     single_line = " ".join(documents.split())
 
@@ -1169,7 +1212,7 @@ def test_evidence_consumer_docs_describe_directory_transaction_boundary() -> Non
 
 
 def test_marketplace_readiness_stays_inactive_and_static_only() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = CI_REFERENCE_DOC.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
 
     assert "packaged alpha GitHub Action" in readme
@@ -1406,7 +1449,7 @@ def test_release_readiness_separates_pre_tag_and_published_state() -> None:
 
 
 def test_readme_documents_operational_example_policy_coverage() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = SCANNERS_DOC.read_text(encoding="utf-8")
 
     assert '- "**/*.yaml"' in readme
     assert '- "**/*.sh"' in readme
@@ -1415,7 +1458,7 @@ def test_readme_documents_operational_example_policy_coverage() -> None:
 
 
 def test_readme_documents_surface_delta_evidence() -> None:
-    readme = README.read_text(encoding="utf-8")
+    readme = readme_reference_text()
     readme_single_line = " ".join(readme.split())
 
     assert "### Surface delta evidence" in readme
