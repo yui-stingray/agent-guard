@@ -132,10 +132,11 @@ agent-guard drift check --root . --profile recommended --schema-version v2 --jso
 ```
 
 After a digest policy has been reviewed and committed, also check context-lock
-coverage:
+coverage and digest drift (required by the `strict` profile):
 
 ```bash
 agent-guard context lock --root . --policy .agent-guard/context-policy.yaml --check --digest-policy .agent-guard/context-digest-policy.yaml --json
+agent-guard digest check --root . --policy .agent-guard/context-digest-policy.yaml --json
 ```
 
 - [CI reference](docs/ci-reference.md): the copyable Action workflow with the

@@ -17,7 +17,8 @@ from agent_guard.init_guard import (
     PUBLISHED_CONTEXT_POLICY_PREFLIGHT,
     PUBLISHED_PACKAGE_VERSION,
 )
-from agent_guard.profiles import profile_requirements
+from agent_guard.drift_guard import README_COMMANDS
+from agent_guard.profiles import PROFILE_NAMES, profile_requirements
 from agent_guard.surface_inventory_metadata import collect_documented_guard_surfaces
 from agent_guard.surface_inventory_workflow import collect_workflow_surfaces
 
@@ -253,6 +254,16 @@ def test_copyable_workflows_pin_every_external_action_to_a_commit() -> None:
             r"[^/@\s]+/[^/@\s]+(?:/[^@\s]+)*@[0-9a-f]{40}",
             reference,
         ), reference
+
+
+def test_readme_keeps_every_profile_drift_guard_command() -> None:
+    # drift check reads only README.md, so moving a required command to docs/ breaks self-dogfood drift.
+    readme = README.read_text(encoding="utf-8")
+    required = {command for _, command in README_COMMANDS}
+    for profile in PROFILE_NAMES:
+        required |= {command for _, command in profile_requirements(profile)["readme_commands"]}
+
+    assert sorted(command for command in required if command not in readme) == []
 
 
 def test_readme_yaml_examples_parse() -> None:
