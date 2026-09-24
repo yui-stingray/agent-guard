@@ -448,7 +448,8 @@ runs:
 
           if [ -e "$evidence_dir" ] || [ -L "$evidence_dir" ]; then
             if [ -z "$failed_parent" ]; then
-              if ! failed_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-failed.XXXXXX" 2>/dev/null)"; then
+              if ! failed_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-failed.XXXXXX" \
+                2>/dev/null)"; then
                 return 1
               fi
               failed_evidence_dir="$failed_parent/evidence"
@@ -535,7 +536,8 @@ runs:
               echo "::error::evidence staging setup failed"
               return 2
             fi
-            if ! backup_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-backup.XXXXXX" 2>/dev/null)"; then
+            if ! backup_parent="$(mktemp -d "$transaction_parent/.agent-guard-evidence-backup.XXXXXX" \
+              2>/dev/null)"; then
               echo "::error::evidence staging setup failed"
               return 2
             fi
@@ -640,7 +642,8 @@ runs:
         base_ref="${AGENT_GUARD_BASE_REF:-}"
         surface_delta_base_ref="${AGENT_GUARD_SURFACE_DELTA_BASE_REF:-}"
 
-        agent-guard context check --root "$root" --policy "$context_policy_arg" --json 2>/dev/null > "$raw_dir/context.json"
+        agent-guard context check --root "$root" --policy "$context_policy_arg" \
+          --json 2>/dev/null > "$raw_dir/context.json"
         validate_raw_result "$?" "$raw_dir/context.json"
         record_status "$?"
 
@@ -670,7 +673,8 @@ runs:
         record_status "$?"
 
         if path_exists "$workflow_policy"; then
-          agent-guard workflow check --root "$root" --policy "$workflow_policy_arg" --json 2>/dev/null > "$raw_dir/workflow.json"
+          agent-guard workflow check --root "$root" --policy "$workflow_policy_arg" \
+            --json 2>/dev/null > "$raw_dir/workflow.json"
           validate_raw_result "$?" "$raw_dir/workflow.json"
           record_status "$?"
         fi
@@ -719,10 +723,12 @@ runs:
         validate_raw_result "$?" "$surface_inventory_json"
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_output_json" --format markdown --output "$report_output_markdown" > /dev/null 2>&1
+        agent-guard render-report --root "$root" --input "$report_output_json" \
+          --format markdown --output "$report_output_markdown" > /dev/null 2>&1
         record_status "$?"
 
-        agent-guard render-report --root "$root" --input "$report_output_json" --format sarif --output "$report_output_sarif" > /dev/null 2>&1
+        agent-guard render-report --root "$root" --input "$report_output_json" \
+          --format sarif --output "$report_output_sarif" > /dev/null 2>&1
         record_status "$?"
 
         agent-guard conformance check \
@@ -742,7 +748,8 @@ runs:
         record_status "$?"
 
         if [ "$github_annotations" = "true" ]; then
-          agent-guard render-report --root "$root" --input "$report_output_json" --format github-annotations 2>/dev/null > "$raw_dir/annotations.txt"
+          agent-guard render-report --root "$root" --input "$report_output_json" --format github-annotations \
+            2>/dev/null > "$raw_dir/annotations.txt"
           validate_raw_result "$?" "$raw_dir/annotations.txt"
           record_status "$?"
         fi
@@ -774,7 +781,8 @@ runs:
             exit 2
           fi
         fi
-        if ! python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" --emit-annotations "$report_json" 2>/dev/null; then
+        if ! python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" \
+          --emit-annotations "$report_json" 2>/dev/null; then
           echo "::error::evidence validation failed"
           exit 2
         fi

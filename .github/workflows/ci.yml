@@ -78,7 +78,9 @@ jobs:
             --harness "$PWD/.candidate-toolkit/scripts/check_candidate_wheel_compatibility.py" \
             --wheel "$PWD/$1" --out "$diagnostic_root/stages"
       - name: Export allowlisted Toolkit observation
-        if: ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || steps.toolkit_diagnostic.outcome == 'failure') }}
+        if: >-
+          ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' ||
+          steps.toolkit_diagnostic.outcome == 'failure') }}
         shell: bash
         run: |
           python -B scripts/diagnostics/export_toolkit_diagnostic.py \
@@ -86,7 +88,9 @@ jobs:
             --toolkit .candidate-toolkit --candidate "$GITHUB_SHA" \
             --output "$RUNNER_TEMP/r1-toolkit-public/summary.json"
       - name: Upload allowlisted Toolkit observation
-        if: ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' || steps.toolkit_diagnostic.outcome == 'failure') }}
+        if: >-
+          ${{ always() && (steps.toolkit_diagnostic.outcome == 'success' ||
+          steps.toolkit_diagnostic.outcome == 'failure') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         env:
           R1_TOOLKIT_SUMMARY: ${{ runner.temp }}/r1-toolkit-public/summary.json
@@ -228,7 +232,9 @@ jobs:
             --input /tmp/agent-guard-ttfe.json \
             --max-elapsed-ms 900000
       - name: Upload TTFE replay result
-        if: ${{ always() && matrix.python-version == '3.14' && (steps.ttfe.outcome == 'success' || steps.ttfe.outcome == 'failure') }}
+        if: >-
+          ${{ always() && matrix.python-version == '3.14' && (steps.ttfe.outcome == 'success' ||
+          steps.ttfe.outcome == 'failure') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: agent-guard-ttfe-py314-${{ github.run_id }}-${{ github.run_attempt }}
