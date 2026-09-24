@@ -213,6 +213,7 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Reject native Windows report file output to WSL shares before publication, preserving local output, final-file contents, and root/handle boundaries.",
             "- Fixed bounded-process pipe ownership so delayed cleanup cannot close a reused descriptor, while preserving bounded shutdown and complete input writes.",
             "- Retired the historical product-baseline freeze from CI while retaining fixed Toolkit verification, current source/wheel checks, failure propagation, and bounded diagnostic artifacts.",
             "- Moved CLI parser and dispatch ownership to a regular internal module while keeping the public entry points, observed exports, and legacy import alias. Private callable module metadata now reflects the new owner.",

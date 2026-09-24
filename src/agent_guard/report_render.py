@@ -248,6 +248,20 @@ def _windows_close_handle(handle: int) -> None:
         raise OSError
 
 
+def _require_supported_windows_output_path(final_path: str) -> None:
+    """Classify a handle-resolved destination, not the caller's path spelling."""
+    normalized = final_path.replace("/", "\\")
+    if normalized[:8].casefold() == "\\\\?\\unc\\":
+        normalized = "\\\\" + normalized[8:]
+    path = PureWindowsPath(normalized)
+    if not path.is_absolute():
+        raise OSError
+    if path.drive.startswith("\\\\"):
+        server = path.drive[2:].split("\\", 1)[0].casefold()
+        if server in {"wsl$", "wsl.localhost"}:
+            raise OSError
+
+
 def _windows_open_directory_handle(parent: Path) -> int:
     import ctypes
     from ctypes import wintypes
@@ -474,7 +488,21 @@ def _write_in_portable_directory(
     try:
         if os.name == "nt":
             directory_handle = _windows_open_directory_handle(parent)
+            opened_parent = _windows_path_from_handle(directory_handle)
+            _require_supported_windows_output_path(opened_parent)
             file_fd, temp_path = _open_windows_temp_file(parent)
+            try:
+                temp_parent = str(Path(_windows_final_handle_path(file_fd)).parent)
+                _require_supported_windows_output_path(temp_parent)
+                if os.path.normcase(os.path.normpath(temp_parent)) != os.path.normcase(
+                    os.path.normpath(opened_parent)
+                ):
+                    raise OSError
+            except (OSError, RuntimeError, TypeError, ValueError):
+                # The name may now refer to another file. Close our handle, but
+                # do not unlink an unverified pathname or write the payload.
+                temp_path = None
+                raise
         else:
             file_fd, raw_temp_path = _open_temp_file(parent, use_dir_fd=False)
             temp_path = Path(raw_temp_path)
