@@ -31,6 +31,36 @@ If local pytest capture is unstable in your environment, run:
 python -m pytest -s -q
 ```
 
+## Optional YAML style check
+
+YAML style checking is an optional developer check, separate from the required
+CI checks and from `actionlint` workflow validation. The repository's
+`.yamllint` configuration was verified with yamllint 1.38.0. Install that version
+in a separate virtual environment outside the checkout if needed; it is not
+part of the package's `dev` dependencies.
+
+From the repository root, using the Python environment that contains yamllint,
+check only Git-tracked YAML files with NUL-safe filename handling:
+
+```bash
+python - <<'PY'
+import os
+import subprocess
+import sys
+
+paths = subprocess.check_output(["git", "ls-files", "-z"]).split(b"\0")
+yaml_paths = [os.fsdecode(p) for p in paths if p.endswith((b".yaml", b".yml"))]
+if yaml_paths:
+    raise SystemExit(subprocess.call([
+        sys.executable, "-m", "yamllint", "-c", ".yamllint", "--", *yaml_paths,
+    ]))
+PY
+```
+
+`yamllint .` also traverses untracked files subject to `.yamllint` exclusions;
+local build outputs or virtual environments can therefore change its results.
+Keep such diagnostics separate from tracked-source diagnostics.
+
 ## Pull request expectations
 
 - Keep each PR focused on one scanner, CLI behavior, or documentation topic.

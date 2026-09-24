@@ -570,7 +570,7 @@ def test_delivery_bridge_files_are_evidence_first() -> None:
     assert (
         'python -I -m agent_guard.consumer --evidence-dir "$evidence_dir" '
         '--emit-annotations "$report_json" 2>/dev/null'
-    ) in action_script
+    ) in normalized_action_script
     assert 'cat "$annotations_path"' not in action_script
     assert action_script.index("agent_guard.consumer") < action_script.index('rm -f "$annotations_path"')
     assert action_script.index("evidence_generation_complete=true") < action_script.index(
