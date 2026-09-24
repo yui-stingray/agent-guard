@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Restructured the README into a shorter entry page and moved the detailed CI,
+  scanner, CLI, and release reference verbatim to `docs/ci-reference.md`,
+  `docs/scanners.md`, `docs/cli-reference.md`, and `docs/releasing.md`.
+
 - Reject native Windows report file output to WSL shares before publication,
   preserving local output, final-file contents, and root/handle boundaries.
 
