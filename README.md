@@ -121,10 +121,12 @@ the [scanner reference](docs/scanners.md). The full command synopsis is in the
 
 `init --write` generates a pinned GitHub Actions workflow; review and commit it,
 or use the packaged Action on a Linux runner. Both generate static evidence
-only. The core recommended checks, runnable locally or in any CI system, are:
+only. The recommended gate checks, runnable locally or in any CI system, are:
 
 ```bash
+agent-guard path check --root . --policy .agent-guard/path-policy.yaml --json
 agent-guard context check --root . --policy .agent-guard/context-policy.yaml --json
+agent-guard content check --repo-root . --policy .agent-guard/content-policy.yaml --mode registered --scan-dir . --json
 agent-guard mcp check --root . --policy .agent-guard/mcp-policy.yaml --json
 agent-guard workflow check --root . --policy .agent-guard/workflow-policy.yaml --json
 agent-guard surface inventory --root . --context-policy .agent-guard/context-policy.yaml --schema-version v2 --json

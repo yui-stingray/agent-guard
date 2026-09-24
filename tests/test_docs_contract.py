@@ -266,6 +266,24 @@ def test_readme_keeps_every_profile_drift_guard_command() -> None:
     assert sorted(command for command in required if command not in readme) == []
 
 
+def test_readme_ci_list_runs_every_recommended_gate() -> None:
+    readme = README.read_text(encoding="utf-8")
+    ci_section = readme[readme.index("## Use in CI") : readme.index("## What it does not do")]
+    gate_commands = {
+        "context": "agent-guard context check --root .",
+        "surface_inventory": "agent-guard surface inventory --root .",
+        "path": "agent-guard path check --root .",
+        "content": "agent-guard content check --repo-root .",
+        "mcp_config": "agent-guard mcp check --root .",
+        "workflow": "agent-guard workflow check --root .",
+        "policy_spec_drift": "agent-guard drift check --root . --profile recommended",
+    }
+
+    gates = profile_requirements("recommended")["gates"]
+    assert set(gates) == set(gate_commands)
+    assert sorted(gate for gate in gates if gate_commands[gate] not in ci_section) == []
+
+
 def test_readme_yaml_examples_parse() -> None:
     blocks = re.findall(
         r"```yaml\n(.*?)\n```",
