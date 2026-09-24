@@ -25,6 +25,7 @@ from agent_guard.init_guard import GITHUB_EVENT_BASE_SHA_EXPRESSION, GITHUB_WORK
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README = REPO_ROOT / "README.md"
+RELEASING_DOC = REPO_ROOT / "docs" / "releasing.md"
 RELEASE_CRITERIA_DOC = REPO_ROOT / "docs" / "release-criteria.md"
 ACTION_METADATA = REPO_ROOT / "action.yml"
 PRE_COMMIT_HOOKS = REPO_ROOT / ".pre-commit-hooks.yaml"
@@ -1190,7 +1191,8 @@ def test_release_workflow_attests_built_distributions() -> None:
     assert "--expect-present" in post_publish_step["run"]
     assert "python -m pip install" in post_publish_step["run"]
 
-    readme = README.read_text(encoding="utf-8")
+    readme = RELEASING_DOC.read_text(encoding="utf-8")
+    assert "docs/releasing.md" in README.read_text(encoding="utf-8")
     release_criteria = RELEASE_CRITERIA_DOC.read_text(encoding="utf-8")
     assert "gh attestation verify" in readme
     assert "(\nset -euo pipefail\nverify_dir=\"$(mktemp -d" in readme
