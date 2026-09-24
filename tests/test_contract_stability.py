@@ -213,6 +213,7 @@ def test_changelog_records_latest_release_entry() -> None:
     ]
     assert normalized_unreleased == " ".join(
         [
+            "- Recorded the 2026-09-21 demand-validation NO-GO decision and a single stable-point release exception for `0.3.10` that publishes the current default branch, including its accepted bug fixes.",
             "- Restructured the README into a shorter entry page and moved the detailed CI, scanner, CLI, and release reference verbatim to `docs/ci-reference.md`, `docs/scanners.md`, `docs/cli-reference.md`, and `docs/releasing.md`.",
             "- Reject native Windows report file output to WSL shares before publication, preserving local output, final-file contents, and root/handle boundaries.",
             "- Fixed bounded-process pipe ownership so delayed cleanup cannot close a reused descriptor, while preserving bounded shutdown and complete input writes.",

@@ -6,6 +6,10 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Recorded the 2026-09-21 demand-validation NO-GO decision and a single
+  stable-point release exception for `0.3.10` that publishes the current
+  default branch, including its accepted bug fixes.
+
 - Restructured the README into a shorter entry page and moved the detailed CI,
   scanner, CLI, and release reference verbatim to `docs/ci-reference.md`,
   `docs/scanners.md`, `docs/cli-reference.md`, and `docs/releasing.md`.

@@ -12,6 +12,7 @@ go/no-go result, the review date, and maintainer sign-off.
 
 **Decision record:** add the aggregate result to this document, or link a
 reviewed public issue/PR, on the decision date. Until then, status is `pending`.
+Status: recorded; see [2026-09-21 Decision Record](#2026-09-21-decision-record).
 
 `agent-guard` is in **VALIDATE-NARROW**. Public feature expansion is frozen
 while the project tests whether its current static evidence package and GitHub
@@ -103,3 +104,48 @@ public quotation. Do not publish raw reports, raw CI logs, repository contents,
 unapproved repository identifiers, local paths, credentials, private data, or
 unreviewed feedback. The existing [public-artifact contract](evidence-contracts.md)
 remains the boundary for generated evidence.
+
+## 2026-09-21 Decision Record
+
+**Result: NO-GO for public feature investment.** Recorded on 2026-09-24 for
+the 2026-09-21 decision date.
+
+| Signal | Gate | Observed | Source types |
+| --- | --- | --- | --- |
+| Activations | at least 3 | 0 | public code search, repository issues and pull requests, owner records |
+| Retained activations | at least 2 | 0 | no activation matured by 2026-09-06 |
+| Specific feedback | at least 3 items from at least 2 people | 0 items, 0 people | repository issues and pull requests, public mentions, owner records |
+| Qualified exposures | recorded, no gate | 0 | owner outreach records |
+
+Package downloads and repository clone counts were reviewed but are not
+signals under [What Counts](#what-counts): they cannot be attributed to an
+owner-external default branch, and project-owned CI installs the published
+package on every run.
+
+Consequences, per the [Continuation Gate](#continuation-gate):
+
+- Public feature expansion stays frozen. Work is limited to maintenance and
+  self-infrastructure that does not create a new public feature surface.
+- The [release freeze](release-criteria.md#demand-validation-freeze) stays in
+  effect, except for the one stable-point release below.
+- Outreach and measurement for this window have ended. Any new window requires
+  a new explicit maintainer decision that records a new period, budget, and
+  hypothesis.
+
+### Stable-Point Release Exception
+
+The maintainer approves one release, `0.3.10`, as an explicit freeze
+exception. Rationale: publish a stable point of the current default branch,
+which carries the bug fixes accepted since `0.3.9`, so installed users do not
+stay on known-fixed defects.
+
+- Scope is the full default branch at release preparation: every change listed
+  under `Unreleased` in `CHANGELOG.md`, plus release preparation.
+- The release follows [Release Readiness](release-criteria.md#release-readiness)
+  and the post-release Action pin refresh. Required CI is not bypassed.
+- This exception does not lift the freeze, does not change the NO-GO result,
+  and does not authorize Marketplace publication. Later releases need their own
+  decision.
+
+Maintainer sign-off: yui-stingray, 2026-09-24.
+Independent review of this aggregate record: this pull request's review.
