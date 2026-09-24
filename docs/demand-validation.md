@@ -139,8 +139,13 @@ exception. Rationale: publish a stable point of the current default branch,
 which carries the bug fixes accepted since `0.3.9`, so installed users do not
 stay on known-fixed defects.
 
-- Scope is the full default branch at release preparation: every change listed
-  under `Unreleased` in `CHANGELOG.md`, plus release preparation.
+- Scope is fixed to the reviewed default-branch commit
+  `2ef1ae9392aa4b0797131f8fcdfd39220eb5b3e3`, which contains every change
+  listed under `Unreleased` in `CHANGELOG.md`, plus this decision record and one
+  release-preparation pull request. That pull request may change only version strings, the CHANGELOG
+  release heading, and version-dependent docs and tests.
+- Any other change merged to the default branch before the `v0.3.10` tag is
+  outside this approval and needs a new explicit decision before tagging.
 - The release follows [Release Readiness](release-criteria.md#release-readiness)
   and the post-release Action pin refresh. Required CI is not bypassed.
 - This exception does not lift the freeze, does not change the NO-GO result,
