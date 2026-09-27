@@ -5,14 +5,267 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
+import agent_guard.api_guard as api_guard
 from agent_guard.bounded_repo_reader import DistinctInputBudget
 from agent_guard.cli import build_parser
 import agent_guard.cli.report as report_cli
+import agent_guard.cli.report_builders as report_builders
 from agent_guard.digest_guard import MAX_DIGEST_DISTINCT_INPUT_BYTES
 from tests.cli.helpers import run_cli, sha256_text, write
+
+
+_API_URL = "https://blocked.example/a"
+_API_PATTERN = r"^https://blocked\.example/"
+
+
+def _api_report_fixture(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    root.mkdir()
+    write(root / "AGENTS.md", "Require approval before shell writes.\nRun tests before reporting completion.\n")
+    write(root / "context.yaml", "{}\n")
+    return root
+
+
+def _api_policy(
+    root: Path, *, include: list[str], exclude: object = None, forbidden: list[str] | None = None,
+) -> None:
+    policy = {
+        "scan": {"include": include, "exclude": [] if exclude is None else exclude},
+        "policy": {"allowed_api_patterns": [], "forbidden_api_patterns": [_API_PATTERN] if forbidden is None else forbidden},
+    }
+    write(root / "policy.yaml", yaml.safe_dump(policy, sort_keys=False))
+
+
+def _api_cli_pair(root: Path) -> tuple[object, object]:
+    standalone = run_cli("api", "check", "--root", str(root), "--policy", "policy.yaml", "--json")
+    report = run_cli(
+        "report", "--root", str(root), "--context-policy", "context.yaml",
+        "--api-policy", "policy.yaml", "--format", "json",
+    )
+    return standalone, report
+
+
+def _assert_api_public_error(root: Path, expected: str) -> None:
+    standalone, report = _api_cli_pair(root)
+    for result in (standalone, report):
+        assert result.returncode == 2
+        assert result.stderr == ""
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "error"
+        assert payload["exit_code"] == 2
+        assert payload["error"] == expected
+        assert payload["findings"] == []
+        assert "scanned_count" not in payload["summary"]
+        assert "api_checked_count" not in payload["summary"]
+        assert "api_finding_count" not in payload["summary"]
+        assert str(root) not in result.stdout
+        assert _API_URL not in result.stdout
+        assert _API_PATTERN not in result.stdout
+    report_payload = json.loads(report.stdout)
+    assert report_payload["api"] == {"policy": {"path": "policy.yaml"}}
+    assert "scanned_count" not in json.loads(standalone.stdout)["summary"]
+
+
+def test_report_api_delegates_count_without_independent_enumeration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _api_report_fixture(tmp_path)
+    write(root / "src" / "a.txt", _API_URL + "\n")
+    _api_policy(root, include=["src"])
+    seen: list[tuple[Path, dict[str, object]]] = []
+
+    def fake_scan(*, root: Path, policy: dict[str, object]) -> tuple[list[object], int]:
+        seen.append((root, policy))
+        return [SimpleNamespace(path="src/a.txt", line=1)], 7
+
+    def forbidden_walk(*args: object, **kwargs: object) -> object:
+        raise AssertionError("builder enumerated API targets independently")
+
+    monkeypatch.setattr(report_builders, "scan_urls_with_count", fake_scan)
+    monkeypatch.setattr(api_guard.os, "scandir", forbidden_walk)
+    evidence = report_builders.build_api_report(root=root, policy_arg="policy.yaml")
+    assert len(seen) == 1
+    assert seen[0][0] == root
+    assert seen[0][1]["scan"] == {"include": ["src"], "exclude": []}
+    assert evidence["checked_count"] == 7
+    assert evidence["finding_count"] == 1
+    assert evidence["findings"] == [{
+        "path": "src/a.txt", "line": 1, "category": "forbidden_api",
+        "owasp_agentic_risk_themes": [{"id": "ASI02", "name": "Tool Misuse and Exploitation"}],
+    }]
+
+
+@pytest.mark.parametrize(
+    ("case", "count", "finding_paths"),
+    [
+        ("normal_clean", 2, []),
+        ("normal_violation", 2, ["src/a.txt"]),
+        ("invalid_utf8", 2, ["src/z.txt"]),
+        ("nul_text", 2, ["src/z.txt"]),
+        ("overlap", 2, ["src/a.txt", "src/a.txt"]),
+        ("excluded", 0, []),
+        ("missing", 0, []),
+        ("empty", 0, []),
+        ("include64", 64, ["src/a.txt"] * 64),
+    ],
+)
+def test_report_api_count_a_matches_standalone(
+    tmp_path: Path, case: str, count: int, finding_paths: list[str],
+) -> None:
+    root = _api_report_fixture(tmp_path)
+    include = ["src"]
+    exclude: list[str] = []
+    if case == "normal_clean":
+        write(root / "src" / "a.txt", "ordinary text\n")
+        write(root / "src" / "b.txt", "other text\n")
+    elif case == "normal_violation":
+        write(root / "src" / "a.txt", _API_URL + "\n")
+        write(root / "src" / "b.txt", "ordinary text\n")
+    elif case in {"invalid_utf8", "nul_text"}:
+        write(root / "src" / "z.txt", _API_URL + "\n")
+        (root / "src" / "a.bin").write_bytes(b"\xff" if case == "invalid_utf8" else b"valid\x00text")
+    else:
+        write(root / "src" / "a.txt", _API_URL + "\n")
+        if case == "overlap":
+            include = ["src", "src/a.txt"]
+        elif case == "excluded":
+            exclude = ["src/a.txt"]
+        elif case == "missing":
+            include = ["missing"]
+        elif case == "empty":
+            include = []
+        elif case == "include64":
+            include = ["src/a.txt"] * 64
+    _api_policy(root, include=include, exclude=exclude)
+    standalone, report = _api_cli_pair(root)
+    status, code = ("violation", 1) if finding_paths else ("ok", 0)
+    for result in (standalone, report):
+        assert result.returncode == code
+        assert result.stderr == ""
+        assert str(root) not in result.stdout
+        assert _API_URL not in result.stdout
+        assert _API_PATTERN not in result.stdout
+    single, combined = json.loads(standalone.stdout), json.loads(report.stdout)
+    assert single["status"] == combined["status"] == status
+    assert single["exit_code"] == combined["exit_code"] == code
+    assert single["summary"]["scanned_count"] == combined["api"]["checked_count"] == count
+    assert combined["summary"]["api_checked_count"] == count
+    assert combined["summary"]["api_finding_count"] == len(finding_paths)
+    assert combined["api"]["finding_count"] == len(finding_paths)
+    assert single["findings"] == combined["api"]["findings"]
+    assert [(item["path"], item["line"], item["category"]) for item in single["findings"]] == [
+        (path, 1, "forbidden_api") for path in finding_paths
+    ]
+    api_gate = next(item for item in combined["evidence_coverage"]["gates"] if item["gate"] == "api")
+    assert (api_gate["checked_count"], api_gate["finding_count"], api_gate["status"]) == (
+        count, len(finding_paths), status
+    )
+
+
+def _api_compound_fixture(tmp_path: Path, case: str) -> Path:
+    root = _api_report_fixture(tmp_path)
+    write(root / "src" / "a.txt", _API_URL + "\n")
+    if case in {"M1", "nested_target_only", "regex_only", "top_target_before_regex"}:
+        if case != "regex_only":
+            outside = tmp_path / "outside.txt"
+            outside.write_text("outside synthetic data\n")
+            if case == "top_target_before_regex":
+                include = ["../outside.txt"]
+            else:
+                (root / "src" / "escape.txt").symlink_to(outside)
+                include = ["src"]
+        else:
+            include = ["src"]
+        _api_policy(root, include=include, forbidden=[_API_PATTERN] if case == "nested_target_only" else ["["])
+    elif case in {"M2", "include65_only"}:
+        _api_policy(root, include=["src/a.txt"] * 65,
+                    exclude="invalid" if case == "M2" else [], forbidden=[])
+    elif case in {"M3", "reverse_m3"}:
+        (root / "src" / "a.txt").write_bytes(b"x" * 1_048_577)
+        write(root / "evil" / "a.txt", "safe\n")
+        outside = tmp_path / "outside.txt"
+        outside.write_text("outside synthetic data\n")
+        (root / "evil" / "escape.txt").symlink_to(outside)
+        _api_policy(root, include=["evil", "src/a.txt"] if case == "reverse_m3" else ["src/a.txt", "evil"])
+    elif case == "partial_then_limit":
+        (root / "src" / "z.txt").write_bytes(b"x" * 1_048_577)
+        _api_policy(root, include=["src/a.txt", "src/z.txt"])
+    else:
+        raise AssertionError(case)
+    return root
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("M1", "api policy is invalid"),
+        ("M2", "api policy exceeds configured limits"),
+        ("M3", "api scan exceeds configured limits"),
+    ],
+)
+def test_report_api_error_b_approved_contract_normalization(
+    tmp_path: Path, case: str, expected: str,
+) -> None:
+    # Approved COUNT-A / ERROR-B contract normalization; historical report precedence is intentionally changed.
+    _assert_api_public_error(_api_compound_fixture(tmp_path, case), expected)
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("nested_target_only", "api scan target must stay under repo root"),
+        ("regex_only", "api policy is invalid"),
+        ("top_target_before_regex", "api scan target must stay under repo root"),
+        ("include65_only", "api policy exceeds configured limits"),
+        ("reverse_m3", "api scan target must stay under repo root"),
+        ("partial_then_limit", "api scan exceeds configured limits"),
+    ],
+)
+def test_report_api_error_b_controls(tmp_path: Path, case: str, expected: str) -> None:
+    _assert_api_public_error(_api_compound_fixture(tmp_path, case), expected)
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "sarif", "github-annotations"])
+def test_report_api_error_b_public_formats(tmp_path: Path, fmt: str) -> None:
+    root = _api_compound_fixture(tmp_path, "M1")
+    result = run_cli("report", "--root", str(root), "--context-policy", "context.yaml",
+                     "--api-policy", "policy.yaml", "--format", fmt)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    message = "api policy is invalid"
+    if fmt == "markdown":
+        assert f"| Error | {message} |" in result.stdout
+        assert "| Status | error |" in result.stdout
+    elif fmt == "github-annotations":
+        assert result.stdout == f"::error title=agent-guard report::report error: {message}\n"
+    else:
+        sarif = json.loads(result.stdout)
+        assert sarif["runs"][0]["results"][0]["ruleId"] == "agent-guard.report.configuration_error"
+        assert sarif["runs"][0]["results"][0]["message"]["text"] == f"agent-guard report error: {message}"
+    assert str(root) not in result.stdout
+    assert _API_URL not in result.stdout
+    assert _API_PATTERN not in result.stdout
+
+
+def test_report_api_error_b_output_file_boundary(tmp_path: Path) -> None:
+    root = _api_compound_fixture(tmp_path, "M1")
+    output = tmp_path / "result.json"
+    result = run_cli("report", "--root", str(root), "--context-policy", "context.yaml",
+                     "--api-policy", "policy.yaml", "--format", "json", "--output", str(output),
+                     "--stderr-summary")
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "agent-guard report: status=error exit_code=2 output=written\n"
+    payload = json.loads(output.read_text())
+    assert payload["error"] == "api policy is invalid"
+    assert payload["api"] == {"policy": {"path": "policy.yaml"}}
+    assert str(root) not in output.read_text()
 
 
 def test_report_uses_separate_context_read_pass_and_digest_budget(

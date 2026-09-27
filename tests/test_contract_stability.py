@@ -216,7 +216,11 @@ def test_changelog_records_latest_release_entry() -> None:
         "## 0.3.5 - 2026-08-13",
         "## 0.3.4 - 2026-08-01",
     ]
-    assert normalized_unreleased == ""
+    assert normalized_unreleased == " ".join(
+        [
+            "- Align integrated API report scanning and counts with the standalone scanner, removing the separate target-enumeration pass. Counts retain selected occurrences, including duplicates and non-text files. Compound-invalid API inputs now use standalone error precedence; normal report results, public-safe wrapping, and exit-status classes are preserved.",
+        ]
+    )
     assert normalized_release_0_3_10 == " ".join(
         [
             "- Recorded the 2026-09-21 demand-validation NO-GO decision and a single stable-point release exception for `0.3.10` that publishes the current default branch, including its accepted bug fixes.",

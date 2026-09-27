@@ -6,9 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..api_guard import iter_scan_files as iter_api_scan_files
+from ..api_guard import load_yaml_policy, scan_urls_with_count
 from ..bounded_repo_reader import DistinctInputBudget
-from ..api_guard import load_yaml_policy, normalize_string_list as normalize_api_string_list, scan_urls
 from ..content_guard import (
     build_rules,
     collect_registered_targets,
@@ -171,19 +170,11 @@ def build_evidence_coverage(
 
 def build_api_report(*, root: Path, policy_arg: str) -> dict[str, object]:
     policy = load_yaml_policy(resolve_policy_arg(policy_arg, root))
-    scan_cfg = policy.get("scan", {}) if isinstance(policy.get("scan", {}), dict) else {}
-    api_scan_files = list(
-        iter_api_scan_files(
-            root,
-            normalize_api_string_list(scan_cfg.get("include", [])),
-            normalize_api_string_list(scan_cfg.get("exclude", [])),
-        )
-    )
-    findings = scan_urls(root=root, policy=policy)
+    findings, checked_count = scan_urls_with_count(root=root, policy=policy)
     return {
         "policy": {"path": safe_policy_path(policy_arg, root)},
         "status": "ok" if not findings else "violation",
-        "checked_count": len(api_scan_files),
+        "checked_count": checked_count,
         "finding_count": len(findings),
         "findings": [
             api_finding_payload(item) for item in findings

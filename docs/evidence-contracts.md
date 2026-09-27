@@ -48,6 +48,23 @@ Compatible tightening may add enum constraints for values already emitted by
 `agent-guard`, but raw repository content, hash values, local paths, secrets,
 and workflow bodies remain outside the contract.
 
+### Unreleased API report normalization
+
+For a completed API scan, `api.checked_count` counts file-selection
+occurrences after include/exclude and selection-time containment checks,
+including repeated selections and files later skipped because UTF-8 decoding
+fails or a NUL character is present. It is neither a unique-file count nor
+proof of successful text inspection or an atomic filesystem snapshot. API scan
+failures publish no partial API count or findings.
+
+Once API checking is reached under equivalent input and execution conditions,
+the API section of `report` follows the same validation and scan-error
+selection semantics as standalone `api check`. Compound-invalid inputs may
+therefore report a different error than earlier integrated reports; the first
+reported error is a stopping reason, not a complete inventory or severity
+ranking of all faults. Report-specific envelopes, sanitization, non-API gate
+ordering, and exit-status classes remain unchanged.
+
 The sample report in
 [`docs/evidence-samples/agent-guard-report.json`](evidence-samples/agent-guard-report.json)
 is intentionally public-safe, generated from the latest published package
