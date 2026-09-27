@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           repository: yui-stingray/agent-safety-toolkit-example
-          ref: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
+          ref: 1375267decebc58df2e23648b6ed2ebc5568eba7
           path: .candidate-toolkit
           persist-credentials: false
       - name: Verify observation helper contracts
@@ -59,7 +59,7 @@ jobs:
       - name: Verify Toolkit candidate compatibility with bounded diagnostic capture
         id: toolkit_diagnostic
         env:
-          TOOLKIT_REF: 8ea48dc9926c55ac70af7a623c3ebcd8b35178c9
+          TOOLKIT_REF: 1375267decebc58df2e23648b6ed2ebc5568eba7
           TOOLKIT_HARNESS_BLOB: 6d860bc554fe6a0fe95076425d6153a783da8d05
         shell: bash
         run: |

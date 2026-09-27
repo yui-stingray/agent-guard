@@ -42,7 +42,7 @@ PUBLIC_EVIDENCE_ARTIFACTS = (
     "agent-guard-evidence-pack.json",
     "agent-surface-inventory.json",
 )
-TOOLKIT_COMPATIBILITY_COMMIT = "8ea48dc9926c55ac70af7a623c3ebcd8b35178c9"
+TOOLKIT_COMPATIBILITY_COMMIT = "1375267decebc58df2e23648b6ed2ebc5568eba7"
 R1_OBSERVATION_COMMAND = r"""set -euo pipefail
 toolkit=.candidate-toolkit
 test "$(git -C "$toolkit" rev-parse HEAD)" = "$TOOLKIT_REF"
