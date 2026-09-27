@@ -6,6 +6,12 @@ Why: keep static guard releases auditable while the package is still alpha.
 
 ## Unreleased
 
+- Align integrated API report scanning and counts with the standalone scanner,
+  removing the separate target-enumeration pass. Counts retain selected
+  occurrences, including duplicates and non-text files. Compound-invalid API
+  inputs now use standalone error precedence; normal report results,
+  public-safe wrapping, and exit-status classes are preserved.
+
 ## 0.3.10 - 2026-09-24
 
 - Recorded the 2026-09-21 demand-validation NO-GO decision and a single

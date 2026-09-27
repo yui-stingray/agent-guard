@@ -197,7 +197,12 @@ limited to severity, rule id, and repository-relative path. With
 registered-mode content evidence limited to severity, rule id,
 repository-relative file, and line. With `--api-policy`, it emits API evidence
 limited to repository-relative file, line, and controlled category. The report
-command does not support content `new` or `preregister` modes; use
+API checked count describes selected file occurrences, including repeated
+selections and non-text files. Its API section uses the same scan-error
+semantics as `api check`; compound-invalid inputs can expose a different first
+error than older reports. See the
+[Unreleased API report normalization contract](evidence-contracts.md#unreleased-api-report-normalization).
+The report command does not support content `new` or `preregister` modes; use
 `content check` directly for those workflows. With `--digest-policy`, it also
 emits sanitized digest drift evidence for pinned context or policy files: check
 id, repository-relative path, status, and controlled message. With
