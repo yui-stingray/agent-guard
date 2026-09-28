@@ -179,6 +179,12 @@ jobs:
           tests/test_windows_file_boundaries.py
           tests/cli/test_dispatch_contract.py
           tests/cli/test_entrypoint_contract.py
+      - name: Verify Windows API report contract
+        run: >-
+          python -m pytest -vv
+          tests/cli/test_report_integrations.py::test_report_api_delegates_count_without_independent_enumeration
+          tests/cli/test_report_integrations.py::test_report_api_count_a_matches_standalone
+          'tests/cli/test_report_integrations.py::test_report_api_error_b_approved_contract_normalization[M2]'
       - name: Verify Windows CLI report consumer contract
         shell: bash
         run: |

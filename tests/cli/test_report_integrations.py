@@ -208,6 +208,7 @@ def _api_compound_fixture(tmp_path: Path, case: str) -> Path:
         ("M2", "api policy exceeds configured limits"),
         ("M3", "api scan exceeds configured limits"),
     ],
+    ids=["M1", "M2", "M3"],
 )
 def test_report_api_error_b_approved_contract_normalization(
     tmp_path: Path, case: str, expected: str,
