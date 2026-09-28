@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -729,6 +730,20 @@ def test_ci_has_focused_windows_cli_contract() -> None:
         "tests/cli/test_dispatch_contract.py",
         "tests/cli/test_entrypoint_contract.py",
     ]
+    api_steps = [
+        step for step in job["steps"]
+        if step.get("name") == "Verify Windows API report contract"
+    ]
+    assert len(api_steps) == 1
+    api_step = api_steps[0]
+    assert shlex.split(api_step["run"]) == [
+        "python", "-m", "pytest", "-vv",
+        "tests/cli/test_report_integrations.py::test_report_api_delegates_count_without_independent_enumeration",
+        "tests/cli/test_report_integrations.py::test_report_api_count_a_matches_standalone",
+        "tests/cli/test_report_integrations.py::test_report_api_error_b_approved_contract_normalization[M2]",
+    ]
+    assert "if" not in api_step
+    assert not api_step.get("continue-on-error", False)
     assert "if" not in boundary_step
     assert not boundary_step.get("continue-on-error", False)
     assert not job.get("continue-on-error", False)
