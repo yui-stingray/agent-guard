@@ -6,6 +6,7 @@ Why: prevent policy aliases, nesting, and object graphs from exhausting scanners
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, NoReturn
 
 import yaml
@@ -211,3 +212,30 @@ def load_bounded_yaml(
     except (TypeError, UnicodeError, ValueError):
         _raise_invalid()
     return loaded
+
+
+def load_mapping_policy_file(
+    path: Path,
+    *,
+    max_bytes: int,
+    not_found_error: str,
+    invalid_error: str,
+    limit_error: str,
+) -> dict[str, Any]:
+    """Load a byte-limited policy, preserving the scanner's diagnostics."""
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            raise BoundedYamlLimitError
+        # These scanners have historically treated falsy YAML roots as empty policies.
+        policy = load_bounded_yaml(raw.decode("utf-8")) or {}
+        if not isinstance(policy, dict):
+            raise BoundedYamlInvalidError
+        return policy
+    except FileNotFoundError:
+        raise FileNotFoundError(f"{not_found_error}: {path}") from None
+    except (OSError, UnicodeDecodeError, BoundedYamlInvalidError):
+        raise ValueError(invalid_error) from None
+    except (BoundedYamlLimitError, MemoryError, OverflowError, RecursionError):
+        raise ValueError(limit_error) from None

@@ -13,11 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .bounded_scan import MAX_ISOLATED_MESSAGE_BYTES, run_isolated_scan
-from .bounded_yaml import (
-    BoundedYamlInvalidError,
-    BoundedYamlLimitError,
-    load_bounded_yaml,
-)
+from .bounded_yaml import load_mapping_policy_file
 
 
 # Stable, public-safe errors for untrusted policy and scan resource failures.
@@ -83,35 +79,14 @@ class PathGuardFinding:
         }
 
 
-def _read_policy_text(path: Path) -> str:
-    try:
-        with path.open("rb") as handle:
-            raw = handle.read(MAX_PATH_POLICY_BYTES + 1)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"{ERROR_PATH_POLICY_NOT_FOUND}: {path}") from None
-    except OSError:
-        raise ValueError(ERROR_PATH_POLICY_INVALID) from None
-
-    if len(raw) > MAX_PATH_POLICY_BYTES:
-        raise ValueError(ERROR_PATH_POLICY_LIMIT)
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise ValueError(ERROR_PATH_POLICY_INVALID) from None
-
-
 def load_path_policy(path: Path) -> dict[str, Any]:
-    try:
-        loaded = load_bounded_yaml(_read_policy_text(path)) or {}
-        if not isinstance(loaded, dict):
-            raise BoundedYamlInvalidError
-    except BoundedYamlLimitError:
-        raise ValueError(ERROR_PATH_POLICY_LIMIT) from None
-    except BoundedYamlInvalidError:
-        raise ValueError(ERROR_PATH_POLICY_INVALID) from None
-    except (MemoryError, OverflowError, RecursionError):
-        raise ValueError(ERROR_PATH_POLICY_LIMIT) from None
-    return loaded
+    return load_mapping_policy_file(
+        path,
+        max_bytes=MAX_PATH_POLICY_BYTES,
+        not_found_error=ERROR_PATH_POLICY_NOT_FOUND,
+        invalid_error=ERROR_PATH_POLICY_INVALID,
+        limit_error=ERROR_PATH_POLICY_LIMIT,
+    )
 
 
 def normalize_string_list(values: Any, *, limit: int = MAX_PATH_POLICY_LIST_ITEMS) -> list[str]:
