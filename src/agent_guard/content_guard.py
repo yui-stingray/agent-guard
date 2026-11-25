@@ -22,11 +22,7 @@ from .bounded_git import (
     run_bounded_git,
     sanitized_git_environment,
 )
-from .bounded_yaml import (
-    BoundedYamlInvalidError,
-    BoundedYamlLimitError,
-    load_bounded_yaml,
-)
+from .bounded_yaml import load_mapping_policy_file
 
 
 # Stable, public-safe errors for untrusted policy and scan resource failures.
@@ -328,36 +324,18 @@ def merge_policy(base: dict[str, object], override: dict[str, object]) -> dict[s
     return merged
 
 
-def _read_policy_text(path: Path) -> str:
-    try:
-        with path.open("rb") as handle:
-            raw = handle.read(MAX_POLICY_FILE_BYTES + 1)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"{ERROR_CONTENT_POLICY_NOT_FOUND}: {path}") from None
-    except OSError:
-        raise ValueError(ERROR_CONTENT_POLICY_INVALID) from None
-
-    if len(raw) > MAX_POLICY_FILE_BYTES:
-        raise ValueError(ERROR_CONTENT_POLICY_LIMIT)
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise ValueError(ERROR_CONTENT_POLICY_INVALID) from None
-
-
 def load_content_policy(path: Path) -> dict[str, object]:
+    loaded = load_mapping_policy_file(
+        path,
+        max_bytes=MAX_POLICY_FILE_BYTES,
+        not_found_error=ERROR_CONTENT_POLICY_NOT_FOUND,
+        invalid_error=ERROR_CONTENT_POLICY_INVALID,
+        limit_error=ERROR_CONTENT_POLICY_LIMIT,
+    )
     try:
-        loaded = load_bounded_yaml(_read_policy_text(path)) or {}
-        if not isinstance(loaded, dict):
-            raise BoundedYamlInvalidError
-        merged = merge_policy(DEFAULT_POLICY, loaded)
-    except BoundedYamlLimitError:
-        raise ValueError(ERROR_CONTENT_POLICY_LIMIT) from None
-    except BoundedYamlInvalidError:
-        raise ValueError(ERROR_CONTENT_POLICY_INVALID) from None
+        return merge_policy(DEFAULT_POLICY, loaded)
     except (MemoryError, OverflowError, RecursionError):
         raise ValueError(ERROR_CONTENT_POLICY_LIMIT) from None
-    return merged
 
 
 def normalize_patterns(raw: object, *, limit: int = MAX_POLICY_GLOB_COUNT) -> list[str]:
